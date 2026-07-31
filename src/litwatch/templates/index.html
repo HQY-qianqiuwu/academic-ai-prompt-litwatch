@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LitWatch 文献雷达</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  </head>
+  <body>
+    <header class="hero">
+      <nav><span class="brand">LitWatch</span><span class="tag">Research radar</span></nav>
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow">持续发现，而不是一次性搜索</p>
+          <h1>把新论文变成<br><em>可行动的阅读清单</em></h1>
+          <p class="intro">多源检索、可解释排序、开放全文分析和 Zotero 工作流，在一个安静的界面里完成。</p>
+        </div>
+        <form class="run-card" action="/run" method="post">
+          <label for="days">回溯范围</label>
+          <div><input id="days" name="days" type="number" min="1" max="365" value="14"><span>天</span></div>
+          <button type="submit">立即扫描</button>
+          {% if latest_run %}
+          <small>上次：获取 {{ latest_run.fetched }} · 入选 {{ latest_run.accepted }} · AI {{ latest_run.analyzed }}</small>
+          {% else %}<small>尚未运行。首次扫描通常需要 1–3 分钟。</small>{% endif %}
+        </form>
+      </div>
+    </header>
+
+    <main>
+      <section class="filters">
+        <a class="{{ 'active' if not active_topic }}" href="/">全部主题</a>
+        {% for topic in topics %}
+        <a class="{{ 'active' if active_topic == topic.id }}" href="/?topic={{ topic.id }}">{{ topic.name }}</a>
+        {% endfor %}
+      </section>
+
+      {% if latest_run and latest_run.errors %}
+      <details class="warning"><summary>本次有 {{ latest_run.errors|length }} 个可降级错误</summary>
+        <ul>{% for error in latest_run.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+
+      <section class="paper-grid">
+        {% for paper in papers %}
+        <article class="paper-card">
+          <div class="meta"><span>{{ paper.topic_name }}</span><b>{{ '%.0f'|format(paper.score * 100) }}</b></div>
+          <h2><a href="{{ paper.url }}" target="_blank" rel="noreferrer">{{ paper.title }}</a></h2>
+          <p class="authors">{% for author in paper.authors[:5] %}{{ author.name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+          {% if paper.analysis.one_liner %}<p class="summary">{{ paper.analysis.one_liner }}</p>
+          {% elif paper.abstract %}<p class="summary">{{ paper.abstract[:320] }}{% if paper.abstract|length > 320 %}…{% endif %}</p>
+          {% else %}<p class="summary muted">暂无摘要</p>{% endif %}
+          <footer>
+            <span>{{ paper.publication_date or '日期未知' }}</span>
+            <span>{{ paper.venue or paper.sources|join(' + ') }}</span>
+            <span>引用 {{ paper.citation_count }}</span>
+            {% if paper.pdf_url %}<a href="{{ paper.pdf_url }}" target="_blank">PDF ↗</a>{% endif %}
+          </footer>
+        </article>
+        {% else %}
+        <div class="empty"><strong>还没有论文</strong><p>点击“立即扫描”，或先编辑 <code>config/topics.yaml</code> 调整研究主题。</p></div>
+        {% endfor %}
+      </section>
+    </main>
+  </body>
+</html>
+

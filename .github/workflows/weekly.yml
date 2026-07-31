@@ -1,0 +1,33 @@
+name: weekly-literature-radar
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every Monday 08:00 Asia/Shanghai (GitHub cron uses UTC).
+    - cron: "0 0 * * 1"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Run radar and send digest
+        env:
+          LITWATCH_OPENALEX_EMAIL: ${{ vars.LITWATCH_OPENALEX_EMAIL }}
+          LITWATCH_LLM_API_KEY: ${{ secrets.LITWATCH_LLM_API_KEY }}
+          LITWATCH_LLM_BASE_URL: ${{ vars.LITWATCH_LLM_BASE_URL || 'https://api.openai.com/v1' }}
+          LITWATCH_LLM_MODEL: ${{ vars.LITWATCH_LLM_MODEL || 'gpt-5-mini' }}
+          LITWATCH_SEMANTIC_SCHOLAR_API_KEY: ${{ secrets.LITWATCH_SEMANTIC_SCHOLAR_API_KEY }}
+          LITWATCH_SMTP_HOST: ${{ vars.LITWATCH_SMTP_HOST }}
+          LITWATCH_SMTP_PORT: ${{ vars.LITWATCH_SMTP_PORT || '465' }}
+          LITWATCH_SMTP_USERNAME: ${{ secrets.LITWATCH_SMTP_USERNAME }}
+          LITWATCH_SMTP_PASSWORD: ${{ secrets.LITWATCH_SMTP_PASSWORD }}
+          LITWATCH_EMAIL_FROM: ${{ vars.LITWATCH_EMAIL_FROM }}
+          LITWATCH_EMAIL_TO: ${{ vars.LITWATCH_EMAIL_TO }}
+        run: uv run litwatch scan --days 14 --email

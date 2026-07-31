@@ -1,0 +1,43 @@
+topics:
+  - id: underwater_acoustics
+    name: 水声通信
+    query: underwater acoustic communication channel estimation Doppler OFDM sonar
+    include:
+      - underwater acoustic
+      - hydroacoustic
+      - sonar
+      - hydrophone
+      - Doppler compensation
+      - channel estimation
+    exclude:
+      - medical ultrasound
+    categories: [eess.SP, eess.AS, cs.SD]
+    min_score: 0.30
+
+  - id: array_signal_processing
+    name: 阵列与信号处理
+    query: array signal processing acoustic beamforming source localization adaptive filtering
+    include:
+      - array signal processing
+      - acoustic beamforming
+      - source localization
+      - blind source separation
+      - matched field processing
+    exclude: []
+    categories: [eess.SP, eess.AS]
+    min_score: 0.30
+
+  - id: underwater_robotics
+    name: 水下机器人与嵌入式系统
+    query: underwater robot AUV UUV embedded signal processing real-time control edge AI
+    include:
+      - underwater robot
+      - AUV
+      - UUV
+      - embedded signal processing
+      - real-time control
+      - edge AI
+    exclude: []
+    categories: [cs.RO, eess.SY]
+    min_score: 0.28
+
