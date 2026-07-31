@@ -12,6 +12,7 @@ topics:
     exclude:
       - medical ultrasound
     categories: [eess.SP, eess.AS, cs.SD]
+    analysis_mode: review_matrix
     min_score: 0.30
 
   - id: array_signal_processing
@@ -25,6 +26,7 @@ topics:
       - matched field processing
     exclude: []
     categories: [eess.SP, eess.AS]
+    analysis_mode: quick_scan
     min_score: 0.30
 
   - id: underwater_robotics
@@ -39,5 +41,5 @@ topics:
       - edge AI
     exclude: []
     categories: [cs.RO, eess.SY]
+    analysis_mode: seminal_frontier
     min_score: 0.28
-

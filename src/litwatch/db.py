@@ -181,3 +181,10 @@ class Database:
         item = dict(row)
         item["errors"] = json.loads(item.pop("errors_json"))
         return item
+
+    def list_topics(self) -> list[dict[str, str]]:
+        rows = self.connection.execute(
+            """SELECT topic_id AS id, topic_name AS name
+               FROM paper_topics GROUP BY topic_id, topic_name ORDER BY topic_name"""
+        ).fetchall()
+        return [dict(row) for row in rows]

@@ -27,11 +27,31 @@
     </header>
 
     <main>
+      <section class="quick-search">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Quick discovery</p>
+            <h2>现在想查什么？</h2>
+          </div>
+          <p>输入研究问题或英文关键词，系统会查询真实数据源、去重排序，再按所选工作流汇总。</p>
+        </div>
+        <form action="/quick-search" method="post">
+          <label class="wide">主题名称<input name="name" required minlength="2" maxlength="80" placeholder="例如：水下声学目标检测"></label>
+          <label class="wide">检索式或研究问题<textarea name="query" required minlength="3" maxlength="500" rows="3" placeholder="underwater acoustic target detection deep learning sonar"></textarea></label>
+          <label>重点短语<input name="include" placeholder="sonar, target detection, hydrophone"></label>
+          <label>排除短语<input name="exclude" placeholder="medical ultrasound"></label>
+          <label>分析模式<select name="analysis_mode">{% for mode in analysis_modes %}<option value="{{ mode.id }}">{{ mode.name }} — {{ mode.description }}</option>{% endfor %}</select></label>
+          <label>回溯天数<input name="days" type="number" min="1" max="365" value="30"></label>
+          <button type="submit">查找并汇总</button>
+        </form>
+      </section>
+
       <section class="filters">
         <a class="{{ 'active' if not active_topic }}" href="/">全部主题</a>
         {% for topic in topics %}
         <a class="{{ 'active' if active_topic == topic.id }}" href="/?topic={{ topic.id }}">{{ topic.name }}</a>
         {% endfor %}
+        <a class="export" href="/export/bibtex{% if active_topic %}?topic={{ active_topic }}{% endif %}">导出 BibTeX ↓</a>
       </section>
 
       {% if latest_run and latest_run.errors %}
@@ -63,4 +83,3 @@
     </main>
   </body>
 </html>
-

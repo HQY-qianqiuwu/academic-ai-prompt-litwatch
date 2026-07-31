@@ -16,6 +16,7 @@ class Topic(BaseModel):
     include: list[str] = Field(default_factory=list)
     exclude: list[str] = Field(default_factory=list)
     categories: list[str] = Field(default_factory=list)
+    analysis_mode: str = "quick_scan"
     min_score: float = Field(default=0.3, ge=0, le=1)
 
     @field_validator("id")
@@ -28,6 +29,17 @@ class Topic(BaseModel):
 
 class TopicFile(BaseModel):
     topics: list[Topic]
+
+
+class AnalysisMode(BaseModel):
+    id: str
+    name: str
+    description: str
+    instruction: str
+
+
+class AnalysisModeFile(BaseModel):
+    modes: list[AnalysisMode]
 
 
 class Settings(BaseSettings):
@@ -54,6 +66,7 @@ class Settings(BaseSettings):
 
     database_path: Path = Path("data/litwatch.db")
     topics_path: Path = Path("config/topics.yaml")
+    analysis_modes_path: Path = Path("config/analysis_modes.yaml")
     lookback_days: int = Field(default=14, ge=1, le=365)
     max_results_per_source: int = Field(default=50, ge=1, le=200)
     analyze_top_n: int = Field(default=8, ge=0, le=50)
@@ -76,3 +89,7 @@ class Settings(BaseSettings):
             )
         payload = yaml.safe_load(self.topics_path.read_text(encoding="utf-8")) or {}
         return TopicFile.model_validate(payload).topics
+
+    def load_analysis_modes(self) -> list[AnalysisMode]:
+        payload = yaml.safe_load(self.analysis_modes_path.read_text(encoding="utf-8")) or {}
+        return AnalysisModeFile.model_validate(payload).modes

@@ -1,0 +1,30 @@
+modes:
+  - id: quick_scan
+    name: 快速筛选
+    description: 用最短时间判断是否值得读，以及应该先看哪一部分。
+    instruction: >-
+      给出推荐或跳过结论、阅读优先级、最值得关注的一个贡献，以及建议优先阅读的章节。
+      不得仅因引用量低而否定新论文。
+
+  - id: review_matrix
+    name: 综述矩阵
+    description: 提取可直接进入文献综述表格的结构化信息。
+    instruction: >-
+      在 workflow_output 中给出 research_question、theory、data、method、main_finding、
+      limitation、relation_to_prior_work、possible_review_section。缺失信息必须写明原文未报告，
+      不得从常识补齐。
+
+  - id: seminal_frontier
+    name: 经典与前沿
+    description: 判断论文在领域发展脉络中的位置。
+    instruction: >-
+      在 workflow_output 中给出 role（foundational/incremental/frontier）、technical_lineage、
+      novelty、likely_followups。只能依据当前论文判断，无法确认历史地位时降低 confidence 并说明原因。
+
+  - id: closest_work
+    name: 最接近工作
+    description: 用于选题查重和寻找最接近的技术路线。
+    instruction: >-
+      在 workflow_output 中给出 problem_overlap、method_overlap、data_overlap、differences、
+      reusable_ideas、duplication_risk。当前没有提供用户方案细节时，不得声称完全重复。
+

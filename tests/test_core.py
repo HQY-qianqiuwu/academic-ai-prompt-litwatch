@@ -2,6 +2,7 @@ from datetime import date
 
 from litwatch.config import Topic
 from litwatch.db import Database
+from litwatch.export import rows_to_bibtex
 from litwatch.models import Paper
 from litwatch.pipeline import merge_papers
 from litwatch.ranking import score_paper
@@ -72,3 +73,23 @@ def test_database_round_trip(tmp_path):
     assert rows[0]["title"] == "Paper"
     assert rows[0]["score"] == 0.75
     assert database.latest_run()["accepted"] == 1
+    assert database.list_topics() == [{"id": "t", "name": "Topic"}]
+
+
+def test_bibtex_export_uses_verified_metadata():
+    rendered = rows_to_bibtex(
+        [
+            {
+                "title": "Underwater {Acoustics}",
+                "authors": [{"name": "Ada Lovelace"}],
+                "publication_date": "2026-07-31",
+                "venue": "Ocean Engineering",
+                "doi": "10.1234/example",
+                "url": "https://doi.org/10.1234/example",
+                "abstract": "A verified abstract.",
+            }
+        ]
+    )
+    assert "@article{Lovelace2026" in rendered
+    assert "doi = {10.1234/example}" in rendered
+    assert "Underwater \\{Acoustics\\}" in rendered

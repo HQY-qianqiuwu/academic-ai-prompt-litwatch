@@ -49,7 +49,9 @@ class Pipeline:
         self.analyzer = PaperAnalyzer(settings)
         self.fulltext = FullTextExtractor(timeout=max(45, timeout))
 
-    def run(self, *, days: int | None = None) -> tuple[RunSummary, list[Paper]]:
+    def run(
+        self, *, days: int | None = None, topics: list[Topic] | None = None
+    ) -> tuple[RunSummary, list[Paper]]:
         run_id = self.database.start_run()
         started = datetime.now(UTC)
         end_date = datetime.now(UTC).date()
@@ -60,7 +62,7 @@ class Pipeline:
         errors: list[str] = []
         accepted_papers: list[Paper] = []
 
-        for topic in self.settings.load_topics():
+        for topic in topics if topics is not None else self.settings.load_topics():
             unique: dict[str, Paper] = {}
             for source in self.sources:
                 try:
