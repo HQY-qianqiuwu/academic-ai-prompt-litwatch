@@ -37,6 +37,25 @@ uv run litwatch serve
 .\.venv\Scripts\litwatch.exe serve
 ```
 
+## 本机长期使用（推荐）
+
+本项目提供 Windows 登录自启和每周扫描任务。安装一次后，只要电脑已经登录，就可以随时打开固定地址 <http://127.0.0.1:8000>：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-local.ps1
+```
+
+安装内容：
+
+- `LitWatch Web`：登录 Windows 后在后台启动本地网页；异常退出时自动重试。
+- `LitWatch Weekly Scan`：每周一 08:00 检索最近 14 天论文并更新数据库。
+
+也可以双击项目根目录的 `打开 LitWatch.cmd` 随时启动并打开网页，双击 `停止 LitWatch.cmd` 停止服务。卸载自动任务：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\uninstall-local.ps1
+```
+
 ## 配置 AI 分析
 
 编辑 `.env`：
@@ -48,6 +67,8 @@ LITWATCH_LLM_MODEL=gpt-5-mini
 ```
 
 系统只对每个主题的高分论文调用模型。开放 PDF 成功提取时标记为 `fulltext_excerpt`，否则标记为 `abstract`，不会把摘要分析包装成全文精读。
+
+没有配置模型密钥时，系统仍会基于真实摘要生成基础抽取式提炼，包括动机、方法句、结果句、局限提示和阅读优先级；配置模型后才会生成更深入的中文综述矩阵和研究空白分析。
 
 ## 长期监测
 
@@ -113,4 +134,3 @@ uv run ruff check .
 ## License
 
 MIT。原 Prompt 库版权归其贡献者所有；新增应用代码同样按仓库 MIT License 发布。
-

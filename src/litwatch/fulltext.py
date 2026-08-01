@@ -6,7 +6,11 @@ import pymupdf
 
 class FullTextExtractor:
     def __init__(self, *, timeout: float = 45, max_bytes: int = 20_000_000) -> None:
-        self.client = httpx.Client(timeout=timeout, follow_redirects=True)
+        self.client = httpx.Client(
+            timeout=timeout,
+            follow_redirects=True,
+            transport=httpx.HTTPTransport(retries=2),
+        )
         self.max_bytes = max_bytes
 
     def extract(self, pdf_url: str, *, max_chars: int = 36_000) -> str:

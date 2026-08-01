@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 
@@ -19,7 +20,7 @@ class PaperAnalyzer:
 
     def analyze(self, paper: Paper, topic: Topic, fulltext: str = "") -> dict[str, object]:
         if not self.enabled:
-            return {"status": "skipped", "reason": "未配置 LLM API"}
+            return self._extractive_fallback(paper, topic)
         evidence = fulltext or paper.abstract
         if not evidence:
             return {"status": "skipped", "reason": "无摘要或可用全文"}
@@ -67,3 +68,61 @@ class PaperAnalyzer:
         result["status"] = "ok"
         result["evidence_level"] = "fulltext_excerpt" if fulltext else "abstract"
         return result
+
+    @staticmethod
+    def _extractive_fallback(paper: Paper, topic: Topic) -> dict[str, object]:
+        text = " ".join(paper.abstract.split())
+        if not text:
+            return {
+                "status": "skipped",
+                "reason": "无摘要或可用全文",
+                "evidence_level": "none",
+            }
+
+        sentences = [
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?])\s+(?=[A-Z])", text)
+            if sentence.strip()
+        ]
+        method_words = ("propose", "method", "framework", "model", "algorithm", "develop")
+        result_words = ("result", "show", "demonstrate", "achieve", "improve", "outperform")
+        limitation_words = ("limit", "challenge", "however", "remain", "future work")
+
+        def select(keywords: tuple[str, ...], limit: int = 2) -> list[str]:
+            matches = [
+                sentence
+                for sentence in sentences
+                if any(keyword in sentence.casefold() for keyword in keywords)
+            ]
+            return matches[:limit]
+
+        methods = select(method_words)
+        results = select(result_words)
+        limitations = select(limitation_words)
+        relevance_terms = [
+            term
+            for term in topic.include
+            if term.casefold() in f"{paper.title} {paper.abstract}".casefold()
+        ]
+        return {
+            "status": "extractive",
+            "one_liner": sentences[0][:500],
+            "motivation": sentences[0][:800],
+            "methods": methods or ["摘要未明确给出可自动提取的方法句"],
+            "results": results or ["摘要未报告可自动识别的结果句"],
+            "limitations": limitations or ["摘要未明确说明局限"],
+            "relevance": (
+                f"命中主题短语：{', '.join(relevance_terms)}"
+                if relevance_terms
+                else "需结合全文人工判断与主题的具体关系"
+            ),
+            "paper_type": "method" if methods else "unknown",
+            "research_gap": "基础提炼模式不推断摘要未明确陈述的研究空白",
+            "reading_priority": max(1, min(5, round(paper.score * 5))),
+            "workflow_output": {
+                "mode": topic.analysis_mode,
+                "note": "这是无需 LLM 的摘要抽取结果；配置模型后可生成深度综述矩阵。",
+            },
+            "evidence_level": "abstract",
+            "confidence": 0.35,
+        }

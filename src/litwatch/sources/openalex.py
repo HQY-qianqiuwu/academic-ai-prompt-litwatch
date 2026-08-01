@@ -15,7 +15,11 @@ class OpenAlexSource:
 
     def __init__(self, *, email: str = "", timeout: float = 30) -> None:
         self.email = email
-        self.client = httpx.Client(timeout=timeout, follow_redirects=True)
+        self.client = httpx.Client(
+            timeout=timeout,
+            follow_redirects=True,
+            transport=httpx.HTTPTransport(retries=2),
+        )
 
     def search(self, topic: Topic, start_date: date, end_date: date, limit: int) -> list[Paper]:
         params = {

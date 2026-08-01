@@ -69,6 +69,17 @@
           {% if paper.analysis.one_liner %}<p class="summary">{{ paper.analysis.one_liner }}</p>
           {% elif paper.abstract %}<p class="summary">{{ paper.abstract[:320] }}{% if paper.abstract|length > 320 %}…{% endif %}</p>
           {% else %}<p class="summary muted">暂无摘要</p>{% endif %}
+          {% if paper.analysis.status in ['ok', 'extractive'] %}
+          <details class="analysis">
+            <summary>查看文献提炼 <span>{{ 'AI 深度分析' if paper.analysis.status == 'ok' else '基础摘要抽取' }}</span></summary>
+            {% if paper.analysis.motivation %}<h3>研究动机</h3><p>{{ paper.analysis.motivation }}</p>{% endif %}
+            {% if paper.analysis.methods %}<h3>核心方法</h3><ul>{% for item in paper.analysis.methods %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+            {% if paper.analysis.results %}<h3>主要结果</h3><ul>{% for item in paper.analysis.results %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+            {% if paper.analysis.limitations %}<h3>局限</h3><ul>{% for item in paper.analysis.limitations %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+            {% if paper.analysis.research_gap %}<h3>研究空白</h3><p>{{ paper.analysis.research_gap }}</p>{% endif %}
+            <small>证据：{{ paper.analysis.evidence_level }} · 置信度 {{ paper.analysis.confidence }} · 阅读优先级 {{ paper.analysis.reading_priority }}/5</small>
+          </details>
+          {% endif %}
           <footer>
             <span>{{ paper.publication_date or '日期未知' }}</span>
             <span>{{ paper.venue or paper.sources|join(' + ') }}</span>

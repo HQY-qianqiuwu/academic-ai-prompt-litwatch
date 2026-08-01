@@ -93,7 +93,7 @@ class Pipeline:
                         )
                 try:
                     paper.analysis = self.analyzer.analyze(paper, topic, fulltext)
-                    analyzed += int(paper.analysis.get("status") == "ok")
+                    analyzed += int(paper.analysis.get("status") in {"ok", "extractive"})
                 except Exception as exc:  # noqa: BLE001 - LLM analysis is optional
                     paper.analysis = {"status": "error", "reason": str(exc)}
                     errors.append(

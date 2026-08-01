@@ -16,7 +16,12 @@ class SemanticScholarSource:
 
     def __init__(self, *, api_key: str = "", timeout: float = 30) -> None:
         headers = {"x-api-key": api_key} if api_key else {}
-        self.client = httpx.Client(timeout=timeout, follow_redirects=True, headers=headers)
+        self.client = httpx.Client(
+            timeout=timeout,
+            follow_redirects=True,
+            headers=headers,
+            transport=httpx.HTTPTransport(retries=2),
+        )
 
     def search(self, topic: Topic, start_date: date, end_date: date, limit: int) -> list[Paper]:
         params = {

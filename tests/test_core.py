@@ -1,6 +1,7 @@
 from datetime import date
 
-from litwatch.config import Topic
+from litwatch.analysis import PaperAnalyzer
+from litwatch.config import Settings, Topic
 from litwatch.db import Database
 from litwatch.export import rows_to_bibtex
 from litwatch.models import Paper
@@ -93,3 +94,20 @@ def test_bibtex_export_uses_verified_metadata():
     assert "@article{Lovelace2026" in rendered
     assert "doi = {10.1234/example}" in rendered
     assert "Underwater \\{Acoustics\\}" in rendered
+
+
+def test_analyzer_has_no_key_extractive_fallback():
+    analyzer = PaperAnalyzer(Settings(llm_api_key=""))
+    paper = Paper(
+        canonical_id="x",
+        title="Underwater acoustic detection",
+        abstract=(
+            "Underwater target detection remains challenging. "
+            "We propose a sonar detection framework. Results show improved accuracy."
+        ),
+        score=0.8,
+    )
+    result = analyzer.analyze(paper, topic())
+    assert result["status"] == "extractive"
+    assert result["methods"] == ["We propose a sonar detection framework."]
+    assert result["reading_priority"] == 4

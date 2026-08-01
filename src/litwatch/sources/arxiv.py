@@ -21,6 +21,7 @@ class ArxivSource:
         self.client = httpx.Client(
             timeout=timeout,
             follow_redirects=True,
+            transport=httpx.HTTPTransport(retries=2),
             headers={"User-Agent": "LitWatch/0.1 (literature monitoring; contact via repository)"},
         )
 
