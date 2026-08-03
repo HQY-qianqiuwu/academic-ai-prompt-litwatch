@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -38,12 +40,26 @@ def scan(
 
 @app.command()
 def serve(
-    host: str = typer.Option("127.0.0.1"), port: int = typer.Option(8000, min=1, max=65535)
+    host: str = typer.Option("0.0.0.0"), port: int = typer.Option(8000, min=1, max=65535)
 ) -> None:
     """启动本地 Web 仪表盘。"""
     import uvicorn
 
     uvicorn.run(create_app(_settings()), host=host, port=port)
+
+
+@app.command("export-static")
+def export_static(
+    output: Annotated[Path, typer.Option(help="输出目录路径")] = Path("_site"),
+) -> None:
+    """将数据库内容导出为 GitHub Pages 静态站点。"""
+    from litwatch.static_export import export_static as do_export
+
+    result = do_export(output, _settings())
+    typer.echo(
+        f"静态站点已导出到 {result['output_dir']}（{result['paper_count']} 篇，"
+        f"快照 {result['snapshot_id']}）"
+    )
 
 
 @app.command("zotero-export")

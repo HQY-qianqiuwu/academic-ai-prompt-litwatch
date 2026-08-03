@@ -15,7 +15,22 @@
 - 快速筛选、综述矩阵、经典与前沿、最接近工作等分析模式
 - 明确区分摘要分析和开放 PDF 全文节选分析
 - SQLite 历史记录、Web 仪表盘、HTML 邮件和 Zotero 导出
-- GitHub Actions 与 Windows 每周定时任务
+- Codespaces 实时检索、GitHub Pages 每周快照与 Windows 定时任务
+
+## 随时打开：Codespaces + GitHub Pages
+
+两种入口服务于不同场景：
+
+- [打开 LitWatch Codespace](https://codespaces.new/HQY-qianqiuwu/academic-ai-prompt-litwatch?quickstart=1)：可输入研究问题并立即检索、排序和提炼。容器创建后会自动安装项目，每次唤醒都会启动 8000 端口并打开网页。
+- [查看 LitWatch 每周快照](https://HQY-qianqiuwu.github.io/academic-ai-prompt-litwatch/)：无需启动服务即可浏览最近结果、历史快照并下载 BibTeX；静态页面不执行实时搜索。
+
+第一次创建 Codespace 时，建议从仓库的 **Code → Codespaces → New with options** 进入。页面会推荐填写以下可选密钥；全部留空也能使用 OpenAlex、arXiv 和基础抽取式提炼：
+
+- `LITWATCH_LLM_API_KEY`：启用 LLM 深度分析。
+- `LITWATCH_OPENALEX_EMAIL`：进入 OpenAlex polite pool，提高请求稳定性。
+- `LITWATCH_SEMANTIC_SCHOLAR_API_KEY`：启用 Semantic Scholar 数据源。
+
+`.github/workflows/pages.yml` 在每周一北京时间 08:00 扫描并更新 `gh-pages` 分支。首次部署后，在仓库 **Settings → Pages → Build and deployment** 中选择 **Deploy from a branch**，分支选择 `gh-pages` / `(root)`。后续快照会自动累积到“历史快照”。
 
 ## 快速启动（Windows）
 

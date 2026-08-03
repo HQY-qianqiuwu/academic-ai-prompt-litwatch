@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LitWatch 历史快照</title>
+    <link rel="stylesheet" href="../styles.css">
+  </head>
+  <body>
+    <header class="archive-hero">
+      <a href="../index.html">← 返回最新文献</a>
+      <p class="eyebrow">Weekly archive</p>
+      <h1>历史文献快照</h1>
+      <p>每次自动扫描都会保留一份可独立浏览和导出 BibTeX 的结果。</p>
+    </header>
+    <main>
+      <section class="snapshot-list">
+        {% for snapshot in snapshots %}
+        <a href="{{ snapshot.path }}">
+          <strong>{{ snapshot.label }}</strong>
+          <span>{{ snapshot.paper_count }} 篇论文</span>
+          <small>生成于 {{ snapshot.generated_at[:19].replace('T', ' ') }} UTC</small>
+        </a>
+        {% else %}
+        <div class="empty"><strong>尚无历史快照</strong></div>
+        {% endfor %}
+      </section>
+    </main>
+  </body>
+</html>

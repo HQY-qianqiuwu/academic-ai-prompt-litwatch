@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
@@ -20,14 +22,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_runtime_files()
     database = Database(settings.database_path)
-    app = FastAPI(title="LitWatch", version="0.1.0")
+    scan_lock = threading.Lock()
+    state_lock = threading.Lock()
+    scan_state: dict[str, object] = {"scanning": False, "last_error": ""}
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        yield
+        database.connection.close()
+
+    app = FastAPI(title="LitWatch", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.database = database
+    app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
 
+    def state_snapshot() -> dict[str, object]:
+        with state_lock:
+            return dict(scan_state)
+
+    def start_scan(*, days: int, topics: list[Topic] | None = None) -> bool:
+        if not scan_lock.acquire(blocking=False):
+            return False
+        with state_lock:
+            scan_state.update(scanning=True, last_error="")
+
+        def worker() -> None:
+            worker_database = Database(settings.database_path)
+            try:
+                Pipeline(settings, worker_database).run(days=days, topics=topics)
+            except Exception as exc:  # noqa: BLE001 - surfaced in dashboard and health
+                with state_lock:
+                    scan_state["last_error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                worker_database.connection.close()
+                with state_lock:
+                    scan_state["scanning"] = False
+                scan_lock.release()
+
+        threading.Thread(target=worker, name="litwatch-scan", daemon=True).start()
+        return True
+
     @app.get("/", response_class=HTMLResponse)
-    def home(request: Request, topic: str = ""):
+    async def home(request: Request, topic: str = ""):
         configured_topics = settings.load_topics()
         known_ids = {item.id for item in configured_topics}
         topics = configured_topics + [
@@ -42,16 +80,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "active_topic": topic,
                 "latest_run": database.latest_run(),
                 "analysis_modes": settings.load_analysis_modes(),
+                "static_mode": False,
+                "scan_state": state_snapshot(),
             },
         )
 
     @app.post("/run")
-    def run_now(days: int = Form(default=settings.lookback_days)):
-        Pipeline(settings, database).run(days=days)
-        return RedirectResponse(url="/", status_code=303)
+    async def run_now(days: int = Form(default=settings.lookback_days)):
+        status = "scanning" if start_scan(days=days) else "busy"
+        return RedirectResponse(url=f"/?status={status}", status_code=303)
 
     @app.post("/quick-search")
-    def quick_search(
+    async def quick_search(
         name: str = Form(min_length=2, max_length=80),
         query: str = Form(min_length=3, max_length=500),
         include: str = Form(default=""),
@@ -73,11 +113,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             analysis_mode=analysis_mode,
             min_score=0.2,
         )
-        Pipeline(settings, database).run(days=days, topics=[topic])
-        return RedirectResponse(url=f"/?topic={topic_id}", status_code=303)
+        status = "scanning" if start_scan(days=days, topics=[topic]) else "busy"
+        return RedirectResponse(url=f"/?topic={topic_id}&status={status}", status_code=303)
 
     @app.get("/export/bibtex", response_class=PlainTextResponse)
-    def export_bibtex(topic: str = ""):
+    async def export_bibtex(topic: str = ""):
         body = rows_to_bibtex(database.list_papers(topic_id=topic, limit=500))
         filename = f"litwatch-{topic or 'all'}.bib"
         return PlainTextResponse(
@@ -87,8 +127,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/health")
-    def health():
-        return {"status": "ok", "latest_run": database.latest_run()}
+    async def health():
+        return {
+            "status": "ok",
+            "latest_run": database.latest_run(),
+            **state_snapshot(),
+        }
 
     return app
 

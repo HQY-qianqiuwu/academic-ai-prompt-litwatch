@@ -1,0 +1,73 @@
+name: pages-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".devcontainer/**"
+      - ".github/workflows/pages.yml"
+      - "config/**"
+      - "src/litwatch/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  schedule:
+    # Every Monday 08:00 Asia/Shanghai (GitHub cron uses UTC).
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: litwatch-pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync --extra dev
+
+      - name: Verify application
+        run: uv run pytest
+
+      - name: Restore published snapshot history
+        shell: bash
+        run: |
+          mkdir -p _site
+          if git fetch origin gh-pages:refs/remotes/origin/gh-pages --depth=1; then
+            git archive origin/gh-pages archive 2>/dev/null | tar -x -C _site || true
+          fi
+
+      - name: Scan literature
+        env:
+          LITWATCH_OPENALEX_EMAIL: ${{ vars.LITWATCH_OPENALEX_EMAIL }}
+          LITWATCH_LLM_API_KEY: ${{ secrets.LITWATCH_LLM_API_KEY }}
+          LITWATCH_LLM_BASE_URL: ${{ vars.LITWATCH_LLM_BASE_URL || 'https://api.openai.com/v1' }}
+          LITWATCH_LLM_MODEL: ${{ vars.LITWATCH_LLM_MODEL || 'gpt-5-mini' }}
+          LITWATCH_SEMANTIC_SCHOLAR_API_KEY: ${{ secrets.LITWATCH_SEMANTIC_SCHOLAR_API_KEY }}
+        run: uv run litwatch scan --days 14
+
+      - name: Export Pages site
+        run: uv run litwatch export-static --output _site
+
+      - name: Publish gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _site
+          publish_branch: gh-pages
+          keep_files: true
+          full_commit_message: "docs: update LitWatch snapshot"
