@@ -1,21 +1,3 @@
-@article{Kim2026,
-  title = {Temporal Channel Estimation for Generalized CSI Feedback},
-  author = {Minwoo Kim and Hyeonsu Lyu and Sehyun Ryu and Sojeong Park and Hyun Jong Yang},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.01713v1},
-  abstract = {Efficient Channel State Information (CSI) feedback is indispensable for frequency division duplex (FDD) massive multiple-input multiple-output (MIMO) systems. Existing compressed sensing (CS) algorithms exploit delay-domain sparsity but suffer from prohibitive iterative latency and discrete grid mismatch. Conversely, deep learning (DL) approaches achieve rapid inference but lack spatial scalability and domain adaptability, failing to generalize to unseen propagation environments, and demand computationally heavy encoders and decoder. In this paper, we propose TAP, a Tap-Assisted Parametric CSI Compression. TAP is a one-shot neural framework that unifies the speed of DL with the mathematical interpretability of CS. TAP replaces iterative pursuit with a lightweight 1D neural network that extracts dominant continuous propagation delays from temporal channel sequences via a differentiable sub-grid interpolation operator. TAP achieves true architecture independence, enabling zero-shot generalization across diverse array geometries and unseen propagation environments. Furthermore, TAP yields a completely decoder-free payload, allowing the BS to reconstruct the channel via a simple inverse fast Fourier transform (IFFT). Extensive evaluations across five 3GPP environments demonstrate that TAP achieves a 3.13 to 12.22 dB channel frequency response normalized mean square error (CFR-NMSE) improvement over CsiNet while shrinking the model footprint by 660 times to under 1 MB. Operating with sub-millisecond latencies, TAP accelerates inference by 2700 times over classical iterative OMP, providing a scalable and deployment-ready solution for next-generation networks.}
-}
-
-@article{Maleki2026,
-  title = {Channel-Estimation-Free Beamforming for RIS-Assisted Systems with Limited Feedback},
-  author = {Hossein Maleki and Hamid Jafarkhani},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.01681v1},
-  abstract = {In this article, we consider received-power maximization in RIS-assisted wireless links using only limited received signal strength (RSS) feedback, avoiding explicit estimation of the high-dimensional cascaded channel. We propose stochastic and deterministic algorithms for passive and active beamforming. In the deterministic method, each RIS element requires only three fixed-phase RSS measurements to recover the phase, followed by tree-structured quantization. We prove a non-asymptotic received-power guarantee for the fixed-beamformer single-user RIS sweep under cascaded Rayleigh fading and extend the bound to finite-resolution RIS phase shifters. Simulations over Rayleigh and temporally correlated channels show that the proposed methods approach full-CSI alternating optimization. We extend the channel-estimation-free framework to multi-user RIS-assisted transmission by proposing a unified single-bit consensus method for both RIS phase adaptation and transmit beamforming. In this mechanism, all users vote on each shared perturbation using only local SINR comparisons, allowing the update to account for both desired-signal improvement and interference generated to other users. The weighted consensus allows for fairness among users based on their priority.}
-}
-
 @article{Gazzaev2026,
   title = {AquaJEPA: Action-Conditioned Multimodal Predictive Representations for Underwater Robot Dynamics},
   author = {Alan-Barsag Gazzaev and Alexey Gavrilov and Sergey Muravyov},
@@ -25,33 +7,6 @@
   abstract = {Underwater robots combine complementary sensors whose reliability changes abruptly with water visibility, viewpoint, and vehicle motion. We introduce AquaJEPA, an action-conditioned joint-embedding predictive model that fuses an RGB camera, forward-looking sonar, and proprioception with explicit sensor validity. It predicts a future latent target conditioned on eight-thruster commands and supplies velocity and sonar-profile predictions to a shared receding-horizon planner. We study the method in Stonefish against reactive, state-only, ordinary multimodal, supervised dynamics, and recurrent world-model baselines. We further isolate the EMA target, action margin, masks, and modality dropout. A preregistered 120-environment replication comprises five independent replicates of a grid crossing three unseen obstacle maps, four water-visibility coefficients, and nominal versus shifted dynamics, while intermittently removing DVL observations. In 120 fresh paired environments with scheduled DVL loss, AquaJEPA reaches 74 goals, versus 68 for both state-only and the recurrent world model, and attains the lowest mean final error (0.906 m). Paired final-error reductions relative to ordinary multimodal prediction, supervised dynamics, and the recurrent world model are 0.273 m (95% CI: 0.190-0.356), 0.364 m (0.260-0.468), and 0.106 m (0.025-0.187), respectively. AquaJEPA therefore achieves the best aggregate closed-loop performance and significantly outperforms three action-conditioned predictive baselines in paired final error; its advantage over state-only remains statistically unresolved.}
 }
 
-@article{Sun2026,
-  title = {Joint Channel Estimation and Data Detection for Multi-LEO-Satellite Cell-Free OTFS Uplinks},
-  author = {Gangle Sun and Tianhao Liu and Jun Tian and Xin Cheng and Jian Wu and Jinfang Jiang and Wenjin Wang and Shi Jin and Guangjie Han},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.25562v1},
-  abstract = {Cell-free networks formed by multiple low Earth orbit (LEO) satellites offer a promising architecture for ubiquitous connectivity, but their cooperative reception is challenged by link-dependent residual delays and Doppler shifts. This paper investigates joint channel estimation and data detection (JCEDD) for multi-LEO-satellite cell-free orthogonal time frequency space (OTFS) uplinks. The JCEDD problem is formulated as a structured bilinear inference problem involving link-specific sparse beam--delay--Doppler channels and a multiuser data vector. We develop a low-complexity hierarchical JCEDD receiver in which all satellites first perform local JCEDD, and their observations and local estimates are then aggregated at a central satellite for cooperative refinement. Computational complexity is reduced by restricting channel estimation to coarse-information-aided local beam--delay--Doppler regions and evaluating the required forward and adjoint operations in a matrix-free manner. Simulation results validate the channel-estimation accuracy and data-detection reliability of the proposed JCEDD receiver.}
-}
-
-@article{Chen2026,
-  title = {Quantum-Limited Symbol-Blind Channel Estimation for Coherent State Discrimination},
-  author = {Hongxu Chen and Renzhi Yuan and Haifeng Yao and Mugen Peng},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.24644v1},
-  abstract = {Residual dispersion breaks temporal-mode matching in photon-starved coherent links. For equiprobable $M$-ary PSK coherent states in a known spectral mode, with unknown symbols and carrier phase, we establish the quantum limit for blind joint estimation of group delay and second-order dispersion: after eliminating the common phase, it is $4N_s\mathbf\{C\}$, set by the covariance of the centered generators alone. A multi-output quantum pulse gate with photon-number-resolving detection locally attains it and supports reception below the standard quantum limit under turbulent fading.}
-}
-
-@article{Pasic2026,
-  title = {Beam-Domain Channel Estimation for mmWave MIMO using Sub-6 GHz Out-of-Band Information},
-  author = {Faruk Pasic and Mariam Mussbah and Stefan Schwarz and Markus Rupp},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.24227v1},
-  abstract = {Future wireless multiple-input multiple-output (MIMO) systems will integrate sub-6 GHz and millimeter wave (mmWave) bands to support high data rates for latency-critical applications. The coexistence of these bands enables the use of reliable out-of-band sub-6 GHz information to assist mmWave link establishment, particularly for channel estimation. In this paper, we propose a novel beam-domain channel estimation method for mmWave MIMO that leverages sub-6 GHz beam-domain information to improve estimation accuracy. We compare the proposed method with conventional in-band methods. Simulation results show that our proposed method outperform existing baselines in terms of spectral efficiency, in both line-of-sight (LOS) and non-line-of-sight (NLOS) scenarios.}
-}
-
 @article{Rais2026,
   title = {Hybrid Artificial Potential Fields and Spatio-Temporal Transformers for Real-Time AUV Path Planning},
   author = {Khadija Rais and Abdelmadjid Benmachiche and Imene Soualmia},
@@ -59,51 +14,6 @@
   journal = {arXiv},
   url = {http://arxiv.org/abs/2607.25056v1},
   abstract = {Autonomous Underwater Vehicles (AUVs) operate in complex, unstructured environments where efficient and safe path planning is critical for mission success and energy conservation. This paper presents a comprehensive comparative evaluation of thirteen path planning algorithms, ranging from classical graph-search methods (A*, Dijkstra) and sampling-based approaches (RRT*) to metaheuristics (PSO, GA, ACO, BCO) and learning-based architectures. Special emphasis is placed on a proposed hybrid approach combining Artificial Potential Fields (APF) with a Spatio-Temporal (ST) Transformer. Evaluated across five navigation scenarios on high-resolution underwater terrain maps, all algorithms achieved 100\% task completion; however, significant trade-offs emerged in path optimality, collision avoidance, and computational load. The Hybrid APF + ST-Transformer demonstrated superior balanced performance, achieving the shortest average path length (943.15 units), a low collision rate (0.031), and efficient computation time (0.96 s), outperforming standalone learning models, which required fallback mechanisms and classical methods that incurred higher latency. While classical algorithms guaranteed collision-free paths, their excessive path lengths and processing times render them less suitable for dynamic underwater operations. Conversely, metaheuristic approaches introduced trajectory complexity unsuitable for strict energy constraints. Based on these findings, the Hybrid APF + ST framework is recommended as a principal approach for real-time AUV navigation, offering a robust solution that harmonizes reactive obstacle avoidance with global path optimality in resource-constrained underwater systems.}
-}
-
-@article{Zhu2026,
-  title = {ST-DDA: Dynamic Channel Estimation in the Doppler-Delay-Angle Domain via Sparse Subspace Tracking for TDD Systems},
-  author = {Xu Zhu and Tiejun Li},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.19677v1},
-  abstract = {Accurate full-band channel acquisition in frequency-hopping time-division duplex (TDD) systems is challenging because each sounding slot observes only a limited frequency subband, while conventional single-slot recovery cannot fully exploit historical observations. We propose ST-DDA, an online sparse-subspace tracking framework for latest-slot reconstruction in the Doppler--delay--angle (DDA) domain. We first show that the Doppler-domain representation remains energy-concentrated under moderate channel variation, thereby supporting windowed DDA-domain sparse recovery. A local stability analysis further shows that the substantial overlap between adjacent windows enables the preceding-window estimate to warm-start each window-specific recovery problem, allowing the optimization progress to be carried across slots under a fixed per-slot iteration budget. For computational tractability, ST-DDA employs the alternating subspace method, which restricts the regularized least-squares fidelity updates to support-induced subspaces, together with position-encoded convolutional reweighting that exploits local angular and Doppler structures. Experiments show that reweighted ST-DDA achieves more accurate and reliable reconstruction than dynamic compressed-sensing baselines, particularly for longer sounding intervals and larger frequency-hopping periods, while maintaining comparable per-slot runtime.}
-}
-
-@article{Luo2026,
-  title = {Data-aided Channel Estimation and Sensing With Sparse Bayesian Learning for AFDM-ISAC System},
-  author = {Yirui Luo and Yong Liang Guan and Yao Ge and Yonghong Jiang and Lingsheng Meng and David González G},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.18881v1},
-  abstract = {Affine frequency division multiplexing (AFDM) has emerged as a promising waveform for next-generation integrated sensing and communication (ISAC) systems. However, it becomes challenging to improve spectral efficiency while simultaneously obtaining accurate channel and sensing-related parameters, particularly in doubly-dispersive channels with fractional delays and fractional Doppler shifts. To tackle this challenge, by formulating the channel estimation task as a multiple measurement vector (MMV) off-grid sparse recovery problem, we propose a data-aided grid-evolution sparse Bayesian learning (D-GESBL) scheme for channel estimation and sensing under a superimposed pilot framework. Specifically, we develop an efficient data-aided iterative receiver, in which reliably decoded data symbols are fed back as additional pseudo-pilot information to assist channel estimation and sensing. To mitigate off-grid mismatch and improve the overall estimation accuracy, we develop a grid evolution procedure that iteratively adjusts the virtual grids in the discrete affine Fourier (DAF) domain according to the estimated off-grid components. Furthermore, by integrating the generalized approximate message passing (GAMP) algorithm into the proposed SBL framework, we also develop a low-complexity data-aided GAMP-based grid-evolution SBL (D-GAMP-GESBL) algorithm. Finally, the numerical results validate the effectiveness of our proposed schemes and demonstrate their superiority over existing state-of-the-art methods.}
-}
-
-@article{Liu2026,
-  title = {Low-Complexity Channel Estimation Framework for Non-Square UPA-Assisted XL-MIMO Systems},
-  author = {Yilong Liu and Xi Yang and Binggui Zhou and Yu Han and Ting Liu and Shaodan Ma},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.18744v1},
-  abstract = {Low-complexity channel state information acquisition is crucial for extremely large-scale multiple-input multiple-output (XL-MIMO) systems. However, practical deployments of non-square uniform planar arrays (UPAs) in hybrid-field environments face prohibitive computational complexity and degraded estimation accuracy due to limited elevation angle-of-arrival (AoA) resolution and deteriorated channel sparsity. To tackle these challenges, we propose a low-complexity channel estimation framework. First, an antenna-domain extrapolation scheme synthesizes a virtually enlarged vertical aperture via the spatial correlation among adjacent elements, breaking the elevation resolution limit. The framework then disentangles the parameter coupling by transforming the two-dimensional joint search into two sequential one-dimensional searches. Specifically, elevation AoAs are extracted via an extrapolation-enhanced discrete Fourier transform-Newtonized orthogonal matching pursuit (NOMP) algorithm along the virtually enlarged vertical uniform linear array (ULA), while azimuth AoAs, ranges, and gains are acquired utilizing a discrete fractional Fourier transform-NOMP algorithm along a horizontal ULA. A subspace fitting-driven path matching algorithm pairs these decoupled parameters. To overcome the accuracy bottleneck of the antenna-domain scheme, a correlation-domain extrapolation scheme is further developed by exploiting the structural properties of the spatial correlation matrix to decouple the near-field quadratic and azimuth phase components, yielding a noise-suppressed virtual array. Numerical results validate the effectiveness of the proposed framework.}
-}
-
-@article{Liu20262,
-  title = {Non-Square UPA-Enabled XL-MIMO Systems: Anisotropic Near-Field Characterization, Fundamental Limits, and Channel Estimation},
-  author = {Yilong Liu and Xi Yang and Jing Xu and Jun Zhang and Shi jin},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.18736v1},
-  abstract = {Extremely large-scale multiple-input multiple-output (XL-MIMO) is crucial for next-generation communication systems. In practice, the deployment of non-square uniform planar arrays (UPAs) fundamentally alters wavefront characteristics and induces anisotropic beamfocusing capability along different axes due to the aperture disparity originating from the non-square array geometry. To fully uncover the performance impact of such non-square geometry and thus unleash the potential of the non-square UPAs, we investigate the anisotropic near-field characteristics, fundamental limits, and channel estimation for non-square UPA-enabled XL-MIMO systems. First, we derive the effective beamfocusing distances for the long and short axes of the array. Interestingly, the radiation space of a non-square UPA can be partitioned into three regions, i.e., the fully near-field, the anisotropic near-field, and the far-field regions, and the anisotropic region asymptotically dominates the overall near-field space as the array aspect ratio increases. Then, the asymptotic effective degree of freedom for non-square UPA-enabled XL-MIMO systems is provided, which reveals that distance-domain multiplexing is governed by the long-axis aperture in the large array aspect ratio regime. Furthermore, the closed-form Cramer-Rao bound for distance estimation and the three-dimensional (3D) position error bound (PEB) are derived to reveal the geometry-induced performance trade-offs among distance, azimuth, and elevation estimation, based on which the optimal array aspect ratio that minimizes the 3D PEB is determined. Finally, by exploiting the anisotropic wavefront properties, we design a 3D anisotropic near-field codebook to facilitate low-complexity channel estimation for non-square UPAs. Numerical results validate that the proposed codebook achieves comparable accuracy to the 3D polar-domain codebook at reduced complexity.}
-}
-
-@article{Park2026,
-  title = {Semantic-Aware Data-Aided Channel Estimation with Large Language Models for MIMO Systems},
-  author = {Sojeong Park and Jaehyun Choi and Hyun Jong Yang},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.18640v1},
-  abstract = {Data-aided channel estimation enhances spectral efficiency by reusing detected symbols as virtual pilots. In this process, selecting only reliable symbols is crucial to prevent misdetected symbols from corrupting the channel estimate. However, conventional methods rely exclusively on physical-layer statistics. Beyond physical-layer information, transmitted payloads possess inherent semantic structures that can be exploited to resolve detection errors. In this paper, we propose a novel semantic-aware channel estimation framework for multiple-input multiple-output (MIMO) systems that utilizes a fine-tuned large language model (LLM) to perform reliable symbol selection and correction based on semantic information. The framework employs a two-layer mechanism: one layer selects reliable decoded symbols through semantic verification, while the other selects accurately LLM-corrected symbols by cross-validating them against the received signal using physical-layer information. We prove that corrected symbols yield a strictly larger expected reduction in estimation error than initially correctly decoded symbols. Extensive simulations demonstrate that the proposed framework significantly outperforms conventional data-aided schemes in both normalized mean squared error and bit error rate, closely approaching the performance of an oracle estimator.}
 }
 
 @article{Bhattacharya2026,
@@ -116,24 +26,6 @@
   abstract = {Cable-Driven Parallel Robots (CDPRs) are a type of parallel mechanism in which cables are used as actuators. Due to the two levels of redundancy and numerous constraints within the CDPR actuation, joint and operational spaces (together known as the tri-space), tracking a given trajectory in the operational space while satisfying constraints in tri-space simultaneously is challenging. To the best of the authors' knowledge, there does not exist any tri-space control framework, which is robust, effective, and directly applicable to several architectures of redundantly actuated CDPRs. This paper proposes a tri-space control framework that combines Reactive Control (RC) and Iterative-Learning Control (ILC) to perform repetitive tasks in the operational space. The framework allows the tracking of operational space trajectories online with feasible cable forces, while avoiding undesirable situations such as cable-link interference, joint interference, and loss of manipulability. On the other hand, by finding an optimal parameter in the null space using a novel parameterization of a null space vector, the performance can be improved through ILC when the task is repeatedly executed. Simulation and hardware results on various Multilink Cable-Driven Robot (MCDRs) and Hybrid Cable-Driven Robots (HCDRs) show that the proposed tri-space control framework can be conveniently and effectively applied to the real-time control of different CDPRs.}
 }
 
-@article{Wei2026,
-  title = {Deterministic DTFT Interpolation for Joint Frequency and Chirp-Rate Estimation: Cell-Uniform Efficiency and Threshold Analysis},
-  author = {Miaomiao Wei and Jianjun Li and Yang Wang and Huaiyuan Chen and Lulu Gao and Hang Liu},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.01756v1},
-  abstract = {Joint estimation of the frequency and chirp rate of a noisy chirp signal arises in radar, sonar, and burst satellite communications. Conventional estimators combine a coarse grid search with fine interpolation; accuracy degrades at the edges of the residual cell (the edge effect) and below the breakdown SNR (the threshold effect). This paper presents a deterministic two-stage estimator that controls both failure modes uniformly over the entire residual cell. The estimator combines a time-centered, zero-padded dechirp-FFT acquisition bank with alternating selectable-$p$ amplitude-interpolation refinements on fractional-bin DTFT samples; in the centered frame, the frequency-chirp-rate cross-term of the Fisher information vanishes. The paper derives a mean-squared-error and threshold characterization across the full SNR range, in closed form except for one calibrated scalar (an effective cell count), to our knowledge the first for the joint problem: the breakdown threshold is governed by the cell count, and its cell-position dependence is dominated by the straddle loss of the coarse FFT, which the padding bounds at 0.4 dB. An asymptotic uniformity analysis over the whole cell, including the corners, gives closed-form fixed-point variance ratios of $1.003$ and $0.998$, analytically free of the residual. A closed-form bias analysis under unmodeled jerk shows the centered chirp-rate estimate is first-order immune. Monte Carlo experiments at $N=256$ (validated at $N=32$-$512$) measure frequency- and chirp-rate-axis efficiencies with median $1.03$ and worst case $1.07$ over $144$ cell positions at $-5$ dB. Threshold predictions hold within $1.0$ dB on four held-out configurations. The dechirp-FFT bank is fully parallel, and each of the four refinement iterations evaluates three DTFT samples per axis; under fixed operating conditions, per-estimate latency is constant at $O(N\log N)$ cost.}
-}
-
-@article{Xu2026,
-  title = {Bayesian Bandit Beamforming with Implicit Channel Learning for RIS under Hybrid Near/Far-Field Propagation},
-  author = {Haochen Xu and Junting Chen and Pooi-Yuen Kam},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.01218v1},
-  abstract = {Reconfigurable intelligent surfaces (RISs) can improve high-frequency wireless links by shaping the propagation environment, but their passive architecture makes channel acquisition costly. Conventional estimate-then-optimize methods usually require pilot overhead that scales with the number of reflecting elements, which is undesirable under short coherence times and hybrid near-/far-field propagation. This paper proposes the Bayesian bandit framework for RIS phase-shift configuration with implicit channel learning. The method updates a Gaussian posterior of the cascaded channel from one scalar pilot observation per slot and uses Thompson sampling to balance channel estimation and beamforming gain. We derive a Bayesian regret decomposition that connects Bayesian received-power regret to posterior uncertainty contraction, and further establish a conditional sublinear Bayesian-regret guarantee. To exploit sparse hybrid-field propagation, we develop an energy-focusing angle-distance dictionary and a sparse Bayesian learning (SBL)-based Thompson-sampling algorithm with warm-started hyperparameter refinement. Simulations show that the proposed policies approach the perfect-channel state information (CSI) benchmark in the line-of-sight (LOS)-dominant setting within 10 time block and improve transmission efficiency over the considered baselines in multipath and Rayleigh fading scenarios.}
-}
-
 @article{Lin2026,
   title = {EndoWAM: A Grounded World-Action Model for Generalizable Endoscopic Navigation},
   author = {Jinsong Lin and Zikang Pan and Wanhao Liu and Chi Kit Ng and Liangjing Shao and Zihang Yu and Ziyu Wang and Yin Wang and Jiaxi Wang and Jeremy Yuen-Chun Teoh and Zhiyong Xiong and Huxin Gao and Hongliang Ren},
@@ -141,15 +33,6 @@
   journal = {arXiv},
   url = {http://arxiv.org/abs/2608.01221v1},
   abstract = {Autonomous endoscopic navigation can reduce clinicians' operational burden, yet robust control remains challenging due to tissue deformation, transient occlusions, and rapidly changing viewpoints. Existing learning-based policies typically predict actions from current observations without explicitly modeling future dynamics, limiting their robustness and reliability in safety-critical settings. World Action Models (WAMs) offer a promising alternative by coupling predictive visual dynamics with action generation, but extending them to robotic endoscopy remains challenging due to limited training data, restricted viewpoint diversity, deformable anatomy, and high inference latency. We present EndoWAM, which is, to our knowledge, the first WAM for generalizable robotic endoscopic navigation. EndoWAM introduces future grounding, which predicts task-relevant target regions in future observations from intermediate denoising features of a video world model. Specifically, EndoWAM couples a lightweight diffusion transformer for future target-region prediction with a discrete action expert through a shared predictive representation. This design injects target-aware supervision into predictive dynamics modeling, improving robustness to visual degradation and viewpoint changes while enabling real-time control in a single denoising pass. We further introduce EndoMotion, a robotic endoscopic motion dataset spanning three anatomically distinct procedures: ureteroscopy, esophagoscopy, and endoscopic retrograde cholangiopancreatography (ERCP). EndoWAM consistently outperforms all baselines and alternative grounding strategies, while demonstrating strong zero-shot generalization to unseen viewpoints, environments, and targets. These results establish EndoWAM as a predictive, target-grounded framework for accurate, generalizable, and long-horizon navigation in visually constrained endoscopic environments.}
-}
-
-@article{Lei2026,
-  title = {LOCUS-DT: Localization via Observation-Conditioned Uncertainty Scoring with Digital Twins},
-  author = {Haozhe Lei and Roberto Bomfin and Marwa Chafii and Sundeep Rangan},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.00406v1},
-  abstract = {Accurate indoor localization is essential for emerging applications in robotic navigation and search and rescue. While classical methods typically focus on single-point estimates, complex indoor environments with heavy blockage and multipath propagation often lead to multimodal likelihood surfaces where a single estimate is insufficient. This paper proposes LOCUS-DT (Localization via Observation-Conditioned Uncertainty Scoring with Digital Twins), a framework that treats snapshot localization as posterior inference over the transmitter location. By leveraging a ray-tracing-based digital twin (DT) of the known environment, LOCUS-DT generates synthetic multipath profiles for candidate locations and compares them against the measured channel profile. Central to our approach is a novel learned scoring function designed to compare a fixed number of dominant specular paths, providing robustness against errors in both the DT environment model and the physical channel estimation. Importantly, LOCUS-DT is trained over an ensemble of environments to ensure generalization to unseen layouts. We evaluate the system using a Sionna-based ray-tracing backend, demonstrating that LOCUS-DT captures the sharp, multimodal posterior structures inherent in indoor settings more accurately than standard Gaussian or Gaussian-mixture benchmarks.}
 }
 
 @article{Namballa2026,
@@ -168,51 +51,6 @@
   journal = {arXiv},
   url = {http://arxiv.org/abs/2608.00237v1},
   abstract = {Vision-language models (VLMs) have recently emerged as a promising paradigm for end-to-end autonomous driving, enabling agents to map multimodal inputs and high-level navigation instructions directly to executable trajectories. However, in practice, these models exhibit a persistent command-following gap: predicted trajectories often show weak sensitivity to navigation commands, resulting in incorrect behavior at critical decision points. We identify this issue as a form of conditional policy collapse, where regression-based training under multimodal trajectory distributions encourages the model to rely on dominant visual priors while marginalizing the language-conditioned signal. To address this issue, we introduce a principled formulation of classifier-free guidance (CFG) for regression-based vision-language driving. We show that CFG can be interpreted as isolating the instruction-induced residual in the action space by contrasting conditional and unconditional predictions, thereby explicitly amplifying the effect of the navigation command at inference time. However, a standard two-pass CFG introduces prohibitive latency for real-time control and produces noisy instance-level guidance directions. Building on a mean-shift interpretation of CFG, we propose Latent-Centroid Steering (LCS), a single-pass guidance mechanism that replaces instance-level residuals with class-level latent shifts. By projecting conditional representations toward precomputed command-specific centroids, LCS performs class-level latent steering based on cluster geometry that is both more stable and computationally efficient. We demonstrate that LCS reduces inference latency by approximately 50% while achieving stronger command adherence and improved driving performance on both closed-loop (Bench2Drive) and open-loop (nuScenes) benchmarks. Code will be released.}
-}
-
-@article{Cai2026,
-  title = {Wireless Intelligence Needs a Cerebellum: Score-Based Foundation Models Toward Real-Time Physical-Layer Inference},
-  author = {Chang Cai and Boyu Teng and Xiaojun Yuan and Ying-Jun Angela Zhang},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.23712v1},
-  abstract = {Wireless intelligence requires not only large foundation models for network-wide planning and decision-making, but also a compact "cerebellum" for fast and precise physical-layer inference. Unlike the computation-intensive architectures used at upper layers, the physical-layer cerebellum must operate within stringent microsecond-to-millisecond latency constraints. This article presents ScoreFM, a lightweight score-based foundation model designed for this role. ScoreFM learns reusable score functions that characterize the priors of wireless channels, source signals, and structured interference. During inference, these learned priors are embedded into task-specific message-passing algorithms as plug-and-play denoisers, allowing the same compact score networks to support diverse downstream tasks. This design combines the expressive power of score-based generative learning with the efficiency, interpretability, and modularity of model-based inference. Case studies on channel estimation, localization, and blind semantic communication demonstrate the flexibility and effectiveness of ScoreFM. Finally, we discuss future directions and open challenges toward realizing a practical wireless cerebellum.}
-}
-
-@article{Luo20262,
-  title = {CSI RefineNet: A Soft Data-Aided Iterative Receiver for High-Mobility OFDM Systems},
-  author = {Yirui Luo and Yihang Xie and Yao Ge and Yong Liang Guan and David Gonz\{á\}lez G},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.23691v1},
-  abstract = {In high-mobility orthogonal frequency division multiplexing (OFDM) systems, rapid channel variation can make the channel state information (CSI) estimated from pilots inaccurate for data subcarriers, leading to a mismatch with their effective channel. To address this issue, this paper proposes a CSI RefineNet receiver, where the CSI is iteratively refined using soft symbol decisions in a data-aided manner. Specifically, a pilot-driven initialization module is first employed to obtain a coarse CSI estimation and the corresponding symbol posterior probabilities. Based on these posteriors, soft data-aided channel observations are constructed over all subcarriers and fused with the initial CSI to refine the channel estimation. The refined CSI is subsequently fed back to the equalization and detection modules, thereby forming an iterative receiver structure. To improve training stability and fully exploit the refinement capability, a two-stage training strategy is also developed. Simulation results demonstrate that the proposed CSI RefineNet receiver achieves superior BER performance and strong robustness under different velocities, modulation orders, and pilot spacing configurations in high-mobility OFDM systems.}
-}
-
-@article{Liu20263,
-  title = {Hybrid-Field Sparse Channel Representation and Recovery for XL-RIS-Assisted mmWave MIMO Systems},
-  author = {Wenkai Liu and Nan Ma and Jianqiao Chen and Hongtao Zhang and Ping Zhang},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.00052v1},
-  abstract = {Extremely large-scale reconfigurable intelligent surface (XL-RIS)-assisted communication is regarded as a key enabling technology for future 6G networks. However, hybrid-field channel estimation for XL-RIS-assisted systems is challenging due to the high-dimensional cascaded channel and the coexistence of far-field and near-field propagation. In this case, traditional full-dimensional sparse recovery methods require a large cascaded dictionary and suffer from severe computational and storage burdens. To address these challenges, we develop a double-timescale channel estimation framework that decouples sparse dictionary representation and recovery. Then, by exploiting the quasi-static property of the channel at the base station (BS) and RIS side, we propose a Dirichlet kernel-based off-grid dictionary compression (DK-ODC) scheme for sparse representation, which reduces the dimension of the corresponding dictionary as well as mitigates BS-side angular off-grid error. Furthermore, for the dynamic channel at the user equipment (UE) and RIS side, we propose a subspace-aware incremental variational Bayesian learning (SI-VBL) algorithm, which enables incremental learning of sparse channels by exploiting the identified low-dimensional subspace and pruning threshold. Analysis and simulation results confirm that the proposed framework avoids full-dimensional Bayesian recovery and achieves a favorable tradeoff among estimation accuracy, computational complexity, and storage overhead.}
-}
-
-@article{Sheela2026,
-  title = {Advances in Wavelet Denoising for Communication Signals: From Parameter Selection Toward Data-Driven Optimization},
-  author = {Priyalakshmi Sheela and Indrakshi Dey},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.21825v1},
-  abstract = {Wavelet denoising suppresses nonstationary, impulsive, and interference-like disturbances in communication signals, but its effectiveness depends on jointly selecting the transform family, mother wavelet, decomposition level, thresholding rule, and shrinkage function. This review synthesises studies published during 2020--2025 across ten sources using a PRISMA-aligned protocol and classifies them by parameter-selection focus and application domain. The evidence shows a shift from fixed empirical choices toward similarity-, sparsity-, entropy-, energy-, sub-band-SNR-, and task-loss-driven selection, while revealing limited communication-specific validation. To address this gap, DWT, SWT, and WPT are benchmarked for OFDM denoising under impulsive noise using SNR gain, MSE, BER, EVM, real-time feasibility, Friedman and Wilcoxon tests, efficiency-index ranking, and embedded DSP/FPGA constraints. Results show that improved waveform fidelity does not necessarily translate into better hard-decision performance, motivating receiver-level validation. A Unified Decision Framework is therefore developed and validated on synthetic pilot-aided OFDM channel estimation and measured IEEE 802.11n channels using BER, EVM, NMSE, and SNR gain. The selected configuration significantly outperforms fixed-parameter wavelet and classical baselines $\left(p < 10^\{-11\}\right)$, achieves the lowest estimation error, generalises to held-out data, adapts to channel conditions, and supports extension to deep-unfolding architectures.}
-}
-
-@article{Bonaventura2026,
-  title = {ISAC-Assisted Channel Knowledge Map Generation for Physical Layer Authentication},
-  author = {Luca Bonaventura and Edoardo Gardin and Alessia Barison and Francesco Ardizzon and Stefano Tomasin},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2607.20176v1},
-  abstract = {Integrated sensing and communication (ISAC) enables the acquisition of environmental information by leveraging wireless signals transmitted for communication purposes. In this paper, we utilize this capability to reconstruct the layout of objects surrounding multiple receivers. Ray tracing is then applied to the reconstructed environment to infer the propagation channels for various transmitter positions, thereby constructing a channel knowledge map (CKM). The CKM is then used to verify the position of a legitimate transmitter, authenticating it against an adversarial device attempting to impersonate it from a different location. This physical layer authentication (PLA) mechanism utilizes the approximate known position of the legitimate transmitter, obtained, for instance, from the network as in cross-layer authentication, to compare the channel estimated from the received signal with the corresponding CKM data. We evaluate the impact on the PLA performance of both ISAC-induced CKM reconstruction errors and receiver-side channel estimation noise, in terms of false alarm and missed detection probabilities. Finally, the proposed approach is validated using an ISAC dataset from the literature.}
 }
 
 @article{Wang2026,

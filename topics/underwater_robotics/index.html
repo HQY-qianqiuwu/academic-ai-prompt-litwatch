@@ -18,7 +18,7 @@
           <p class="static-badge">📋 2026-08-04 文献快照 · <a href="../../archive/">历史存档</a> · <a href="https://codespaces.new/HQY-qianqiuwu/academic-ai-prompt-litwatch?quickstart=1">进入 Codespaces 实时搜索</a></p>
         </div>
         
-        <div class="run-card static-card"><small>最近扫描：获取 36 · 入选 25 · AI 15</small></div>
+        <div class="run-card static-card"><small>最近扫描：获取 32 · 入选 7 · AI 7</small></div>
         
       </div>
     </header>
@@ -49,12 +49,67 @@
       </section>
       
 
+      
+      <section class="weekly-report" id="weekly-report">
+        <div class="weekly-report-heading">
+          <div>
+            <p class="eyebrow">Weekly research brief</p>
+            <h2>2026-08-04 自动周报</h2>
+          </div>
+          <p>自动把本次入选论文聚合为主题分布、提炼覆盖率和优先阅读线索。所有阐述都来自已检索元数据、摘要或已保存的全文节选分析。</p>
+        </div>
+        <div class="weekly-kpis">
+          <article><span>本期入选</span><strong>6</strong><small>篇去重论文</small></article>
+          <article><span>完成提炼</span><strong>100%</strong><small>6 篇有结构化核心内容</small></article>
+          <article><span>开放获取</span><strong>100%</strong><small>6 篇可访问全文</small></article>
+          <article><span>平均匹配度</span><strong>37</strong><small>满分 100</small></article>
+        </div>
+        <div class="weekly-visual-grid">
+          <article class="weekly-panel">
+            <header><h3>主题分布</h3><span>1 个方向</span></header>
+            <div class="bar-list">
+              
+              <div class="bar-row">
+                <div><b>水下机器人与嵌入式系统</b><span>6 篇</span></div>
+                <div class="bar-track"><i style="width:100%"></i></div>
+              </div>
+              
+            </div>
+          </article>
+          <article class="weekly-panel">
+            <header><h3>研究类型</h3><span>按结构化提炼归类</span></header>
+            <div class="type-cloud">
+              
+              <div><strong>6</strong><span>方法研究</span><small>100%</small></div>
+              
+            </div>
+          </article>
+        </div>
+        <div class="topic-brief-grid">
+          
+          <article class="topic-brief">
+            <header><div><span>6 篇 · 已提炼 6 篇</span><h3>水下机器人与嵌入式系统</h3></div><b>37</b></header>
+            <p>本期“水下机器人与嵌入式系统”共收录 6 篇，研究焦点集中在real-time control、AUV、underwater robot。建议先阅读《AquaJEPA: Action-Conditioned Multimodal Predictive Representations for Underwater Robot Dynamics》，再结合其方法与结果条目判断是否进入精读队列。</p>
+            <div class="focus-tags"><span>real-time control</span><span>AUV</span><span>underwater robot</span></div>
+            <ol>
+              
+              <li><a href="http://arxiv.org/abs/2607.29393v1" target="_blank" rel="noreferrer">AquaJEPA: Action-Conditioned Multimodal Predictive Representations for Underwater Robot Dynamics</a><small>Underwater robots combine complementary sensors whose reliability changes abruptly with water visibility, viewpoint, and vehicle motion.</small></li>
+              
+              <li><a href="http://arxiv.org/abs/2607.25056v1" target="_blank" rel="noreferrer">Hybrid Artificial Potential Fields and Spatio-Temporal Transformers for Real-Time AUV Path Planning</a><small>Special emphasis is placed on a proposed hybrid approach combining Artificial Potential Fields (APF) with a Spatio-Temporal (ST) Transformer.</small></li>
+              
+              <li><a href="http://arxiv.org/abs/2607.29500v1" target="_blank" rel="noreferrer">Tri-Space Operational Control of Redundant Multilink and Hybrid Cable-Driven Parallel Robots Using an Iterative-Learning based Reactive Approach</a><small>This paper proposes a tri-space control framework that combines Reactive Control (RC) and Iterative-Learning Control (ILC) to perform repetitive tasks in the operational space.</small></li>
+              
+            </ol>
+          </article>
+          
+        </div>
+      </section>
+      
+
       <section class="filters">
         <a class="" href="../../index.html">全部主题</a>
         
         <a class="active" href="./">水下机器人与嵌入式系统</a>
-        
-        <a class="" href="../underwater_acoustics/">水声通信</a>
         
         <a class="" href="../array_signal_processing/">阵列与信号处理</a>
         
@@ -71,14 +126,15 @@
           <h2><a href="http://arxiv.org/abs/2607.29393v1" target="_blank" rel="noreferrer">AquaJEPA: Action-Conditioned Multimodal Predictive Representations for Underwater Robot Dynamics</a></h2>
           <p class="authors">Alan-Barsag Gazzaev, Alexey Gavrilov, Sergey Muravyov</p>
           <p class="summary">Underwater robots combine complementary sensors whose reliability changes abruptly with water visibility, viewpoint, and vehicle motion.</p>
-          
+          <div class="theme-brief"><strong>文章主题阐述</strong><p>命中主题短语：underwater robot</p></div>
+          <p class="selection-reason"><strong>入选理由</strong> 方法词：underwater robot</p>
           
           <details class="analysis">
             <summary>查看文献提炼 <span>基础摘要抽取</span></summary>
             <h3>研究动机</h3><p>Underwater robots combine complementary sensors whose reliability changes abruptly with water visibility, viewpoint, and vehicle motion.</p>
-            <h3>核心方法</h3><ul><li>We introduce AquaJEPA, an action-conditioned joint-embedding predictive model that fuses an RGB camera, forward-looking sonar, and proprioception with explicit sensor validity.</li><li>We study the method in Stonefish against reactive, state-only, ordinary multimodal, supervised dynamics, and recurrent world-model baselines.</li></ul>
-            <h3>主要结果</h3><ul><li>AquaJEPA therefore achieves the best aggregate closed-loop performance and significantly outperforms three action-conditioned predictive baselines in paired final error; its advantage over state-only remains statistically unresolved.</li></ul>
-            <h3>局限</h3><ul><li>AquaJEPA therefore achieves the best aggregate closed-loop performance and significantly outperforms three action-conditioned predictive baselines in paired final error; its advantage over state-only remains statistically unresolved.</li></ul>
+            <h3>核心方法</h3><ul><li>We introduce AquaJEPA, an action-conditioned joint-embedding predictive model that fuses an RGB camera, forward-looking sonar, and proprioception with explicit sensor validity.</li><li>We study the method in Stonefish against reactive, state-only, ordinary multimodal, supervised dynamics, and recurrent world-model baselines.</li><li>In 120 fresh paired environments with scheduled DVL loss, AquaJEPA reaches 74 goals, versus 68 for both state-only and the recurrent world model, and attains the lowest mean final error (0.906 m).</li></ul>
+            <h3>主要结果</h3><ul><li>In 120 fresh paired environments with scheduled DVL loss, AquaJEPA reaches 74 goals, versus 68 for both state-only and the recurrent world model, and attains the lowest mean final error (0.906 m).</li><li>AquaJEPA therefore achieves the best aggregate closed-loop performance and significantly outperforms three action-conditioned predictive baselines in paired final error; its advantage over state-only remains statistically unresolved.</li></ul>
+            <h3>局限</h3><ul><li>We further isolate the EMA target, action margin, masks, and modality dropout.</li><li>AquaJEPA therefore achieves the best aggregate closed-loop performance and significantly outperforms three action-conditioned predictive baselines in paired final error; its advantage over state-only remains statistically unresolved.</li></ul>
             <h3>研究空白</h3><p>基础提炼模式不推断摘要未明确陈述的研究空白</p>
             <small>证据：abstract · 置信度 0.35 · 阅读优先级 2/5</small>
           </details>
@@ -95,15 +151,16 @@
           <div class="meta"><span>水下机器人与嵌入式系统</span><b>41</b></div>
           <h2><a href="http://arxiv.org/abs/2607.25056v1" target="_blank" rel="noreferrer">Hybrid Artificial Potential Fields and Spatio-Temporal Transformers for Real-Time AUV Path Planning</a></h2>
           <p class="authors">Khadija Rais, Abdelmadjid Benmachiche, Imene Soualmia</p>
-          <p class="summary">Autonomous Underwater Vehicles (AUVs) operate in complex, unstructured environments where efficient and safe path planning is critical for mission success and energy conservation.</p>
-          
+          <p class="summary">Special emphasis is placed on a proposed hybrid approach combining Artificial Potential Fields (APF) with a Spatio-Temporal (ST) Transformer.</p>
+          <div class="theme-brief"><strong>文章主题阐述</strong><p>命中主题短语：AUV</p></div>
+          <p class="selection-reason"><strong>入选理由</strong> 方法词：AUV</p>
           
           <details class="analysis">
             <summary>查看文献提炼 <span>基础摘要抽取</span></summary>
             <h3>研究动机</h3><p>Autonomous Underwater Vehicles (AUVs) operate in complex, unstructured environments where efficient and safe path planning is critical for mission success and energy conservation.</p>
-            <h3>核心方法</h3><ul><li>This paper presents a comprehensive comparative evaluation of thirteen path planning algorithms, ranging from classical graph-search methods (A*, Dijkstra) and sampling-based approaches (RRT*) to metaheuristics (PSO, GA, ACO, BCO) and learning-based architectures.</li><li>Special emphasis is placed on a proposed hybrid approach combining Artificial Potential Fields (APF) with a Spatio-Temporal (ST) Transformer.</li></ul>
+            <h3>核心方法</h3><ul><li>This paper presents a comprehensive comparative evaluation of thirteen path planning algorithms, ranging from classical graph-search methods (A*, Dijkstra) and sampling-based approaches (RRT*) to metaheuristics (PSO, GA, ACO, BCO) and learning-based architectures.</li><li>Special emphasis is placed on a proposed hybrid approach combining Artificial Potential Fields (APF) with a Spatio-Temporal (ST) Transformer.</li><li>Evaluated across five navigation scenarios on high-resolution underwater terrain maps, all algorithms achieved 100\% task completion; however, significant trade-offs emerged in path optimality, collision avoidance, and computational load.</li></ul>
             <h3>主要结果</h3><ul><li>Evaluated across five navigation scenarios on high-resolution underwater terrain maps, all algorithms achieved 100\% task completion; however, significant trade-offs emerged in path optimality, collision avoidance, and computational load.</li><li>The Hybrid APF + ST-Transformer demonstrated superior balanced performance, achieving the shortest average path length (943.15 units), a low collision rate (0.031), and efficient computation time (0.96 s), outperforming standalone learning models, which required fallback mechanisms and classical methods that incurred higher latency.</li></ul>
-            <h3>局限</h3><ul><li>Evaluated across five navigation scenarios on high-resolution underwater terrain maps, all algorithms achieved 100\% task completion; however, significant trade-offs emerged in path optimality, collision avoidance, and computational load.</li></ul>
+            <h3>局限</h3><ul><li>Evaluated across five navigation scenarios on high-resolution underwater terrain maps, all algorithms achieved 100\% task completion; however, significant trade-offs emerged in path optimality, collision avoidance, and computational load.</li><li>Conversely, metaheuristic approaches introduced trajectory complexity unsuitable for strict energy constraints.</li></ul>
             <h3>研究空白</h3><p>基础提炼模式不推断摘要未明确陈述的研究空白</p>
             <small>证据：abstract · 置信度 0.35 · 阅读优先级 2/5</small>
           </details>
@@ -120,15 +177,16 @@
           <div class="meta"><span>水下机器人与嵌入式系统</span><b>37</b></div>
           <h2><a href="http://arxiv.org/abs/2607.29500v1" target="_blank" rel="noreferrer">Tri-Space Operational Control of Redundant Multilink and Hybrid Cable-Driven Parallel Robots Using an Iterative-Learning based Reactive Approach</a></h2>
           <p class="authors">Dipankar Bhattacharya, Yin Pok Chan, Siqi Shang, Yuen Shan Chan, Ying Tan</p>
-          <p class="summary">Cable-Driven Parallel Robots (CDPRs) are a type of parallel mechanism in which cables are used as actuators.</p>
-          
+          <p class="summary">This paper proposes a tri-space control framework that combines Reactive Control (RC) and Iterative-Learning Control (ILC) to perform repetitive tasks in the operational space.</p>
+          <div class="theme-brief"><strong>文章主题阐述</strong><p>命中主题短语：real-time control</p></div>
+          <p class="selection-reason"><strong>入选理由</strong> 方法词：real-time control</p>
           
           <details class="analysis">
             <summary>查看文献提炼 <span>基础摘要抽取</span></summary>
             <h3>研究动机</h3><p>Cable-Driven Parallel Robots (CDPRs) are a type of parallel mechanism in which cables are used as actuators.</p>
-            <h3>核心方法</h3><ul><li>To the best of the authors&#39; knowledge, there does not exist any tri-space control framework, which is robust, effective, and directly applicable to several architectures of redundantly actuated CDPRs.</li><li>This paper proposes a tri-space control framework that combines Reactive Control (RC) and Iterative-Learning Control (ILC) to perform repetitive tasks in the operational space.</li></ul>
+            <h3>核心方法</h3><ul><li>To the best of the authors&#39; knowledge, there does not exist any tri-space control framework, which is robust, effective, and directly applicable to several architectures of redundantly actuated CDPRs.</li><li>This paper proposes a tri-space control framework that combines Reactive Control (RC) and Iterative-Learning Control (ILC) to perform repetitive tasks in the operational space.</li><li>The framework allows the tracking of operational space trajectories online with feasible cable forces, while avoiding undesirable situations such as cable-link interference, joint interference, and loss of manipulability.</li></ul>
             <h3>主要结果</h3><ul><li>On the other hand, by finding an optimal parameter in the null space using a novel parameterization of a null space vector, the performance can be improved through ILC when the task is repeatedly executed.</li><li>Simulation and hardware results on various Multilink Cable-Driven Robot (MCDRs) and Hybrid Cable-Driven Robots (HCDRs) show that the proposed tri-space control framework can be conveniently and effectively applied to the real-time control of different CDPRs.</li></ul>
-            <h3>局限</h3><ul><li>摘要未明确说明局限</li></ul>
+            <h3>局限</h3><ul><li>Due to the two levels of redundancy and numerous constraints within the CDPR actuation, joint and operational spaces (together known as the tri-space), tracking a given trajectory in the operational space while satisfying constraints in tri-space simultaneously is challenging.</li></ul>
             <h3>研究空白</h3><p>基础提炼模式不推断摘要未明确陈述的研究空白</p>
             <small>证据：abstract · 置信度 0.35 · 阅读优先级 2/5</small>
           </details>
@@ -145,15 +203,16 @@
           <div class="meta"><span>水下机器人与嵌入式系统</span><b>36</b></div>
           <h2><a href="http://arxiv.org/abs/2608.01221v1" target="_blank" rel="noreferrer">EndoWAM: A Grounded World-Action Model for Generalizable Endoscopic Navigation</a></h2>
           <p class="authors">Jinsong Lin, Zikang Pan, Wanhao Liu, Chi Kit Ng, Liangjing Shao</p>
-          <p class="summary">Autonomous endoscopic navigation can reduce clinicians&#39; operational burden, yet robust control remains challenging due to tissue deformation, transient occlusions, and rapidly changing viewpoints.</p>
-          
+          <p class="summary">These results establish EndoWAM as a predictive, target-grounded framework for accurate, generalizable, and long-horizon navigation in visually constrained endoscopic environments.</p>
+          <div class="theme-brief"><strong>文章主题阐述</strong><p>命中主题短语：real-time control</p></div>
+          <p class="selection-reason"><strong>入选理由</strong> 方法词：real-time control</p>
           
           <details class="analysis">
             <summary>查看文献提炼 <span>基础摘要抽取</span></summary>
             <h3>研究动机</h3><p>Autonomous endoscopic navigation can reduce clinicians&#39; operational burden, yet robust control remains challenging due to tissue deformation, transient occlusions, and rapidly changing viewpoints.</p>
-            <h3>核心方法</h3><ul><li>Existing learning-based policies typically predict actions from current observations without explicitly modeling future dynamics, limiting their robustness and reliability in safety-critical settings.</li><li>World Action Models (WAMs) offer a promising alternative by coupling predictive visual dynamics with action generation, but extending them to robotic endoscopy remains challenging due to limited training data, restricted viewpoint diversity, deformable anatomy, and high inference latency.</li></ul>
+            <h3>核心方法</h3><ul><li>Existing learning-based policies typically predict actions from current observations without explicitly modeling future dynamics, limiting their robustness and reliability in safety-critical settings.</li><li>World Action Models (WAMs) offer a promising alternative by coupling predictive visual dynamics with action generation, but extending them to robotic endoscopy remains challenging due to limited training data, restricted viewpoint diversity, deformable anatomy, and high inference latency.</li><li>We present EndoWAM, which is, to our knowledge, the first WAM for generalizable robotic endoscopic navigation.</li></ul>
             <h3>主要结果</h3><ul><li>EndoWAM consistently outperforms all baselines and alternative grounding strategies, while demonstrating strong zero-shot generalization to unseen viewpoints, environments, and targets.</li><li>These results establish EndoWAM as a predictive, target-grounded framework for accurate, generalizable, and long-horizon navigation in visually constrained endoscopic environments.</li></ul>
-            <h3>局限</h3><ul><li>Autonomous endoscopic navigation can reduce clinicians&#39; operational burden, yet robust control remains challenging due to tissue deformation, transient occlusions, and rapidly changing viewpoints.</li><li>Existing learning-based policies typically predict actions from current observations without explicitly modeling future dynamics, limiting their robustness and reliability in safety-critical settings.</li></ul>
+            <h3>局限</h3><ul><li>Autonomous endoscopic navigation can reduce clinicians&#39; operational burden, yet robust control remains challenging due to tissue deformation, transient occlusions, and rapidly changing viewpoints.</li><li>Existing learning-based policies typically predict actions from current observations without explicitly modeling future dynamics, limiting their robustness and reliability in safety-critical settings.</li><li>World Action Models (WAMs) offer a promising alternative by coupling predictive visual dynamics with action generation, but extending them to robotic endoscopy remains challenging due to limited training data, restricted viewpoint diversity, deformable anatomy, and high inference latency.</li></ul>
             <h3>研究空白</h3><p>基础提炼模式不推断摘要未明确陈述的研究空白</p>
             <small>证据：abstract · 置信度 0.35 · 阅读优先级 2/5</small>
           </details>
@@ -170,14 +229,15 @@
           <div class="meta"><span>水下机器人与嵌入式系统</span><b>35</b></div>
           <h2><a href="http://arxiv.org/abs/2608.00237v1" target="_blank" rel="noreferrer">Latent-Centroid Steering: Single-Pass Classifier-Free Guidance for Command-Aligned Autonomous Driving</a></h2>
           <p class="authors">Meibo Hu, Jiamian Wang, Pichao Wang, Zhiqiang Tao</p>
-          <p class="summary">Vision-language models (VLMs) have recently emerged as a promising paradigm for end-to-end autonomous driving, enabling agents to map multimodal inputs and high-level navigation instructions directly to executable trajectories.</p>
-          
+          <p class="summary">However, in practice, these models exhibit a persistent command-following gap: predicted trajectories often show weak sensitivity to navigation commands, resulting in incorrect behavior at critical decision points.</p>
+          <div class="theme-brief"><strong>文章主题阐述</strong><p>命中主题短语：real-time control</p></div>
+          <p class="selection-reason"><strong>入选理由</strong> 方法词：real-time control</p>
           
           <details class="analysis">
             <summary>查看文献提炼 <span>基础摘要抽取</span></summary>
             <h3>研究动机</h3><p>Vision-language models (VLMs) have recently emerged as a promising paradigm for end-to-end autonomous driving, enabling agents to map multimodal inputs and high-level navigation instructions directly to executable trajectories.</p>
-            <h3>核心方法</h3><ul><li>Vision-language models (VLMs) have recently emerged as a promising paradigm for end-to-end autonomous driving, enabling agents to map multimodal inputs and high-level navigation instructions directly to executable trajectories.</li><li>However, in practice, these models exhibit a persistent command-following gap: predicted trajectories often show weak sensitivity to navigation commands, resulting in incorrect behavior at critical decision points.</li></ul>
-            <h3>主要结果</h3><ul><li>However, in practice, these models exhibit a persistent command-following gap: predicted trajectories often show weak sensitivity to navigation commands, resulting in incorrect behavior at critical decision points.</li><li>We show that CFG can be interpreted as isolating the instruction-induced residual in the action space by contrasting conditional and unconditional predictions, thereby explicitly amplifying the effect of the navigation command at inference time.</li></ul>
+            <h3>核心方法</h3><ul><li>Vision-language models (VLMs) have recently emerged as a promising paradigm for end-to-end autonomous driving, enabling agents to map multimodal inputs and high-level navigation instructions directly to executable trajectories.</li><li>However, in practice, these models exhibit a persistent command-following gap: predicted trajectories often show weak sensitivity to navigation commands, resulting in incorrect behavior at critical decision points.</li><li>We identify this issue as a form of conditional policy collapse, where regression-based training under multimodal trajectory distributions encourages the model to rely on dominant visual priors while marginalizing the language-conditioned signal.</li></ul>
+            <h3>主要结果</h3><ul><li>However, in practice, these models exhibit a persistent command-following gap: predicted trajectories often show weak sensitivity to navigation commands, resulting in incorrect behavior at critical decision points.</li><li>We show that CFG can be interpreted as isolating the instruction-induced residual in the action space by contrasting conditional and unconditional predictions, thereby explicitly amplifying the effect of the navigation command at inference time.</li><li>We demonstrate that LCS reduces inference latency by approximately 50% while achieving stronger command adherence and improved driving performance on both closed-loop (Bench2Drive) and open-loop (nuScenes) benchmarks.</li></ul>
             <h3>局限</h3><ul><li>However, in practice, these models exhibit a persistent command-following gap: predicted trajectories often show weak sensitivity to navigation commands, resulting in incorrect behavior at critical decision points.</li><li>However, a standard two-pass CFG introduces prohibitive latency for real-time control and produces noisy instance-level guidance directions.</li></ul>
             <h3>研究空白</h3><p>基础提炼模式不推断摘要未明确陈述的研究空白</p>
             <small>证据：abstract · 置信度 0.35 · 阅读优先级 2/5</small>
@@ -196,13 +256,14 @@
           <h2><a href="https://doi.org/10.3390/jmse14151393" target="_blank" rel="noreferrer">Digital Twins for Marine Robotic Platforms: Architectures, Applications, and Challenges Across AUVs, ROVs, USVs, Underwater Gliders, and Emerging Platforms</a></h2>
           <p class="authors">Xuehao Wang, L.R. Chen, Dongyang Xue, Cheng Chen, Peng Wang</p>
           <p class="summary">Digital twin (DT) research spans autonomous underwater vehicles (AUVs), remotely operated vehicles (ROVs), unmanned surface vessels (USVs), underwater gliders, and emerging marine robotic platforms; however, reported systems differ widely in terms of their physical–virtual coupling and validation maturity.</p>
-          
+          <div class="theme-brief"><strong>文章主题阐述</strong><p>命中主题短语：AUV</p></div>
+          <p class="selection-reason"><strong>入选理由</strong> 基于查询词、时效和元数据综合入选</p>
           
           <details class="analysis">
             <summary>查看文献提炼 <span>基础摘要抽取</span></summary>
             <h3>研究动机</h3><p>Digital twin (DT) research spans autonomous underwater vehicles (AUVs), remotely operated vehicles (ROVs), unmanned surface vessels (USVs), underwater gliders, and emerging marine robotic platforms; however, reported systems differ widely in terms of their physical–virtual coupling and validation maturity.</p>
-            <h3>核心方法</h3><ul><li>The reported workflows address model construction, multiphysics simulation, virtual testing, monitoring, control validation, and decision support.</li><li>Within the purposively selected 11-case full-text audit, two cases were classified as DT-enabling methods or components, five as digital models or virtual prototypes, three as digital shadows, and one as a bidirectional DT prototype; none documented sustained operational deployment.</li></ul>
-            <h3>主要结果</h3><ul><li>摘要未报告可自动识别的结果句</li></ul>
+            <h3>核心方法</h3><ul><li>This review synthesizes architectures, enabling technologies, applications, coupling modes, validation settings, and deployment barriers across the perception–decision–control chain.</li><li>The reported workflows address model construction, multiphysics simulation, virtual testing, monitoring, control validation, and decision support.</li><li>Within the purposively selected 11-case full-text audit, two cases were classified as DT-enabling methods or components, five as digital models or virtual prototypes, three as digital shadows, and one as a bidirectional DT prototype; none documented sustained operational deployment.</li></ul>
+            <h3>主要结果</h3><ul><li>Physics-informed learning, multi-fidelity modeling, edge computing, and interoperable reference architectures provide candidate development paths, but the evidence suggests that the central gap lies less in producing sophisticated virtual models than in establishing sustained, interoperable, and bidirectional physical–virtual operation.</li></ul>
             <h3>局限</h3><ul><li>Digital twin (DT) research spans autonomous underwater vehicles (AUVs), remotely operated vehicles (ROVs), unmanned surface vessels (USVs), underwater gliders, and emerging marine robotic platforms; however, reported systems differ widely in terms of their physical–virtual coupling and validation maturity.</li><li>Four constraints recurred across platforms: the trade-off between model fidelity and computation; uncertain marine environments; communication and synchronization limitations; and fragmented interfaces and standards.</li></ul>
             <h3>研究空白</h3><p>基础提炼模式不推断摘要未明确陈述的研究空白</p>
             <small>证据：abstract · 置信度 0.35 · 阅读优先级 1/5</small>
