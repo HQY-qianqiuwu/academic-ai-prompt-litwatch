@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>LitWatch 文献雷达</title>
     <link rel="stylesheet" href="../../styles.css">
+    <script src="../../live-search.js" defer></script>
   </head>
   <body>
     <header class="hero">
@@ -14,16 +15,38 @@
           <p class="eyebrow">持续发现，而不是一次性搜索</p>
           <h1>把新论文变成<br><em>可行动的阅读清单</em></h1>
           <p class="intro">多源检索、可解释排序、开放全文分析和 Zotero 工作流，在一个安静的界面里完成。</p>
-          <p class="static-badge">📋 2026-08-03 文献快照 · <a href="../../archive/">历史存档</a> · <a href="https://codespaces.new/HQY-qianqiuwu/academic-ai-prompt-litwatch?quickstart=1">进入 Codespaces 实时搜索</a></p>
+          <p class="static-badge">📋 2026-08-04 文献快照 · <a href="../../archive/">历史存档</a> · <a href="https://codespaces.new/HQY-qianqiuwu/academic-ai-prompt-litwatch?quickstart=1">进入 Codespaces 实时搜索</a></p>
         </div>
         
-        <div class="run-card static-card"><small>最近扫描：获取 34 · 入选 26 · AI 18</small></div>
+        <div class="run-card static-card"><small>最近扫描：获取 36 · 入选 25 · AI 15</small></div>
         
       </div>
     </header>
 
     <main>
       
+      
+      <section class="quick-search live-search" data-live-search>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Live OpenAlex search</p>
+            <h2>即时查找近期论文</h2>
+          </div>
+          <p>公开网页直接检索 OpenAlex，无需启动服务器。适合快速发现；多源去重、全文提炼和 AI 综述请进入 Codespaces。</p>
+        </div>
+        <form data-live-search-form>
+          <label class="wide">研究问题或英文关键词<textarea name="query" required minlength="3" maxlength="300" rows="3" placeholder="例如：underwater acoustic target recognition deep learning"></textarea></label>
+          <label>回溯天数<input name="days" type="number" min="1" max="3650" value="90"></label>
+          <label>结果数量<select name="limit"><option value="10">10 篇</option><option value="20" selected>20 篇</option><option value="40">40 篇</option></select></label>
+          <button type="submit">立即检索 OpenAlex</button>
+        </form>
+        <div class="live-search-state" data-live-search-state aria-live="polite">输入主题后即可在当前网页实时查询。</div>
+        <div class="live-search-actions" hidden data-live-search-actions>
+          <button type="button" data-live-bibtex>导出本次 BibTeX</button>
+          <a href="https://codespaces.new/HQY-qianqiuwu/academic-ai-prompt-litwatch?quickstart=1">需要深度提炼？进入 Codespaces →</a>
+        </div>
+        <div class="live-results" data-live-results></div>
+      </section>
       
 
       <section class="filters">
@@ -65,31 +88,6 @@
             <span>arXiv</span>
             <span>引用 0</span>
             <a href="https://arxiv.org/pdf/2607.25919v1" target="_blank">PDF ↗</a>
-          </footer>
-        </article>
-        
-        <article class="paper-card">
-          <div class="meta"><span>阵列与信号处理</span><b>35</b></div>
-          <h2><a href="https://doi.org/10.3390/s26144591" target="_blank" rel="noreferrer">Smartphone-Based Acoustic Sensing for Breathing and Heartbeat Detection via AoA Clustering in Indoor Environments</a></h2>
-          <p class="authors">KounKou Vincent, Ijaz Khan, Ke Sun, Yizhi Shao, Zhantu Liang</p>
-          <p class="summary">Smartphones incorporate acoustic components, including a speaker and multiple microphones, which can be used as a low-cost, contactless platform for vital signs monitoring.</p>
-          
-          
-          <details class="analysis">
-            <summary>查看文献提炼 <span>基础摘要抽取</span></summary>
-            <h3>研究动机</h3><p>Smartphones incorporate acoustic components, including a speaker and multiple microphones, which can be used as a low-cost, contactless platform for vital signs monitoring.</p>
-            <h3>核心方法</h3><ul><li>Instead of processing the received signal as a single, mixed signal, the proposed method leverages distance information from the FMCW beat frequency and an angular phase index (AoA information), derived from dual-microphone and virtual aperture processing, to organize moving reflectors into a joint distance-angle-time representation.</li><li>The Siamese model compares candidate thoracic waveforms and estimates whether multiple detected components are likely to originate from the same physical source or different sources, thus improving source selection without resorting to classical blind source separation.</li></ul>
-            <h3>主要结果</h3><ul><li>In the smartphone-only blind configuration, the proposed pipeline achieved MAEs of 2.312 bpm for HR and 1.394 bpm for BR.</li><li>These results demonstrate that spatial clustering and conditional Siamese source pairing improve the robustness of acoustic vital sign detection using smartphones in indoor environments.</li></ul>
-            <h3>局限</h3><ul><li>However, extracting breathing rate (BR) and heart rate (HR) from smartphone acoustic reflections remains challenging in indoor environments because thoracic reflections are weak and are often mixed with static clutter, hand motion, environmental multipath, and other dynamic sources.</li></ul>
-            <h3>研究空白</h3><p>基础提炼模式不推断摘要未明确陈述的研究空白</p>
-            <small>证据：abstract · 置信度 0.35 · 阅读优先级 2/5</small>
-          </details>
-          
-          <footer>
-            <span>2026-07-20</span>
-            <span>Sensors</span>
-            <span>引用 0</span>
-            
           </footer>
         </article>
         
