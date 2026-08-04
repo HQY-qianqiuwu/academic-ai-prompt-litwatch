@@ -14,6 +14,7 @@ from litwatch.config import Settings, Topic
 from litwatch.db import Database
 from litwatch.export import rows_to_bibtex
 from litwatch.pipeline import Pipeline
+from litwatch.weekly_report import apply_current_topic_rules, build_weekly_report, enrich_papers
 
 PACKAGE_DIR = Path(__file__).parent
 
@@ -71,14 +72,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         topics = configured_topics + [
             item for item in database.list_topics() if item["id"] not in known_ids
         ]
+        latest_run = database.latest_run()
+        latest_run_id = latest_run["id"] if latest_run else None
+        weekly_papers = apply_current_topic_rules(
+            database.list_papers(topic_id=topic, run_id=latest_run_id, limit=500),
+            configured_topics,
+        )
+        visible_papers = apply_current_topic_rules(
+            database.list_papers(topic_id=topic, limit=500), configured_topics
+        )
         return templates.TemplateResponse(
             request=request,
             name="index.html",
             context={
-                "papers": database.list_papers(topic_id=topic, limit=200),
+                "papers": enrich_papers(visible_papers[:200]),
                 "topics": topics,
                 "active_topic": topic,
-                "latest_run": database.latest_run(),
+                "latest_run": latest_run,
+                "weekly_report": build_weekly_report(
+                    weekly_papers, configured_topics, latest_run
+                ),
                 "analysis_modes": settings.load_analysis_modes(),
                 "static_mode": False,
                 "scan_state": state_snapshot(),

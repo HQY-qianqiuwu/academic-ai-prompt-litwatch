@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import smtplib
 import ssl
+from collections import Counter
 from email.message import EmailMessage
 
 from litwatch.config import Settings
@@ -10,6 +11,12 @@ from litwatch.models import Paper, RunSummary
 
 
 def render_digest(summary: RunSummary, papers: list[Paper], *, limit: int = 20) -> str:
+    topic_counts = Counter(paper.topic_name or "未分类" for paper in papers)
+    topic_summary = "".join(
+        f'<span style="display:inline-block;margin:4px;padding:6px 10px;border-radius:999px;'
+        f'background:#e7f4f1;color:#0f766e">{html.escape(name)} · {count} 篇</span>'
+        for name, count in topic_counts.most_common()
+    )
     cards: list[str] = []
     for paper in papers[:limit]:
         analysis = paper.analysis
@@ -22,6 +29,7 @@ def render_digest(summary: RunSummary, papers: list[Paper], *, limit: int = 20) 
               <h3 style="margin:8px 0"><a href="{html.escape(paper.url)}">{html.escape(paper.title)}</a></h3>
               <div style="color:#62737b;font-size:13px">{html.escape(authors)} · {paper.publication_date or ""} · {html.escape(paper.venue)}</div>
               <p>{html.escape(one_liner)}</p>
+              <p style="padding:10px;background:#f1f7f5;border-left:3px solid #65b7aa;font-size:13px"><strong>主题阐述：</strong>{html.escape(str(analysis.get("relevance") or f"归入 {paper.topic_name}，建议结合摘要与方法条目判断是否精读。"))}</p>
               <div style="font-size:12px;color:#62737b">来源：{html.escape(", ".join(paper.sources))} · 引用 {paper.citation_count} · {"开放全文" if paper.is_open_access else "未确认开放全文"}</div>
             </article>
             """
@@ -29,6 +37,7 @@ def render_digest(summary: RunSummary, papers: list[Paper], *, limit: int = 20) 
     return f"""<!doctype html><html><body style="font-family:Arial,'Microsoft YaHei',sans-serif;color:#17323a;max-width:760px;margin:auto">
     <h1>LitWatch 文献雷达</h1>
     <p>本次获取 {summary.fetched} 条，去重后 {summary.deduplicated} 条，入选 {summary.accepted} 条，AI 分析 {summary.analyzed} 条。</p>
+    <div style="margin:14px 0">{topic_summary}</div>
     {"".join(cards) if cards else "<p>本期没有达到阈值的新论文。</p>"}
     </body></html>"""
 

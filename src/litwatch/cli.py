@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -59,6 +60,36 @@ def export_static(
     typer.echo(
         f"静态站点已导出到 {result['output_dir']}（{result['paper_count']} 篇，"
         f"快照 {result['snapshot_id']}）"
+    )
+
+
+@app.command("weekly-report")
+def weekly_report(
+    output: Annotated[
+        Path, typer.Option(help="周报 JSON 输出路径；用于归档或二次可视化")
+    ] = Path("reports/latest-weekly-report.json"),
+    topic: str = typer.Option("", help="只汇总指定 topic id"),
+) -> None:
+    """从最近一次扫描生成主题聚合、核心提炼覆盖率与阅读线索。"""
+    from litwatch.weekly_report import apply_current_topic_rules, build_weekly_report
+
+    settings = _settings()
+    database = Database(settings.database_path)
+    latest_run = database.latest_run()
+    run_id = latest_run["id"] if latest_run else None
+    configured_topics = settings.load_topics()
+    papers = apply_current_topic_rules(
+        database.list_papers(topic_id=topic, run_id=run_id, limit=500), configured_topics
+    )
+    report = build_weekly_report(papers, configured_topics, latest_run)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    database.connection.close()
+    typer.echo(
+        f"周报已写入 {output}（{report['paper_count']} 篇，"
+        f"{report['analyzed_count']} 篇完成提炼，{len(report['topics'])} 个主题）"
     )
 
 

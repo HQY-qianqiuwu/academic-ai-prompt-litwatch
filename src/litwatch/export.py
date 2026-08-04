@@ -12,7 +12,9 @@ def rows_to_bibtex(rows: list[dict]) -> str:
     used_keys: set[str] = set()
     for index, row in enumerate(rows, start=1):
         authors = row.get("authors") or []
-        first_author = authors[0]["name"].split()[-1] if authors else "paper"
+        first_author = (
+            (authors[0]["name"].split()[-1] or "paper") if authors and authors[0].get("name") else "paper"
+        )
         year = (row.get("publication_date") or "nd")[:4]
         key_base = re.sub(r"[^A-Za-z0-9]", "", f"{first_author}{year}") or f"paper{index}"
         key = key_base

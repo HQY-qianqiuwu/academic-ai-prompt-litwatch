@@ -9,8 +9,33 @@ topics:
       - hydrophone
       - Doppler compensation
       - channel estimation
+    domain_anchors:
+      any:
+        - underwater acoustic
+        - underwater acoustics
+        - underwater communication
+        - hydroacoustic
+        - hydrophone
+        - ocean acoustic
+        - sonar
+    method_terms:
+      any:
+        - channel estimation
+        - OFDM
+        - Doppler compensation
+        - beamforming
+        - sparse recovery
+        - source localization
+        - TDOA
+    require_domain_anchor: true
     exclude:
       - medical ultrasound
+      - terrestrial wireless
+      - cellular network
+      - mmWave
+      - RIS-assisted
+      - satellite communication
+      - massive MIMO
     categories: [eess.SP, eess.AS, cs.SD]
     analysis_mode: review_matrix
     min_score: 0.30

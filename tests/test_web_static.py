@@ -62,6 +62,8 @@ def test_static_export_has_pages_safe_links_and_history(tmp_path):
     root_html = (output / "index.html").read_text(encoding="utf-8")
     assert "data-live-search-form" in root_html
     assert 'src="live-search.js"' in root_html
+    assert "Weekly research brief" in root_html
+    assert "文章主题阐述" in root_html
     topic_html = (output / "topics" / "acoustics" / "index.html").read_text(encoding="utf-8")
     assert 'href="../../styles.css"' in topic_html
     assert 'href="../../litwatch-acoustics.bib"' in topic_html

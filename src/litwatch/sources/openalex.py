@@ -22,8 +22,13 @@ class OpenAlexSource:
         )
 
     def search(self, topic: Topic, start_date: date, end_date: date, limit: int) -> list[Paper]:
+        search_term = topic.query
+        if topic.include:
+            include_terms = " OR ".join(f'"{t}"' for t in topic.include if len(t) > 2)
+            if include_terms:
+                search_term = topic.query + " AND (" + include_terms + ")"
         params = {
-            "search": topic.query,
+            "search": search_term,
             "filter": f"from_publication_date:{start_date},to_publication_date:{end_date}",
             "sort": "publication_date:desc",
             "per-page": min(limit, 200),

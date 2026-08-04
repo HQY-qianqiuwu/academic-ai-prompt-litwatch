@@ -37,7 +37,11 @@ class SemanticScholarSource:
             response = self.client.get(self.endpoint, params=params)
             if response.status_code != 429 or attempt == 2:
                 break
-            retry_after = float(response.headers.get("retry-after") or 2 ** (attempt + 1))
+            raw = response.headers.get("retry-after") or ""
+            try:
+                retry_after = float(raw)
+            except ValueError:
+                retry_after = 2 ** (attempt + 1)
             time.sleep(min(retry_after, 10))
         response.raise_for_status()
         return [self._parse(item) for item in response.json().get("data", []) if item.get("title")]

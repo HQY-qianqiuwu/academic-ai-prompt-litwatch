@@ -15,6 +15,9 @@ class Topic(BaseModel):
     query: str
     include: list[str] = Field(default_factory=list)
     exclude: list[str] = Field(default_factory=list)
+    domain_anchors: list[str] = Field(default_factory=list)
+    method_terms: list[str] = Field(default_factory=list)
+    require_domain_anchor: bool = False
     categories: list[str] = Field(default_factory=list)
     analysis_mode: str = "quick_scan"
     min_score: float = Field(default=0.3, ge=0, le=1)
@@ -24,6 +27,13 @@ class Topic(BaseModel):
     def valid_id(cls, value: str) -> str:
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", value):
             raise ValueError("topic id must use lowercase letters, numbers, '_' or '-'")
+        return value
+
+    @field_validator("domain_anchors", "method_terms", mode="before")
+    @classmethod
+    def flatten_any_terms(cls, value):
+        if isinstance(value, dict):
+            return value.get("any", [])
         return value
 
 

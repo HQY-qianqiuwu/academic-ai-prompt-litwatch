@@ -20,6 +20,19 @@ def topic() -> Topic:
     )
 
 
+def gated_topic() -> Topic:
+    return Topic(
+        id="underwater_gated",
+        name="水声通信",
+        query="underwater acoustic communication channel estimation",
+        include=["underwater acoustic", "channel estimation", "beamforming"],
+        exclude=["medical ultrasound", "mmWave", "RIS-assisted", "satellite communication"],
+        domain_anchors={"any": ["underwater acoustic", "hydrophone", "sonar"]},
+        method_terms={"any": ["channel estimation", "beamforming", "Doppler estimation"]},
+        require_domain_anchor=True,
+    )
+
+
 def test_canonical_id_prefers_doi_and_removes_arxiv_version():
     assert canonical_id(doi="10.1234/ABC", title="Anything") == "doi:10.1234/abc"
     assert canonical_id(arxiv_id="2401.12345v3", title="Anything") == "arxiv:2401.12345"
@@ -44,7 +57,80 @@ def test_ranking_is_explainable_and_exclusions_win():
     paper.abstract += " Evaluated for medical ultrasound."
     excluded = score_paper(paper, topic(), today=date(2026, 7, 31))
     assert excluded.score == 0
-    assert excluded.score_detail == {"excluded": 1.0}
+    assert excluded.score_detail["matched_excludes"] == ["medical ultrasound"]
+    assert excluded.score_detail["selection_reason"].startswith("硬排除")
+
+
+def test_domain_gate_accepts_underwater_acoustics_and_hydrophone_methods():
+    first = score_paper(
+        Paper(
+            canonical_id="synthetic:underwater-channel",
+            title="Underwater-acoustic channel estimation",
+            abstract="A robust estimator for shallow water links.",
+            publication_date=date(2026, 7, 31),
+        ),
+        gated_topic(),
+        today=date(2026, 7, 31),
+    )
+    second = score_paper(
+        Paper(
+            canonical_id="synthetic:hydrophone-beamforming",
+            title="Hydrophone array beamforming",
+            abstract="Beamforming for passive ocean monitoring.",
+            publication_date=date(2026, 7, 31),
+        ),
+        gated_topic(),
+        today=date(2026, 7, 31),
+    )
+
+    assert first.score > 0
+    assert first.score_detail["matched_domain_anchors"] == ["underwater acoustic"]
+    assert first.score_detail["matched_method_terms"] == ["channel estimation"]
+    assert second.score > 0
+    assert second.score_detail["matched_domain_anchors"] == ["hydrophone"]
+
+
+def test_domain_gate_rejects_wireless_satellite_and_medical_false_positives():
+    cases = [
+        ("RIS-assisted wireless channel estimation", "A terrestrial network.", "硬排除"),
+        ("Satellite OTFS Doppler estimation", "A LEO communication link.", "领域门控拒绝"),
+        ("Medical ultrasound beamforming", "Clinical imaging.", "硬排除"),
+    ]
+
+    for index, (title, abstract, expected_reason) in enumerate(cases):
+        ranked = score_paper(
+            Paper(
+                canonical_id=f"synthetic:rejected-{index}",
+                title=title,
+                abstract=abstract,
+                publication_date=date(2026, 7, 31),
+            ),
+            gated_topic(),
+            today=date(2026, 7, 31),
+        )
+        assert ranked.score == 0
+        assert str(ranked.score_detail["selection_reason"]).startswith(expected_reason)
+
+
+def test_legacy_topic_without_domain_anchors_keeps_previous_behavior():
+    legacy = Topic(
+        id="legacy",
+        name="Legacy",
+        query="channel estimation",
+        include=["channel estimation"],
+    )
+    ranked = score_paper(
+        Paper(
+            canonical_id="synthetic:legacy",
+            title="Wireless channel estimation",
+            publication_date=date(2026, 7, 31),
+        ),
+        legacy,
+        today=date(2026, 7, 31),
+    )
+
+    assert ranked.score > 0
+    assert ranked.score_detail["domain_gate"] == 1.0
 
 
 def test_keyword_ranking_is_not_penalized_when_semantic_model_is_unavailable(monkeypatch):

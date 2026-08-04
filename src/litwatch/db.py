@@ -137,7 +137,13 @@ class Database:
                ON CONFLICT(canonical_id,topic_id) DO UPDATE SET
                    topic_name=excluded.topic_name, score=excluded.score,
                    score_detail_json=excluded.score_detail_json,
-                   analysis_json=excluded.analysis_json, run_id=excluded.run_id""",
+                   analysis_json=CASE
+                       WHEN json_extract(excluded.analysis_json, '$.status') = 'error'
+                            AND json_extract(paper_topics.analysis_json, '$.status') IN ('ok', 'extractive')
+                       THEN paper_topics.analysis_json
+                       ELSE excluded.analysis_json
+                   END,
+                   run_id=excluded.run_id""",
             (
                 paper.canonical_id,
                 paper.topic_id,
@@ -150,15 +156,32 @@ class Database:
         )
         self.connection.commit()
 
-    def list_papers(self, *, topic_id: str = "", limit: int = 100) -> list[dict]:
-        where = "WHERE pt.topic_id=?" if topic_id else ""
-        params: tuple[object, ...] = (topic_id, limit) if topic_id else (limit,)
+    def list_papers(
+        self, *, topic_id: str = "", run_id: int | None = None, limit: int = 100
+    ) -> list[dict]:
+        filters: list[str] = []
+        values: list[object] = []
+        if topic_id:
+            filters.append("topic_id=?")
+            values.append(topic_id)
+        if run_id is not None:
+            filters.append("run_id=?")
+            values.append(run_id)
+        where = "WHERE " + " AND ".join(filters) if filters else ""
+        values.append(limit)
         rows = self.connection.execute(
-            f"""SELECT p.*,pt.topic_id,pt.topic_name,pt.score,pt.score_detail_json,pt.analysis_json
-                FROM papers p JOIN paper_topics pt USING(canonical_id)
-                {where}
+            f"""SELECT p.*,pt.topic_id,pt.topic_name,pt.score,pt.score_detail_json,
+                       pt.analysis_json,pt.run_id
+                FROM papers p JOIN (
+                    SELECT canonical_id, topic_id, topic_name, score, score_detail_json,
+                           analysis_json, run_id,
+                           ROW_NUMBER() OVER (PARTITION BY canonical_id ORDER BY score DESC) AS rn
+                    FROM paper_topics
+                    {where}
+                ) pt USING(canonical_id)
+                WHERE pt.rn = 1
                 ORDER BY pt.score DESC,p.publication_date DESC LIMIT ?""",
-            params,
+            tuple(values),
         ).fetchall()
         result = []
         for row in rows:
@@ -181,6 +204,15 @@ class Database:
         item = dict(row)
         item["errors"] = json.loads(item.pop("errors_json"))
         return item
+
+    def paper_analysis(self, canonical_id: str, topic_id: str) -> dict | None:
+        row = self.connection.execute(
+            "SELECT analysis_json FROM paper_topics WHERE canonical_id=? AND topic_id=?",
+            (canonical_id, topic_id),
+        ).fetchone()
+        if not row:
+            return None
+        return json.loads(row["analysis_json"])
 
     def list_topics(self) -> list[dict[str, str]]:
         rows = self.connection.execute(

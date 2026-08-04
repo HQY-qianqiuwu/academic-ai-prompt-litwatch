@@ -19,6 +19,7 @@
         <a href="{{ snapshot.path }}">
           <strong>{{ snapshot.label }}</strong>
           <span>{{ snapshot.paper_count }} 篇论文</span>
+          {% if snapshot.analyzed_count is defined %}<small>结构化提炼 {{ snapshot.analyzed_count }} 篇 · {{ snapshot.topic_count }} 个主题 · 开放获取 {{ snapshot.open_access_count }} 篇</small>{% endif %}
           <small>生成于 {{ snapshot.generated_at[:19].replace('T', ' ') }} UTC</small>
         </a>
         {% else %}

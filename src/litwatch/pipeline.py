@@ -83,6 +83,11 @@ class Pipeline:
             deduplicated += len(unique)
             ranked = self._rank_topic(unique.values(), topic)
             for index, paper in enumerate(ranked[: self.settings.analyze_top_n]):
+                existing = self.database.paper_analysis(paper.canonical_id, topic.id)
+                if existing and existing.get("status") in {"ok", "extractive"} and existing.get("evidence_level") == "fulltext_excerpt":
+                    paper.analysis = existing
+                    analyzed += 1
+                    continue
                 fulltext = ""
                 if self.analyzer.enabled and index < self.settings.fulltext_top_n and paper.pdf_url:
                     try:

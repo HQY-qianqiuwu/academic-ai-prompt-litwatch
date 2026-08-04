@@ -16,6 +16,8 @@
 - 明确区分摘要分析和开放 PDF 全文节选分析
 - SQLite 历史记录、Web 仪表盘、HTML 邮件和 Zotero 导出
 - Codespaces 实时检索、GitHub Pages 每周快照与 Windows 定时任务
+- 每周可视化研究简报：主题分布、提炼覆盖率、开放获取率、研究类型与优先阅读线索
+- 每篇论文展示核心内容和文章主题阐述，周报也可导出为 JSON 继续分析
 
 ## 随时打开：Codespaces + GitHub Pages
 
@@ -97,18 +99,28 @@ topics:
     name: 水声通信
     query: underwater acoustic communication channel estimation Doppler OFDM sonar
     include: [underwater acoustic, sonar, hydrophone, channel estimation]
-    exclude: [medical ultrasound]
+    domain_anchors:
+      any: [underwater acoustic, hydrophone, sonar]
+    method_terms:
+      any: [channel estimation, OFDM, Doppler compensation, beamforming]
+    require_domain_anchor: true
+    exclude: [medical ultrasound, mmWave, RIS-assisted, satellite communication]
     categories: [eess.SP, eess.AS, cs.SD]
     analysis_mode: review_matrix
     min_score: 0.30
 ```
+
+`require_domain_anchor: true` 会先检查论文是否命中水声领域锚点，再计算 channel estimation、beamforming 等方法词相关性，避免仅因通用通信方法词而混入卫星、蜂窝或毫米波论文。旧主题不配置这些字段时继续使用原有排序行为。
 
 执行扫描：
 
 ```powershell
 uv run litwatch scan --days 14
 uv run litwatch scan --days 14 --email
+uv run litwatch weekly-report --output reports/latest-weekly-report.json
 ```
+
+网页中的“自动周报”只汇总最近一次扫描入选的论文，并明确区分 AI 深度分析、基础摘要抽取和暂无提炼。每周历史快照会保留当期的主题可视化与文章阐述，详细口径见 [`docs/WEEKLY_REPORT.md`](docs/WEEKLY_REPORT.md)。
 
 `.github/workflows/weekly.yml` 默认每周一北京时间 08:00 运行。Windows 本机可执行 `scripts/install-scheduled-task.ps1` 创建计划任务。
 

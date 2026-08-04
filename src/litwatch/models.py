@@ -26,7 +26,7 @@ class Paper(BaseModel):
     topic_id: str = ""
     topic_name: str = ""
     score: float = 0.0
-    score_detail: dict[str, float] = Field(default_factory=dict)
+    score_detail: dict[str, object] = Field(default_factory=dict)
     analysis: dict[str, object] = Field(default_factory=dict)
 
 

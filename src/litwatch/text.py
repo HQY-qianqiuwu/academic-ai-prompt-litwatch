@@ -14,7 +14,7 @@ def canonical_id(*, doi: str = "", arxiv_id: str = "", title: str) -> str:
     if doi:
         return "doi:" + doi.lower().removeprefix("https://doi.org/").strip()
     if arxiv_id:
-        return "arxiv:" + arxiv_id.lower().split("v")[0].strip()
+        return "arxiv:" + re.sub(r"v\d+$", "", arxiv_id.lower()).strip()
     digest = hashlib.sha256(normalize_title(title).encode("utf-8")).hexdigest()[:24]
     return "title:" + digest
 

@@ -81,6 +81,59 @@
       </section>
       {% endif %}
 
+      {% if latest_run %}
+      <section class="weekly-report" id="weekly-report">
+        <div class="weekly-report-heading">
+          <div>
+            <p class="eyebrow">Weekly research brief</p>
+            <h2>{{ weekly_report.period_label }}</h2>
+          </div>
+          <p>自动把本次入选论文聚合为主题分布、提炼覆盖率和优先阅读线索。所有阐述都来自已检索元数据、摘要或已保存的全文节选分析。</p>
+        </div>
+        <div class="weekly-kpis">
+          <article><span>本期入选</span><strong>{{ weekly_report.paper_count }}</strong><small>篇去重论文</small></article>
+          <article><span>完成提炼</span><strong>{{ weekly_report.analysis_rate }}%</strong><small>{{ weekly_report.analyzed_count }} 篇有结构化核心内容</small></article>
+          <article><span>开放获取</span><strong>{{ weekly_report.open_access_rate }}%</strong><small>{{ weekly_report.open_access_count }} 篇可访问全文</small></article>
+          <article><span>平均匹配度</span><strong>{{ weekly_report.average_score }}</strong><small>满分 100</small></article>
+        </div>
+        <div class="weekly-visual-grid">
+          <article class="weekly-panel">
+            <header><h3>主题分布</h3><span>{{ weekly_report.topics|length }} 个方向</span></header>
+            <div class="bar-list">
+              {% for topic in weekly_report.topics %}
+              <div class="bar-row">
+                <div><b>{{ topic.name }}</b><span>{{ topic.count }} 篇</span></div>
+                <div class="bar-track"><i style="width:{{ topic.share }}%"></i></div>
+              </div>
+              {% else %}<p class="muted">本期没有达到阈值的论文。</p>{% endfor %}
+            </div>
+          </article>
+          <article class="weekly-panel">
+            <header><h3>研究类型</h3><span>按结构化提炼归类</span></header>
+            <div class="type-cloud">
+              {% for item in weekly_report.paper_types %}
+              <div><strong>{{ item.count }}</strong><span>{{ item.label }}</span><small>{{ item.share }}%</small></div>
+              {% else %}<p class="muted">暂无可统计类型。</p>{% endfor %}
+            </div>
+          </article>
+        </div>
+        <div class="topic-brief-grid">
+          {% for topic in weekly_report.topics %}
+          <article class="topic-brief">
+            <header><div><span>{{ topic.count }} 篇 · 已提炼 {{ topic.analyzed_count }} 篇</span><h3>{{ topic.name }}</h3></div><b>{{ topic.average_score }}</b></header>
+            <p>{{ topic.explanation }}</p>
+            {% if topic.focus_terms %}<div class="focus-tags">{% for term in topic.focus_terms %}<span>{{ term }}</span>{% endfor %}</div>{% endif %}
+            <ol>
+              {% for paper in topic.highlights %}
+              <li><a href="{{ paper.url }}" target="_blank" rel="noreferrer">{{ paper.title }}</a><small>{{ paper.core_summary }}</small></li>
+              {% endfor %}
+            </ol>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
       <section class="filters">
         <a class="{{ 'active' if not active_topic }}" href="{{ home_path if static_mode else '/' }}">全部主题</a>
         {% for topic in topics %}
@@ -102,9 +155,9 @@
           <div class="meta"><span>{{ paper.topic_name }}</span><b>{{ '%.0f'|format(paper.score * 100) }}</b></div>
           <h2><a href="{{ paper.url }}" target="_blank" rel="noreferrer">{{ paper.title }}</a></h2>
           <p class="authors">{% for author in paper.authors[:5] %}{{ author.name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
-          {% if paper.analysis.one_liner %}<p class="summary">{{ paper.analysis.one_liner }}</p>
-          {% elif paper.abstract %}<p class="summary">{{ paper.abstract[:320] }}{% if paper.abstract|length > 320 %}…{% endif %}</p>
-          {% else %}<p class="summary muted">暂无摘要</p>{% endif %}
+          <p class="summary{% if not paper.core_summary %} muted{% endif %}">{{ paper.core_summary or '暂无摘要' }}</p>
+          <div class="theme-brief"><strong>文章主题阐述</strong><p>{{ paper.theme_statement }}</p></div>
+          {% if paper.score_detail.selection_reason %}<p class="selection-reason"><strong>入选理由</strong> {{ paper.score_detail.selection_reason }}</p>{% endif %}
           {% if paper.analysis.status in ['ok', 'extractive'] %}
           <details class="analysis">
             <summary>查看文献提炼 <span>{{ 'AI 深度分析' if paper.analysis.status == 'ok' else '基础摘要抽取' }}</span></summary>

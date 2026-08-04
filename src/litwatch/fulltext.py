@@ -33,13 +33,16 @@ class FullTextExtractor:
         if not data.startswith(b"%PDF"):
             raise ValueError("downloaded content is not a PDF")
         document = pymupdf.open(stream=data, filetype="pdf")
-        parts: list[str] = []
-        length = 0
-        for page in document:
-            text = page.get_text("text").strip()
-            if text:
-                parts.append(text)
-                length += len(text)
-            if length >= max_chars:
-                break
+        try:
+            parts: list[str] = []
+            length = 0
+            for page in document:
+                text = page.get_text("text").strip()
+                if text:
+                    parts.append(text)
+                    length += len(text)
+                if length >= max_chars:
+                    break
+        finally:
+            document.close()
         return "\n\n".join(parts)[:max_chars]
