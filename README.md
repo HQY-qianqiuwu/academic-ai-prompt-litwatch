@@ -22,7 +22,7 @@
 两种入口服务于不同场景：
 
 - [打开 LitWatch Codespace](https://codespaces.new/HQY-qianqiuwu/academic-ai-prompt-litwatch?quickstart=1)：可输入研究问题并立即检索、排序和提炼。容器创建后会自动安装项目，每次唤醒都会启动 8000 端口并打开网页。
-- [查看 LitWatch 每周快照](https://HQY-qianqiuwu.github.io/academic-ai-prompt-litwatch/)：无需启动服务即可浏览最近结果、历史快照并下载 BibTeX；静态页面不执行实时搜索。
+- [查看 LitWatch 每周快照](https://HQY-qianqiuwu.github.io/academic-ai-prompt-litwatch/)：无需启动服务即可浏览最近结果和历史快照，并可直接使用 OpenAlex 即时轻量检索、导出本次 BibTeX；多源去重与深度提炼仍使用 Codespaces 或本地动态站点。
 
 第一次创建 Codespace 时，建议从仓库的 **Code → Codespaces → New with options** 进入。页面会推荐填写以下可选密钥；全部留空也能使用 OpenAlex、arXiv 和基础抽取式提炼：
 
@@ -64,6 +64,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install-local.ps1
 
 - `LitWatch Web`：登录 Windows 后在后台启动本地网页；异常退出时自动重试。
 - `LitWatch Weekly Scan`：每周一 08:00 检索最近 14 天论文并更新数据库。
+
+每周任务日志保存在 `data/litwatch-weekly.log`，扫描中断或数据源异常时可直接查看原因。
 
 也可以双击项目根目录的 `打开 LitWatch.cmd` 随时启动并打开网页，双击 `停止 LitWatch.cmd` 停止服务。卸载自动任务：
 

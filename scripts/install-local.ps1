@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $LitWatchExe = Join-Path $ProjectRoot ".venv\Scripts\litwatch.exe"
 $StartScript = Join-Path $PSScriptRoot "start-local.ps1"
+$WeeklyScript = Join-Path $PSScriptRoot "run-weekly.ps1"
 
 if (-not (Test-Path -LiteralPath $LitWatchExe)) {
     throw "Missing $LitWatchExe. Create .venv and install LitWatch first."
@@ -33,8 +34,8 @@ Register-ScheduledTask `
     -Force | Out-Null
 
 $WeeklyAction = New-ScheduledTaskAction `
-    -Execute $LitWatchExe `
-    -Argument "scan --days 14" `
+    -Execute $PowerShellExe `
+    -Argument ('-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -Days 14' -f $WeeklyScript) `
     -WorkingDirectory $ProjectRoot
 $WeeklyTrigger = New-ScheduledTaskTrigger `
     -Weekly `

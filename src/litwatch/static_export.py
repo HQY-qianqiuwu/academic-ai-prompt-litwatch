@@ -45,6 +45,7 @@ def _render_page(
     bib_path: str,
     archive_path: str,
     snapshot_label: str,
+    live_search_js_path: str,
 ) -> str:
     return template.render(
         request=None,
@@ -60,6 +61,7 @@ def _render_page(
         bib_path=bib_path,
         archive_path=archive_path,
         snapshot_label=snapshot_label,
+        live_search_js_path=live_search_js_path,
         scan_state={"scanning": False, "last_error": ""},
     )
 
@@ -85,6 +87,7 @@ def export_static(output_dir: Path, settings: Settings | None = None) -> dict:
     archive_template = env.get_template("archive.html")
 
     shutil.copyfile(PACKAGE_DIR / "static" / "styles.css", output_dir / "styles.css")
+    shutil.copyfile(PACKAGE_DIR / "static" / "live-search.js", output_dir / "live-search.js")
     (output_dir / ".nojekyll").touch()
 
     latest_run = database.latest_run()
@@ -111,6 +114,7 @@ def export_static(output_dir: Path, settings: Settings | None = None) -> dict:
             bib_path="litwatch-all.bib",
             archive_path="archive/",
             snapshot_label=snapshot_label,
+            live_search_js_path="live-search.js",
         ),
         encoding="utf-8",
     )
@@ -140,6 +144,7 @@ def export_static(output_dir: Path, settings: Settings | None = None) -> dict:
                 bib_path=f"../../{bib_name}",
                 archive_path="../../archive/",
                 snapshot_label=snapshot_label,
+                live_search_js_path="../../live-search.js",
             ),
             encoding="utf-8",
         )
@@ -162,6 +167,7 @@ def export_static(output_dir: Path, settings: Settings | None = None) -> dict:
             bib_path="litwatch-all.bib",
             archive_path="../",
             snapshot_label=snapshot_label,
+            live_search_js_path="../../live-search.js",
         ),
         encoding="utf-8",
     )

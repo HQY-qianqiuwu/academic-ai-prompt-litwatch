@@ -47,6 +47,20 @@ def test_ranking_is_explainable_and_exclusions_win():
     assert excluded.score_detail == {"excluded": 1.0}
 
 
+def test_keyword_ranking_is_not_penalized_when_semantic_model_is_unavailable(monkeypatch):
+    monkeypatch.setattr("litwatch.ranking._semantic_relevance", lambda text, terms: None)
+    paper = Paper(
+        canonical_id="x",
+        title="Underwater acoustic channel estimation",
+        abstract="A method for underwater acoustic channel estimation.",
+        publication_date=date(2026, 7, 31),
+    )
+
+    ranked = score_paper(paper, topic(), today=date(2026, 7, 31))
+
+    assert ranked.score_detail["relevance"] == 1.0
+
+
 def test_merge_keeps_richer_metadata():
     first = Paper(canonical_id="x", title="A", sources=["arxiv"], abstract="short")
     second = Paper(

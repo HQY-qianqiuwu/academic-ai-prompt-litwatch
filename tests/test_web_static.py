@@ -58,10 +58,15 @@ def test_static_export_has_pages_safe_links_and_history(tmp_path):
     assert (output / "archive" / result["snapshot_id"] / "index.html").exists()
     assert (output / "archive" / "index.html").exists()
     assert (output / "litwatch-all.bib").exists()
+    assert (output / "live-search.js").exists()
+    root_html = (output / "index.html").read_text(encoding="utf-8")
+    assert "data-live-search-form" in root_html
+    assert 'src="live-search.js"' in root_html
     topic_html = (output / "topics" / "acoustics" / "index.html").read_text(encoding="utf-8")
     assert 'href="../../styles.css"' in topic_html
     assert 'href="../../litwatch-acoustics.bib"' in topic_html
     assert 'href="../../index.html"' in topic_html
+    assert 'src="../../live-search.js"' in topic_html
     assert 'action="/quick-search"' not in topic_html
 
     manifest = json.loads((output / "archive" / "snapshots.json").read_text(encoding="utf-8"))

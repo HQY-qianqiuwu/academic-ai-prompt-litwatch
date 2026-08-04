@@ -26,7 +26,9 @@ class ArxivSource:
         )
 
     def search(self, topic: Topic, start_date: date, end_date: date, limit: int) -> list[Paper]:
-        terms = [term for term in topic.include if len(term) > 2] or topic.query.split()[:8]
+        terms = ([term for term in topic.include if len(term) > 2] or [
+            t for t in re.findall(r"\w+", topic.query.casefold()) if len(t) > 2
+        ])[:8]
         term_query = " OR ".join(f'all:"{term}"' for term in terms)
         category_query = " OR ".join(f"cat:{cat}" for cat in topic.categories)
         query = f"({term_query})"

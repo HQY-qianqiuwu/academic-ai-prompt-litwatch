@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>LitWatch 文献雷达</title>
     <link rel="stylesheet" href="{% if static_mode %}{{ static_css_path }}{% else %}{{ url_for('static', path='/styles.css') }}{% endif %}">
+    {% if static_mode %}<script src="{{ live_search_js_path }}" defer></script>{% endif %}
   </head>
   <body>
     <header class="hero">
@@ -37,7 +38,29 @@
       {% elif not static_mode and scan_state.last_error %}
       <div class="scan-status error" role="alert"><strong>上一次后台扫描失败</strong><span>{{ scan_state.last_error }}</span></div>
       {% endif %}
-      {% if not static_mode %}
+      {% if static_mode %}
+      <section class="quick-search live-search" data-live-search>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Live OpenAlex search</p>
+            <h2>即时查找近期论文</h2>
+          </div>
+          <p>公开网页直接检索 OpenAlex，无需启动服务器。适合快速发现；多源去重、全文提炼和 AI 综述请进入 Codespaces。</p>
+        </div>
+        <form data-live-search-form>
+          <label class="wide">研究问题或英文关键词<textarea name="query" required minlength="3" maxlength="300" rows="3" placeholder="例如：underwater acoustic target recognition deep learning"></textarea></label>
+          <label>回溯天数<input name="days" type="number" min="1" max="3650" value="90"></label>
+          <label>结果数量<select name="limit"><option value="10">10 篇</option><option value="20" selected>20 篇</option><option value="40">40 篇</option></select></label>
+          <button type="submit">立即检索 OpenAlex</button>
+        </form>
+        <div class="live-search-state" data-live-search-state aria-live="polite">输入主题后即可在当前网页实时查询。</div>
+        <div class="live-search-actions" hidden data-live-search-actions>
+          <button type="button" data-live-bibtex>导出本次 BibTeX</button>
+          <a href="https://codespaces.new/HQY-qianqiuwu/academic-ai-prompt-litwatch?quickstart=1">需要深度提炼？进入 Codespaces →</a>
+        </div>
+        <div class="live-results" data-live-results></div>
+      </section>
+      {% else %}
       <section class="quick-search">
         <div class="section-heading">
           <div>
