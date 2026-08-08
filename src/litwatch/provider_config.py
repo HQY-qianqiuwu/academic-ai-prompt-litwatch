@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from threading import RLock
 
 from pydantic import AnyHttpUrl, BaseModel, Field, JsonValue, field_validator, model_validator
 
@@ -94,3 +95,32 @@ def default_provider_profile(*, openalex_base_url: str) -> ProviderProfile:
             )
         ]
     )
+
+
+class ProviderProfileStore:
+    """Thread-safe, process-local storage for non-secret provider profiles."""
+
+    def __init__(self, profiles: list[ProviderProfile]) -> None:
+        if not profiles:
+            raise ValueError("at least one provider profile is required")
+        self._lock = RLock()
+        self._profiles: dict[str, ProviderProfile] = {}
+        for profile in profiles:
+            self.upsert(profile)
+
+    def list(self) -> list[ProviderProfile]:
+        with self._lock:
+            return [profile.model_copy(deep=True) for profile in self._profiles.values()]
+
+    def get(self, profile_id: str) -> ProviderProfile:
+        with self._lock:
+            try:
+                return self._profiles[profile_id].model_copy(deep=True)
+            except KeyError:
+                raise KeyError(profile_id) from None
+
+    def upsert(self, profile: ProviderProfile) -> ProviderProfile:
+        safe_copy = profile.model_copy(deep=True)
+        with self._lock:
+            self._profiles[profile.profile_id] = safe_copy
+        return safe_copy.model_copy(deep=True)
