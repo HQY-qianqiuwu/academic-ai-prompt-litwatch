@@ -38,7 +38,7 @@ dify/workflows/literature-search-v1.0.yml
 
 ## Dify v1.1
 
-Status: Release Candidate — automated validation complete; authenticated Dify runtime test pending.
+Status: Stable
 
 Features:
 
@@ -49,9 +49,13 @@ Features:
 - Offline API contract test coverage
 - Docker Desktop access through `host.docker.internal:8000`
 
-Candidate DSL:
+Stable DSL:
 
 dify/workflows/literature-search-v1.1.yml
+
+Stable tag:
+
+dify-v1.1
 
 Validation record:
 

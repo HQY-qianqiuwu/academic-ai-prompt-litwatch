@@ -2,8 +2,7 @@
 
 Test date: 2026-08-08
 
-Status: Release candidate — automated host and Docker checks passed; authenticated Dify
-workflow import and runtime execution remain a manual gate.
+Status: Stable — automated checks and authenticated Dify workflow runtime validation passed.
 
 ## Architecture Under Test
 
@@ -59,18 +58,30 @@ worker container must be running.
 
 ## Dify Runtime Status
 
-Status: MANUAL GATE.
+Status: PASS.
 
-The local Dify Console API is healthy, but app management requires an authenticated session.
-The available automated browser session was not authenticated, and no connected authenticated
-Chrome session was available. No authentication bypass and no Dify database modification were
-attempted.
+Dify DSL import: PASS.
 
-Required manual validation:
+LitWatch API runtime: PASS.
 
-1. Sign in to the local Dify console.
-2. Import `dify/workflows/literature-search-v1.1.yml` as a new workflow.
-3. Run it with `underwater acoustic TDOA localization`.
-4. Confirm `paper_count` is positive and `papers_json` contains real OpenAlex metadata.
+Docker to `host.docker.internal:8000`: PASS.
 
-Do not create the final `dify-v1.1` stable tag until that runtime validation passes.
+Workflow runtime: PASS.
+
+Validated topics:
+
+1. `underwater acoustic TDOA localization`
+   - Returned real, relevant provider-backed papers.
+2. `underwater acoustic communication OFDM`
+   - Dynamic topic test passed and returned a different set of real, relevant papers.
+
+Final release evidence:
+
+- Host API: PASS
+- Docker network: PASS
+- Dify DSL import: PASS
+- Dify workflow runtime: PASS
+- Dynamic topic behavior: PASS
+- `python -m pytest -q`: 37 passed
+- `ruff check src tests`: PASS
+- v1.0 stable DSL: unchanged
