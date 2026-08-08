@@ -8,8 +8,19 @@ import pytest
 
 from litwatch.config import Topic
 from litwatch.models import Paper
+from litwatch.provider_config import (
+    ProviderConfig,
+    ProviderProfile,
+    ProviderProfileStore,
+    ProviderType,
+)
 from litwatch.services import LiteratureSearchService
 from litwatch.services import literature_search as literature_search_module
+from litwatch.sources.registry import (
+    InMemoryCredentialStore,
+    ProviderDisabledError,
+    ProviderRegistry,
+)
 
 
 class FakeSource:
@@ -126,3 +137,51 @@ def test_service_has_no_forbidden_framework_or_pipeline_imports():
         "litwatch.zotero",
     }
     assert imports.isdisjoint(forbidden)
+
+
+def registry_service(source: FakeSource, *, enabled: bool = True) -> LiteratureSearchService:
+    config = ProviderConfig(
+        provider_id="openalex",
+        provider_type=ProviderType.OPENALEX,
+        enabled=enabled,
+        base_url="https://api.openalex.org/works",
+    )
+    profile_store = ProviderProfileStore([ProviderProfile(providers=[config])])
+    registry = ProviderRegistry(
+        factories={ProviderType.OPENALEX: lambda _config, _credential: source},
+        credential_store=InMemoryCredentialStore(),
+    )
+    return LiteratureSearchService(
+        registry=registry,
+        profile_store=profile_store,
+        current_date=lambda: date(2026, 8, 8),
+    )
+
+
+def test_registry_backed_service_preserves_v1_1_default_provider_behavior():
+    source = FakeSource([paper("one")])
+
+    result = registry_service(source).search(topic="underwater acoustics", limit=10)
+
+    assert result.paper_count == 1
+    assert len(source.calls) == 1
+
+
+def test_registry_backed_service_supports_explicit_provider_selection():
+    source = FakeSource([paper("one")])
+
+    result = registry_service(source).search(
+        topic="underwater acoustics", limit=10, providers=["openalex"]
+    )
+
+    assert result.paper_count == 1
+    assert len(source.calls) == 1
+
+
+def test_registry_backed_service_rejects_disabled_explicit_provider():
+    service = registry_service(FakeSource(), enabled=False)
+
+    with pytest.raises(ProviderDisabledError, match="disabled"):
+        service.search(
+            topic="underwater acoustics", limit=10, providers=["openalex"]
+        )
