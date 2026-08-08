@@ -7,16 +7,30 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 
-from litwatch.api_models import LiteratureSearchRequest, LiteratureSearchResponse
+from litwatch.api_models import (
+    LiteratureSearchRequest,
+    LiteratureSearchResponse,
+    ProviderCapabilityResponse,
+    ProviderProfileResponse,
+    ProviderProfileWrite,
+)
 from litwatch.config import Settings, Topic
 from litwatch.db import Database
 from litwatch.export import rows_to_bibtex
 from litwatch.pipeline import Pipeline
+from litwatch.provider_config import ProviderProfileStore, default_provider_profile
 from litwatch.services import LiteratureSearchService
+from litwatch.sources.registry import (
+    InMemoryCredentialStore,
+    ProviderRegistry,
+    ProviderRegistryError,
+)
 from litwatch.weekly_report import apply_current_topic_rules, build_weekly_report, enrich_papers
 
 PACKAGE_DIR = Path(__file__).parent
@@ -25,11 +39,24 @@ PACKAGE_DIR = Path(__file__).parent
 def create_app(
     settings: Settings | None = None,
     literature_search_service: LiteratureSearchService | None = None,
+    provider_registry: ProviderRegistry | None = None,
+    provider_profile_store: ProviderProfileStore | None = None,
+    credential_store: InMemoryCredentialStore | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_runtime_files()
     database = Database(settings.database_path)
-    search_service = literature_search_service or LiteratureSearchService.from_settings(settings)
+    credential_store = credential_store or InMemoryCredentialStore.from_settings(settings)
+    provider_registry = provider_registry or ProviderRegistry.from_settings(
+        settings, credential_store=credential_store
+    )
+    provider_profile_store = provider_profile_store or ProviderProfileStore(
+        [default_provider_profile(openalex_base_url=settings.openalex_base_url)]
+    )
+    search_service = literature_search_service or LiteratureSearchService(
+        registry=provider_registry,
+        profile_store=provider_profile_store,
+    )
     scan_lock = threading.Lock()
     state_lock = threading.Lock()
     scan_state: dict[str, object] = {"scanning": False, "last_error": ""}
@@ -43,9 +70,25 @@ def create_app(
     app.state.settings = settings
     app.state.database = database
     app.state.literature_search_service = search_service
+    app.state.provider_registry = provider_registry
+    app.state.provider_profile_store = provider_profile_store
+    app.state.credential_store = credential_store
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
+
+    @app.exception_handler(RequestValidationError)
+    async def safe_validation_error(_: Request, error: RequestValidationError):
+        """Return useful validation metadata without echoing credential-bearing input."""
+        safe_errors = [
+            {
+                key: value
+                for key, value in item.items()
+                if key in {"loc", "msg", "type"}
+            }
+            for item in error.errors()
+        ]
+        return JSONResponse(status_code=422, content={"detail": safe_errors})
 
     def state_snapshot() -> dict[str, object]:
         with state_lock:
@@ -166,13 +209,64 @@ def create_app(
     def literature_search(payload: LiteratureSearchRequest) -> LiteratureSearchResponse:
         """Search literature through the provider-independent service boundary."""
         try:
-            result = search_service.search(topic=payload.topic, limit=payload.limit)
+            search_arguments: dict[str, object] = {
+                "topic": payload.topic,
+                "limit": payload.limit,
+            }
+            if payload.providers is not None:
+                search_arguments["providers"] = payload.providers
+            result = search_service.search(**search_arguments)
+        except ProviderRegistryError:
+            raise HTTPException(
+                status_code=422, detail="Invalid provider selection or configuration"
+            ) from None
         except httpx.TimeoutException:
             raise HTTPException(status_code=504, detail="OpenAlex request timed out") from None
         except (httpx.HTTPError, AttributeError, KeyError, TypeError, ValueError):
             raise HTTPException(status_code=502, detail="OpenAlex upstream request failed") from None
 
         return LiteratureSearchResponse.from_result(result)
+
+    @app.get("/api/v1/providers", response_model=list[ProviderCapabilityResponse])
+    def providers() -> list[ProviderCapabilityResponse]:
+        """List declared capabilities and clearly identify runnable adapters."""
+        return [
+            ProviderCapabilityResponse.from_capability(capability)
+            for capability in provider_registry.capabilities()
+        ]
+
+    @app.get("/api/v1/provider-profiles", response_model=list[ProviderProfileResponse])
+    def provider_profiles() -> list[ProviderProfileResponse]:
+        """List non-secret provider profiles and credential readiness only."""
+        return [
+            ProviderProfileResponse.from_profile(profile, credential_store)
+            for profile in provider_profile_store.list()
+        ]
+
+    @app.post("/api/v1/provider-profiles", response_model=ProviderProfileResponse)
+    def upsert_provider_profile(payload: ProviderProfileWrite) -> ProviderProfileResponse:
+        """Upsert a profile and retain supplied credentials only in process memory."""
+        try:
+            profile = payload.to_profile()
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="Invalid provider profile") from None
+
+        credential_updates: list[tuple[str, str]] = []
+        for provider in payload.providers:
+            if provider.api_key is None:
+                continue
+            if not provider.requires_api_key or not provider.credential_reference:
+                raise HTTPException(
+                    status_code=422,
+                    detail="API key requires requires_api_key and credential_reference",
+                )
+            credential_updates.append(
+                (provider.credential_reference, provider.api_key.get_secret_value())
+            )
+        for reference, secret in credential_updates:
+            credential_store.set(reference, secret)
+        stored_profile = provider_profile_store.upsert(profile)
+        return ProviderProfileResponse.from_profile(stored_profile, credential_store)
 
     return app
 
