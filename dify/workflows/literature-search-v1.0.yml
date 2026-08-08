@@ -1,0 +1,221 @@
+app:
+  description: 根据用户输入的研究主题自动检索真实学术文献，完成文献去重、相关性筛选和优先级排序，将高质量文献及其 DOI、作者、期刊、摘要和原文链接同步至
+    Zotero，并进一步结合摘要或全文进行结构化精读，提炼研究问题、研究方法、实验设计、核心结果、创新点与局限性，最终支持多篇文献对比、研究现状梳理和 Research
+    Gap 分析。
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: AI 学术文献检索与精读助手v1.0
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.7.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload: {}
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: http-request
+      id: 1786118013273-source-1786118252241-target
+      source: '1786118013273'
+      sourceHandle: source
+      target: '1786118252241'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1786118252241-source-1786118260178-target
+      source: '1786118252241'
+      sourceHandle: source
+      target: '1786118260178'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: end
+      id: 1786118260178-source-1786118098958-target
+      source: '1786118260178'
+      sourceHandle: source
+      target: '1786118098958'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 用户输入
+        type: start
+        variables:
+        - default: ''
+          hint: ''
+          label: 研究主题
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: topic
+      height: 109
+      id: '1786118013273'
+      position:
+        x: 80
+        y: 281
+      positionAbsolute:
+        x: 80
+        y: 281
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        outputs:
+        - value_selector:
+          - '1786118260178'
+          - paper_count
+          value_type: number
+          variable: paper_count
+        - value_selector:
+          - '1786118260178'
+          - papers_json
+          value_type: string
+          variable: papers_json
+        selected: false
+        title: 输出
+        type: end
+      height: 114
+      id: '1786118098958'
+      position:
+        x: 983
+        y: 297
+      positionAbsolute:
+        x: 983
+        y: 297
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: ''
+        method: get
+        params: 'search:{{#1786118013273.topic#}}
+
+          per-page:10'
+        retry_config:
+          max_retries: 5
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP 请求
+        type: http-request
+        url: https://api.openalex.org/works
+        variables: []
+      height: 122
+      id: '1786118252241'
+      position:
+        x: 382
+        y: 282
+      positionAbsolute:
+        x: 382
+        y: 282
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import json\n\n\ndef rebuild_abstract(inverted_index):\n    if not\
+          \ isinstance(inverted_index, dict):\n        return \"\"\n\n    words =\
+          \ []\n\n    for word, positions in inverted_index.items():\n        if not\
+          \ isinstance(positions, list):\n            continue\n\n        for position\
+          \ in positions:\n            if isinstance(position, int):\n           \
+          \     words.append((position, word))\n\n    words.sort(key=lambda x: x[0])\n\
+          \n    return \" \".join(word for _, word in words)\n\n\ndef main(body: str):\n\
+          \    data = json.loads(body)\n\n    results = data.get(\"results\", [])\n\
+          \n    papers = []\n\n    for paper in results[:10]:\n        authors = []\n\
+          \n        for authorship in paper.get(\"authorships\", []) or []:\n    \
+          \        author = authorship.get(\"author\") or {}\n            name = author.get(\"\
+          display_name\")\n\n            if name:\n                authors.append(name)\n\
+          \n        location = paper.get(\"primary_location\") or {}\n        source\
+          \ = location.get(\"source\") or {}\n\n        doi = paper.get(\"doi\")\n\
+          \n        if doi and doi.startswith(\"https://doi.org/\"):\n           \
+          \ doi = doi.replace(\"https://doi.org/\", \"\", 1)\n\n        url = location.get(\"\
+          landing_page_url\")\n\n        if not url and doi:\n            url = f\"\
+          https://doi.org/{doi}\"\n\n        abstract = rebuild_abstract(\n      \
+          \      paper.get(\"abstract_inverted_index\")\n        )\n\n        papers.append({\n\
+          \            \"title\": paper.get(\"title\"),\n            \"authors\":\
+          \ authors,\n            \"year\": paper.get(\"publication_year\"),\n   \
+          \         \"venue\": source.get(\"display_name\"),\n            \"doi\"\
+          : doi,\n            \"url\": url,\n            \"abstract\": abstract,\n\
+          \            \"source\": \"openalex\"\n        })\n\n    return {\n    \
+          \    \"paper_count\": len(papers),\n        \"papers_json\": json.dumps(\n\
+          \            papers,\n            ensure_ascii=False,\n            indent=2\n\
+          \        )\n    }"
+        code_language: python3
+        outputs:
+          paper_count:
+            children: null
+            type: number
+          papers_json:
+            children: null
+            type: string
+        selected: false
+        title: 代码执行
+        type: code
+        variables:
+        - value_selector:
+          - '1786118252241'
+          - body
+          value_type: string
+          variable: body
+      height: 52
+      id: '1786118260178'
+      position:
+        x: 684
+        y: 282
+      positionAbsolute:
+        x: 684
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    viewport:
+      x: -181
+      y: 83
+      zoom: 1
+  rag_pipeline_variables: []
