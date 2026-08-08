@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     )
 
     openalex_email: str = ""
+    openalex_base_url: str = "https://api.openalex.org/works"
     semantic_scholar_api_key: str = ""
     semantic_scholar_anonymous: bool = False
     llm_api_key: str = ""
