@@ -13,8 +13,15 @@ class OpenAlexSource:
     name = "openalex"
     endpoint = "https://api.openalex.org/works"
 
-    def __init__(self, *, email: str = "", timeout: float = 30) -> None:
+    def __init__(
+        self,
+        *,
+        email: str = "",
+        timeout: float = 30,
+        base_url: str | None = None,
+    ) -> None:
         self.email = email
+        self.endpoint = base_url or self.endpoint
         self.client = httpx.Client(
             timeout=timeout,
             follow_redirects=True,
