@@ -10,6 +10,16 @@ OpenAlex 单源文献检索
 
 LitWatch 统一检索 API
 
+状态：Release Candidate
+
+- FastAPI endpoint：完成
+- 离线 API contract tests：完成
+- LitWatch-backed Dify DSL：完成
+- Windows Host 调用：通过
+- Dify Docker → LitWatch 调用：通过
+- Dify 已认证导入和实际运行：待人工验证
+- Stable tag：暂不创建
+
 ## v1.2
 
 OpenAlex + Semantic Scholar + arXiv + Crossref 多源检索

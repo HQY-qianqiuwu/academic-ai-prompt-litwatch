@@ -35,3 +35,24 @@ Not included yet:
 Stable DSL:
 
 dify/workflows/literature-search-v1.0.yml
+
+## Dify v1.1
+
+Status: Release Candidate — automated validation complete; authenticated Dify runtime test pending.
+
+Features:
+
+- Unified `POST /api/v1/literature/search` endpoint
+- Dify → LitWatch → OpenAlex architecture
+- Provider-backed normalized Paper response
+- Explicit 422, 502, and 504 error boundaries
+- Offline API contract test coverage
+- Docker Desktop access through `host.docker.internal:8000`
+
+Candidate DSL:
+
+dify/workflows/literature-search-v1.1.yml
+
+Validation record:
+
+docs/V1_1_E2E_RESULTS.md
