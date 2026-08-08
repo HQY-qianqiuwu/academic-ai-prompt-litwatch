@@ -5,24 +5,31 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request
+import httpx
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from litwatch.api_models import LiteratureSearchRequest, LiteratureSearchResponse
 from litwatch.config import Settings, Topic
 from litwatch.db import Database
 from litwatch.export import rows_to_bibtex
 from litwatch.pipeline import Pipeline
+from litwatch.services import LiteratureSearchService
 from litwatch.weekly_report import apply_current_topic_rules, build_weekly_report, enrich_papers
 
 PACKAGE_DIR = Path(__file__).parent
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    literature_search_service: LiteratureSearchService | None = None,
+) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_runtime_files()
     database = Database(settings.database_path)
+    search_service = literature_search_service or LiteratureSearchService.from_settings(settings)
     scan_lock = threading.Lock()
     state_lock = threading.Lock()
     scan_state: dict[str, object] = {"scanning": False, "last_error": ""}
@@ -35,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="LitWatch", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.database = database
+    app.state.literature_search_service = search_service
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
@@ -146,6 +154,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "latest_run": database.latest_run(),
             **state_snapshot(),
         }
+
+    @app.post(
+        "/api/v1/literature/search",
+        response_model=LiteratureSearchResponse,
+        responses={
+            502: {"description": "OpenAlex upstream HTTP or parse error"},
+            504: {"description": "OpenAlex upstream timeout"},
+        },
+    )
+    def literature_search(payload: LiteratureSearchRequest) -> LiteratureSearchResponse:
+        """Search literature through the provider-independent service boundary."""
+        try:
+            result = search_service.search(topic=payload.topic, limit=payload.limit)
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="OpenAlex request timed out") from None
+        except (httpx.HTTPError, AttributeError, KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=502, detail="OpenAlex upstream request failed") from None
+
+        return LiteratureSearchResponse.from_result(result)
 
     return app
 
