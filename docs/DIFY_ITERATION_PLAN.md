@@ -24,7 +24,21 @@ LitWatch 统一检索 API
 
 ## v1.2
 
-OpenAlex + Semantic Scholar + arXiv + Crossref 多源检索
+Provider Configuration Layer
+
+状态：实现完成，本地 E2E 待验证
+
+- 保持 v1.1 `topic + limit` 请求兼容
+- 搜索请求可选 `providers`
+- Provider Profile + Credential Reference
+- OpenAlex 作为唯一可运行 Provider
+- Semantic Scholar、arXiv、Crossref、IEEE Xplore、Scopus 和 Web of Science 仅注册能力
+- API Key 不进入 Git、YAML、SQLite、Dify DSL 或 API 响应
+- 未创建 v1.2 DSL，未创建 Stable tag
+
+## v1.2.x
+
+逐个实现并验证 Semantic Scholar、arXiv、Crossref 等 Provider Adapter
 
 ## v1.3
 
