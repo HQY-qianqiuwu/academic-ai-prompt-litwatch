@@ -1,14 +1,14 @@
 # Stack v1.6 Research Subscriptions and Weekly Recommendations
 
-Status: **Design baseline**
+Status: **Release Candidate**
 
 Base tag: `dify-v1.5`
 
 Base commit: `9539c56df31c1af34cfe5bb7f0ce5afb921719bb`
 
-This document freezes the Stack v1.6 architecture before implementation. It
-does not claim that subscriptions, scheduling, historical recommendations, or
-weekly delivery are implemented.
+This document records the approved Stack v1.6 architecture and its implemented
+Release Candidate. Stable promotion still requires final human acceptance; no
+`dify-v1.6` tag exists at this stage.
 
 ## Scope
 
@@ -588,6 +588,31 @@ embedded in HTML/DSL, or written to logs.
 - update release evidence without claiming unverified outcomes;
 - push the RC branch for manual acceptance; and
 - create no Stable tag until final human E2E approval.
+
+## Release Candidate implementation status
+
+Stages 0 through 10 are complete on
+`feat/v1.6-weekly-recommendations` as independent checkpoints:
+
+- subscription persistence and per-subscription historical paper tracking;
+- a `SubscriptionRunService` that reuses `LiteratureSearchService`, preserves
+  existing ranking order, records provider-safe status, and persists
+  idempotent runs and recommendations;
+- weekly IANA-timezone scheduling, one-occurrence catch-up, active-run leases,
+  stale-run recovery, and bounded FastAPI background lifecycle;
+- subscription create/edit/disable/detail/Run Now Web UI in the existing
+  FastAPI/Jinja2/vanilla JavaScript application;
+- immutable, idempotent Dashboard deliveries and historical Weekly Digests;
+- real TDOA, OFDM, partial-provider-failure, second-run suppression, and
+  restart-persistence E2E evidence; and
+- regression protection for Manual Search, Provider Settings, Dify, BYOK,
+  SSRF, and the stable v1.0/v1.1 DSL files.
+
+The Release Candidate gate has 239 passing tests, Ruff PASS, and
+`git diff --check` PASS. Dashboard delivery is complete. Optional email
+delivery remains deferred because a safe product implementation requires
+write-only SMTP configuration and isolated retry/error handling. Manual
+product acceptance is still required before Stable finalization.
 
 ## Test strategy
 

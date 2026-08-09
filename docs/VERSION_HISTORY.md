@@ -286,3 +286,39 @@ Validation state:
 Design record: `docs/V1_5_WEB_UI.md`
 
 Validation record: `docs/V1_5_E2E_RESULTS.md`
+
+## Stack v1.6
+
+Status: **Release Candidate**
+
+Capability:
+
+- saved weekly research subscriptions with provider, limit, weekday, local
+  time, IANA timezone, and enabled-state configuration;
+- `SubscriptionRunService` reuse of `LiteratureSearchService`, existing
+  search-time deduplication, and backend ranking;
+- per-subscription historical novelty and repeat-recommendation suppression;
+- persisted run history, recommendations, and idempotent Dashboard deliveries;
+- weekly scheduler with UTC storage, catch-up exactly once, concurrency lease,
+  stale-run recovery, and clean FastAPI lifecycle;
+- responsive Subscription and Weekly Digest pages alongside Manual Search and
+  Provider Settings; and
+- safe partial-provider failure handling and restart persistence.
+
+Validation state:
+
+- 239 tests passed; Ruff and `git diff --check`: pass;
+- real TDOA and OFDM subscriptions: pass with distinct recommendations;
+- immediate second-run duplicate suppression: pass;
+- partial Semantic Scholar HTTP 429 isolation with useful digest: pass;
+- subscription, history, recommendation, and digest restart persistence: pass;
+- Manual Search, Provider Settings, Dify, BYOK, SSRF, and lifecycle regression:
+  pass;
+- Stable v1.0 and v1.1 DSL protection: pass;
+- Dashboard delivery: complete;
+- Email delivery: deferred; and
+- Stable tag: **not created pending manual acceptance**.
+
+Architecture record: `docs/V1_6_WEEKLY_RECOMMENDATIONS.md`
+
+Validation record: `docs/V1_6_E2E_RESULTS.md`

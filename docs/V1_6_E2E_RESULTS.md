@@ -1,6 +1,6 @@
 # Stack v1.6 E2E Results
 
-Status: PASS for Release Candidate preparation (manual product acceptance still required).
+Status: **RELEASE CANDIDATE** (automated and real E2E gates passed; manual product acceptance still required).
 
 Date: 2026-08-09
 Branch: `feat/v1.6-weekly-recommendations`
@@ -77,5 +77,9 @@ by that environment repair.
 - v1.0 DSL: unchanged; and
 - v1.1 DSL: unchanged.
 
-No `dify-v1.6` tag was created. Manual browser acceptance remains required
-before Stable finalization.
+## Release Candidate decision
+
+Stages 4 through 10 passed their independent implementation and validation
+gates. Dashboard delivery is complete; optional email delivery is deferred.
+Stack v1.6 is a Release Candidate, not Stable. No `dify-v1.6` tag was created.
+Manual browser acceptance remains required before Stable finalization.

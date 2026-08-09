@@ -12,17 +12,21 @@
 - Stack: v1.6 - Research Subscriptions and Weekly Recommendations
 - Branch: `feat/v1.6-weekly-recommendations`
 - Base: `dify-v1.5`
-- State: Stage 3 complete; not Release Candidate or Stable.
-- Stage 3 implementation HEAD: this Stage 3 checkpoint commit,
-  `feat(recommendations): add historical paper tracking`.
-- Stage 3 scope: additive global paper history, per-subscription novelty,
-  metadata enrichment, and recommendation-state persistence foundation.
-- Validation: 216 tests passed; Ruff and `git diff --check` passed; v1.0/v1.1
-  DSL files unchanged.
-- Deferred: run engine, scheduling, catch-up, recommendations, deliveries,
-  Weekly Digest, and email.
-- Next action: review Stage 3, then begin Stage 4 Subscription Run Engine.
+- State: Release Candidate; not Stable and no `dify-v1.6` tag exists.
+- RC scope: subscription persistence, per-subscription novelty, unified run
+  engine, ranking-preserving recommendations, weekly scheduling, catch-up,
+  concurrency leases, stale recovery, responsive Subscription UI, and
+  idempotent Dashboard Weekly Digests.
+- Validation: 239 tests passed; Ruff and `git diff --check` passed; real TDOA,
+  OFDM, repeat-run suppression, partial failure, restart persistence, Manual
+  Search, Provider Settings, Dify, and lifecycle checks passed.
+- Stable DSL protection: v1.0 and v1.1 files unchanged.
+- Deferred: optional email delivery.
+- Next action: perform manual v1.6 acceptance. Only after it passes may release
+  documentation be promoted to Stable and an annotated `dify-v1.6` tag be
+  created.
 - Architecture: `docs/V1_6_WEEKLY_RECOMMENDATIONS.md`
+- E2E evidence: `docs/V1_6_E2E_RESULTS.md`
 
 Do not modify historical Stable tags or the v1.0/v1.1 Workflow DSL files.
-Do not begin Stage 4 without explicit approval.
+Do not create or move `dify-v1.6` before explicit manual acceptance.

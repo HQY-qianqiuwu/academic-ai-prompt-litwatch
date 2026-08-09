@@ -244,28 +244,49 @@ Manual UI acceptance passed for TDOA search, paper cards, ranking display,
 source merging, partial-failure UX, and Provider Settings. Stable tag:
 `dify-v1.5`.
 
-## Stack v1.6 — Zotero Integration
+## Stack v1.6 — Research Subscriptions and Weekly Recommendations
+
+Status: **Release Candidate**
+
+Implemented on `feat/v1.6-weekly-recommendations`:
+
+- persistent weekly subscriptions and per-subscription paper history;
+- a unified run engine that reuses `LiteratureSearchService`, deduplication,
+  ranking, and safe partial-failure behavior;
+- idempotent run history, recommendation selection, and Dashboard delivery;
+- IANA-timezone scheduling, one-occurrence catch-up, concurrency protection,
+  stale-run recovery, and restart persistence;
+- Subscriptions and Weekly Digest pages in the existing Web UI; and
+- preserved Manual Search, Provider Settings, BYOK, SSRF, Dify integration,
+  and stable v1.0/v1.1 DSL files.
+
+Real TDOA, OFDM, repeat-run suppression, partial-provider-failure, and restart
+E2E passed. The automated gate reached 239 passing tests. Dashboard delivery is
+complete; optional email delivery is deferred. Manual acceptance is required
+before a Stable tag may be created.
+
+## Stack v1.7 — Zotero Integration
 
 Support collection routing, tags, notes, Library ID, collection mapping, and
 secure Zotero credentials through the configuration layer.
 
-## Stack v1.7 — LLM Abstract Analysis
+## Stack v1.8 — LLM Abstract Analysis
 
 Extract research question, method, dataset/experiment, results, innovation,
 limitations, and keywords. Every analysis must declare `metadata_only` or
 `abstract` evidence scope and must not claim full-text evidence.
 
-## Stack v1.8 — PDF and Full-Text Analysis
+## Stack v1.9 — PDF and Full-Text Analysis
 
 Add PDF retrieval, parsing, section extraction, and `fulltext_excerpt` /
 `fulltext` evidence scopes.
 
-## Stack v1.9 — Cross-Paper Synthesis
+## Stack v2.0 — Cross-Paper Synthesis
 
 Add method comparison, research landscape, representative work, shared
 limitations, research gaps, and future directions with paper-level evidence.
 
-## Stack v2.0 — Sustainable Personal Research System
+## Future — Sustainable Personal Research System
 
 ```text
 Research Topic

@@ -24,18 +24,19 @@ solely to make version numbers align.
 | v1.3 | Stable | Multi-source retrieval, deterministic aggregation, failure isolation, secure Provider BYOK; duplicates intentionally preserved | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.3` |
 | v1.4 | Stable | Deterministic deduplication, metadata merge, relevance/quality ranking, additive diagnostics | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.4` |
 | v1.5 | Stable | Local research Web UI, diagnostics, Provider Settings, secret-safe BYOK UX | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.5` |
+| v1.6 | Release Candidate | Research subscriptions, historical novelty, weekly scheduling, Dashboard recommendations and digests | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | Not created |
 
 ## Provider Capability Matrix
 
-| Provider | Stack v1.2 | Stack v1.3 | Stack v1.4 | Stack v1.5 RC |
-|---|---|---|---|---|
-| OpenAlex | Runnable | Runnable | Runnable | Runnable and selectable in UI |
-| Semantic Scholar | Declared, non-runnable | Runnable | Runnable | Runnable, optional BYOK |
-| arXiv | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI |
-| Crossref | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI |
-| IEEE Xplore | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later |
-| Scopus | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later |
-| Web of Science | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later |
+| Provider | Stack v1.2 | Stack v1.3 | Stack v1.4 | Stack v1.5 | Stack v1.6 RC |
+|---|---|---|---|---|---|
+| OpenAlex | Runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions |
+| Semantic Scholar | Declared, non-runnable | Runnable | Runnable | Runnable, optional BYOK | Runnable; anonymous 429 isolated |
+| arXiv | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions |
+| Crossref | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions |
+| IEEE Xplore | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later | Disabled, Coming later |
+| Scopus | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later | Disabled, Coming later |
+| Web of Science | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later | Disabled, Coming later |
 
 ## Workflow Upgrade Policy
 
@@ -66,6 +67,11 @@ additive top-level fields. No `literature-search-v1.4.yml` is created.
 Stack v1.5 also reuses v1.1. The Web UI is an additional local entry point to
 the same LitWatch API and does not change Dify's request or response contract.
 No `literature-search-v1.5.yml` is created.
+
+Stack v1.6 also reuses v1.1. Subscriptions, scheduling, historical novelty,
+recommendations, and Dashboard digests are LitWatch Web capabilities and do
+not change the Dify search contract. No `literature-search-v1.6.yml` is
+created.
 
 ## Stack v1.2 Release Evidence
 
@@ -128,6 +134,21 @@ viewport. Stable v1.0 and v1.1 DSL files remain unchanged. See
 `docs/V1_5_E2E_RESULTS.md`. Manual acceptance passed for TDOA search, paper
 cards, ranking display, source merging, partial-failure UX, and Provider
 Settings. Stack v1.5 is Stable at `dify-v1.5`.
+
+## Stack v1.6 Release Candidate Evidence
+
+The Release Candidate adds persistent research subscriptions, a unified run
+engine, per-subscription historical novelty, weekly scheduling, catch-up,
+concurrency leases, stale recovery, and idempotent Dashboard digests. Real
+TDOA and OFDM runs returned distinct recommendations. An immediate repeat run
+recommended no previously seen papers, and a Semantic Scholar anonymous 429
+was isolated as a partial success while other Providers produced a digest.
+
+Restart persistence, Manual Search, Provider Settings, Dify, BYOK, SSRF, and
+lifecycle checks passed. The gate reached 239 passing tests with Ruff and diff
+checks passing. Email delivery is deferred. Stable v1.0 and v1.1 DSL files are
+unchanged. See `docs/V1_6_E2E_RESULTS.md`. This version remains a Release
+Candidate and has no `dify-v1.6` tag pending manual acceptance.
 
 ## Recovery Rule
 
