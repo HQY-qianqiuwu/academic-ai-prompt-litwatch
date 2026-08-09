@@ -20,6 +20,9 @@ from litwatch.api_models import (
     ProviderCapabilityResponse,
     ProviderProfileResponse,
     ProviderProfileWrite,
+    SubscriptionCreateRequest,
+    SubscriptionResponse,
+    SubscriptionUpdateRequest,
 )
 from litwatch.config import Settings, Topic
 from litwatch.db import Database
@@ -27,12 +30,19 @@ from litwatch.export import rows_to_bibtex
 from litwatch.pipeline import Pipeline
 from litwatch.provider_config import ProviderProfileStore, default_provider_profile
 from litwatch.provider_security import ProviderBaseUrlError, validate_provider_base_url
-from litwatch.services import AllProvidersFailedError, LiteratureSearchService
+from litwatch.services import (
+    AllProvidersFailedError,
+    LiteratureSearchService,
+    SubscriptionNotFoundError,
+    SubscriptionProviderError,
+    SubscriptionService,
+)
 from litwatch.sources.registry import (
     InMemoryCredentialStore,
     ProviderRegistry,
     ProviderRegistryError,
 )
+from litwatch.subscription_repository import SubscriptionRepository
 from litwatch.weekly_report import apply_current_topic_rules, build_weekly_report, enrich_papers
 
 PACKAGE_DIR = Path(__file__).parent
@@ -45,6 +55,7 @@ def create_app(
     provider_profile_store: ProviderProfileStore | None = None,
     credential_store: InMemoryCredentialStore | None = None,
     provider_base_url_validator: Callable[[str], str] | None = None,
+    subscription_service: SubscriptionService | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_runtime_files()
@@ -68,6 +79,11 @@ def create_app(
         registry=provider_registry,
         profile_store=provider_profile_store,
     )
+    subscription_service = subscription_service or SubscriptionService(
+        SubscriptionRepository(database),
+        provider_registry,
+        provider_profile_store,
+    )
     scan_lock = threading.Lock()
     state_lock = threading.Lock()
     scan_state: dict[str, object] = {"scanning": False, "last_error": ""}
@@ -84,6 +100,7 @@ def create_app(
     app.state.provider_registry = provider_registry
     app.state.provider_profile_store = provider_profile_store
     app.state.credential_store = credential_store
+    app.state.subscription_service = subscription_service
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
@@ -263,6 +280,62 @@ def create_app(
             raise HTTPException(status_code=502, detail="Literature request failed") from None
 
         return LiteratureSearchResponse.from_result(result)
+
+    @app.get("/api/v1/subscriptions", response_model=list[SubscriptionResponse])
+    def subscriptions() -> list[SubscriptionResponse]:
+        return [
+            SubscriptionResponse.from_subscription(subscription)
+            for subscription in subscription_service.list()
+        ]
+
+    @app.post(
+        "/api/v1/subscriptions",
+        response_model=SubscriptionResponse,
+        status_code=201,
+    )
+    def create_subscription(payload: SubscriptionCreateRequest) -> SubscriptionResponse:
+        try:
+            subscription = subscription_service.create(payload)
+        except SubscriptionProviderError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+        return SubscriptionResponse.from_subscription(subscription)
+
+    @app.get(
+        "/api/v1/subscriptions/{subscription_id}",
+        response_model=SubscriptionResponse,
+    )
+    def get_subscription(subscription_id: str) -> SubscriptionResponse:
+        try:
+            subscription = subscription_service.get(subscription_id)
+        except SubscriptionNotFoundError:
+            raise HTTPException(status_code=404, detail="Subscription not found") from None
+        return SubscriptionResponse.from_subscription(subscription)
+
+    @app.patch(
+        "/api/v1/subscriptions/{subscription_id}",
+        response_model=SubscriptionResponse,
+    )
+    def update_subscription(
+        subscription_id: str, payload: SubscriptionUpdateRequest
+    ) -> SubscriptionResponse:
+        changes = payload.model_dump(exclude_unset=True)
+        try:
+            subscription = subscription_service.update(subscription_id, changes)
+        except SubscriptionNotFoundError:
+            raise HTTPException(status_code=404, detail="Subscription not found") from None
+        except SubscriptionProviderError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+        except ValidationError as error:
+            safe_errors = [
+                {
+                    key: value
+                    for key, value in item.items()
+                    if key in {"loc", "msg", "type"}
+                }
+                for item in error.errors()
+            ]
+            raise HTTPException(status_code=422, detail=safe_errors) from None
+        return SubscriptionResponse.from_subscription(subscription)
 
     @app.get("/api/v1/providers", response_model=list[ProviderCapabilityResponse])
     def providers() -> list[ProviderCapabilityResponse]:

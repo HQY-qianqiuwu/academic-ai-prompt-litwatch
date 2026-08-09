@@ -48,7 +48,54 @@ CREATE TABLE IF NOT EXISTS paper_topics (
 );
 CREATE INDEX IF NOT EXISTS idx_paper_topics_score ON paper_topics(score DESC);
 CREATE INDEX IF NOT EXISTS idx_papers_date ON papers(publication_date DESC);
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
+
+MIGRATIONS = (
+    (
+        1,
+        "subscriptions",
+        """
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+            topic TEXT NOT NULL CHECK(length(trim(topic)) > 0),
+            keywords_json TEXT NOT NULL DEFAULT '[]'
+                CHECK(json_valid(keywords_json) AND json_type(keywords_json) = 'array'),
+            providers_json TEXT NOT NULL
+                CHECK(json_valid(providers_json) AND json_type(providers_json) = 'array'),
+            search_limit INTEGER NOT NULL CHECK(search_limit BETWEEN 1 AND 50),
+            recommendation_limit INTEGER NOT NULL CHECK(
+                recommendation_limit BETWEEN 1 AND search_limit
+            ),
+            frequency TEXT NOT NULL CHECK(frequency = 'weekly'),
+            weekday INTEGER NOT NULL CHECK(weekday BETWEEN 0 AND 6),
+            local_time TEXT NOT NULL CHECK(
+                length(local_time) = 5
+                AND substr(local_time, 3, 1) = ':'
+                AND local_time GLOB '[0-2][0-9]:[0-5][0-9]'
+                AND CAST(substr(local_time, 1, 2) AS INTEGER) BETWEEN 0 AND 23
+                AND CAST(substr(local_time, 4, 2) AS INTEGER) BETWEEN 0 AND 59
+            ),
+            timezone TEXT NOT NULL CHECK(length(trim(timezone)) > 0),
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_run_at TEXT,
+            last_success_at TEXT,
+            next_run_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_subscriptions_created
+            ON subscriptions(created_at ASC, id ASC);
+        CREATE INDEX IF NOT EXISTS idx_subscriptions_enabled
+            ON subscriptions(enabled, next_run_at);
+        """,
+    ),
+)
 
 
 class Database:
@@ -57,7 +104,33 @@ class Database:
         self.path = path
         self.connection = sqlite3.connect(path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
+        self.connection.execute("PRAGMA foreign_keys=ON")
         self.connection.executescript(SCHEMA)
+        self._apply_migrations()
+
+    def _apply_migrations(self) -> None:
+        applied = {
+            int(row["version"])
+            for row in self.connection.execute(
+                "SELECT version FROM schema_migrations ORDER BY version"
+            ).fetchall()
+        }
+        for version, name, sql in MIGRATIONS:
+            if version in applied:
+                continue
+            escaped_name = name.replace("'", "''")
+            try:
+                self.connection.executescript(
+                    f"""BEGIN IMMEDIATE;
+                    {sql}
+                    INSERT INTO schema_migrations(version,name)
+                    VALUES ({version},'{escaped_name}');
+                    COMMIT;"""
+                )
+            except sqlite3.Error:
+                if self.connection.in_transaction:
+                    self.connection.rollback()
+                raise
 
     def start_run(self) -> int:
         cursor = self.connection.execute(

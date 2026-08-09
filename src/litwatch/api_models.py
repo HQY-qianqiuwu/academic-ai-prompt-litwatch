@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import (
     AnyHttpUrl,
     BaseModel,
+    ConfigDict,
     Field,
     JsonValue,
     SecretStr,
@@ -27,6 +30,7 @@ from litwatch.services import (
     ProviderSearchStatus,
 )
 from litwatch.sources.registry import InMemoryCredentialStore, ProviderCapability
+from litwatch.subscriptions import Subscription, SubscriptionFrequency, SubscriptionSpec
 
 
 class LiteratureSearchRequest(BaseModel):
@@ -146,6 +150,62 @@ class LiteratureSearchResponse(BaseModel):
                 result.diagnostics
             ),
         )
+
+
+class SubscriptionCreateRequest(SubscriptionSpec):
+    """Create a persisted weekly research subscription."""
+
+
+class SubscriptionUpdateRequest(BaseModel):
+    """Partial subscription update; omitted fields remain unchanged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    topic: str | None = None
+    keywords: list[str] | None = None
+    providers: list[str] | None = None
+    search_limit: int | None = None
+    recommendation_limit: int | None = None
+    frequency: SubscriptionFrequency | None = None
+    weekday: int | None = None
+    local_time: str | None = None
+    timezone: str | None = None
+    enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def require_non_null_changes(self) -> SubscriptionUpdateRequest:
+        if not self.model_fields_set:
+            raise ValueError("at least one subscription field must be provided")
+        if any(getattr(self, field_name) is None for field_name in self.model_fields_set):
+            raise ValueError("subscription fields must not be null")
+        return self
+
+
+class SubscriptionResponse(BaseModel):
+    """UTC, secret-free projection of persisted subscription configuration."""
+
+    id: str
+    name: str
+    topic: str
+    keywords: list[str]
+    providers: list[str]
+    search_limit: int
+    recommendation_limit: int
+    frequency: SubscriptionFrequency
+    weekday: int
+    local_time: str
+    timezone: str
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+    last_run_at: datetime | None
+    last_success_at: datetime | None
+    next_run_at: datetime | None
+
+    @classmethod
+    def from_subscription(cls, subscription: Subscription) -> SubscriptionResponse:
+        return cls.model_validate(subscription.model_dump())
 
 
 class ProviderCapabilityResponse(BaseModel):

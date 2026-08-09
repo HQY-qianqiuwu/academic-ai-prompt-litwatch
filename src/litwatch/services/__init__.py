@@ -8,6 +8,11 @@ from .literature_search import (
     ProviderExecutionStatus,
     ProviderSearchStatus,
 )
+from .subscriptions import (
+    SubscriptionNotFoundError,
+    SubscriptionProviderError,
+    SubscriptionService,
+)
 
 __all__ = [
     "AllProvidersFailedError",
@@ -18,4 +23,7 @@ __all__ = [
     "ProviderErrorCode",
     "ProviderExecutionStatus",
     "ProviderSearchStatus",
+    "SubscriptionNotFoundError",
+    "SubscriptionProviderError",
+    "SubscriptionService",
 ]
