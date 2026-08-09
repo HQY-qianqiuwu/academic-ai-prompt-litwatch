@@ -73,6 +73,29 @@ class SubscriptionRepository:
             raise KeyError(subscription.id)
         return subscription.model_copy(deep=True)
 
+    def record_execution(
+        self,
+        subscription_id: str,
+        *,
+        run_at: datetime,
+        successful: bool,
+    ) -> None:
+        with self._lock, self.database.connection:
+            cursor = self.database.connection.execute(
+                """UPDATE subscriptions SET
+                       last_run_at=?,
+                       last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END
+                   WHERE id=?""",
+                (
+                    run_at.isoformat(),
+                    int(successful),
+                    run_at.isoformat(),
+                    subscription_id,
+                ),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(subscription_id)
+
     @staticmethod
     def _database_values(subscription: Subscription) -> Mapping[str, object]:
         return {

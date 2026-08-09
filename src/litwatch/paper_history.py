@@ -26,7 +26,7 @@ class SubscriptionPaperHistory(BaseModel):
     last_rank_score: float | None = None
     last_relevance_score: float | None = None
     last_quality_score: float | None = None
-    last_run_id: int | None = None
+    last_run_id: str | None = None
 
     @field_validator(
         "first_seen_at",

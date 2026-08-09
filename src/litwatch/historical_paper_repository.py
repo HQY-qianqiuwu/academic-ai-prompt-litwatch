@@ -29,6 +29,7 @@ class HistoricalPaperRepository:
         subscription_id: str,
         papers: Iterable[Paper],
         observed_at: datetime,
+        run_id: str | None = None,
     ) -> ObservationResult:
         observed_at = self._aware_utc(observed_at)
         incoming_papers = sorted(
@@ -73,6 +74,7 @@ class HistoricalPaperRepository:
                     resolved,
                     observed_at,
                     relation,
+                    run_id,
                 )
 
                 stored_papers = [
@@ -122,7 +124,7 @@ class HistoricalPaperRepository:
         rank_score: float | None = None,
         relevance_score: float | None = None,
         quality_score: float | None = None,
-        run_id: int | None = None,
+        run_id: str | None = None,
     ) -> SubscriptionPaperHistory:
         recommended_at = self._aware_utc(recommended_at)
         with self._lock, self.database.connection:
@@ -240,13 +242,14 @@ class HistoricalPaperRepository:
         paper: Paper,
         observed_at: datetime,
         existing: sqlite3.Row | None,
+        run_id: str | None,
     ) -> None:
         if existing is None:
             self.database.connection.execute(
                 """INSERT INTO subscription_papers(
                        subscription_id,canonical_id,first_seen_at,last_seen_at,seen_count,
-                       last_rank_score,last_relevance_score,last_quality_score
-                   ) VALUES (?,?,?,?,1,?,?,?)""",
+                       last_rank_score,last_relevance_score,last_quality_score,last_run_id
+                   ) VALUES (?,?,?,?,1,?,?,?,?)""",
                 (
                     subscription_id,
                     paper.canonical_id,
@@ -255,6 +258,7 @@ class HistoricalPaperRepository:
                     paper.score,
                     self._score(paper, "relevance"),
                     self._score(paper, "quality"),
+                    run_id,
                 ),
             )
             return
@@ -263,7 +267,7 @@ class HistoricalPaperRepository:
                    first_seen_at=min(first_seen_at, ?),
                    last_seen_at=max(last_seen_at, ?),
                    seen_count=seen_count + 1,
-                   last_rank_score=?, last_relevance_score=?, last_quality_score=?
+                   last_rank_score=?, last_relevance_score=?, last_quality_score=?,last_run_id=?
                WHERE subscription_id=? AND canonical_id=?""",
             (
                 observed_at.isoformat(),
@@ -271,6 +275,7 @@ class HistoricalPaperRepository:
                 paper.score,
                 self._score(paper, "relevance"),
                 self._score(paper, "quality"),
+                run_id,
                 subscription_id,
                 paper.canonical_id,
             ),

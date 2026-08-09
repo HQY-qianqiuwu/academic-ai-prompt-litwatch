@@ -29,7 +29,9 @@ from litwatch.services import (
     ProviderExecutionStatus,
     ProviderSearchStatus,
 )
+from litwatch.services.subscription_runs import SubscriptionRunResult
 from litwatch.sources.registry import InMemoryCredentialStore, ProviderCapability
+from litwatch.subscription_runs import Recommendation, SubscriptionRun
 from litwatch.subscriptions import Subscription, SubscriptionFrequency, SubscriptionSpec
 
 
@@ -206,6 +208,45 @@ class SubscriptionResponse(BaseModel):
     @classmethod
     def from_subscription(cls, subscription: Subscription) -> SubscriptionResponse:
         return cls.model_validate(subscription.model_dump())
+
+
+class RecommendationResponse(BaseModel):
+    canonical_id: str
+    rank_position: int
+    rank_score: float
+    relevance_score: float
+    quality_score: float
+
+    @classmethod
+    def from_recommendation(cls, recommendation: Recommendation) -> RecommendationResponse:
+        return cls.model_validate(
+            recommendation.model_dump(
+                include={
+                    "canonical_id",
+                    "rank_position",
+                    "rank_score",
+                    "relevance_score",
+                    "quality_score",
+                }
+            )
+        )
+
+
+class SubscriptionRunResponse(BaseModel):
+    run: SubscriptionRun
+    recommendations: list[RecommendationResponse]
+
+    @classmethod
+    def from_result(cls, result: SubscriptionRunResult) -> SubscriptionRunResponse:
+        run = result.run
+        recommendations = result.recommendations
+        return cls(
+            run=run,
+            recommendations=[
+                RecommendationResponse.from_recommendation(item)
+                for item in recommendations
+            ],
+        )
 
 
 class ProviderCapabilityResponse(BaseModel):

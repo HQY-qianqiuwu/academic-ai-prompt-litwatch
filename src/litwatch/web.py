@@ -22,11 +22,13 @@ from litwatch.api_models import (
     ProviderProfileWrite,
     SubscriptionCreateRequest,
     SubscriptionResponse,
+    SubscriptionRunResponse,
     SubscriptionUpdateRequest,
 )
 from litwatch.config import Settings, Topic
 from litwatch.db import Database
 from litwatch.export import rows_to_bibtex
+from litwatch.historical_paper_repository import HistoricalPaperRepository
 from litwatch.pipeline import Pipeline
 from litwatch.provider_config import ProviderProfileStore, default_provider_profile
 from litwatch.provider_security import ProviderBaseUrlError, validate_provider_base_url
@@ -37,12 +39,18 @@ from litwatch.services import (
     SubscriptionProviderError,
     SubscriptionService,
 )
+from litwatch.services.subscription_runs import (
+    RunAlreadyActiveError,
+    SubscriptionRunError,
+    SubscriptionRunService,
+)
 from litwatch.sources.registry import (
     InMemoryCredentialStore,
     ProviderRegistry,
     ProviderRegistryError,
 )
 from litwatch.subscription_repository import SubscriptionRepository
+from litwatch.subscription_run_repository import SubscriptionRunRepository
 from litwatch.weekly_report import apply_current_topic_rules, build_weekly_report, enrich_papers
 
 PACKAGE_DIR = Path(__file__).parent
@@ -56,6 +64,7 @@ def create_app(
     credential_store: InMemoryCredentialStore | None = None,
     provider_base_url_validator: Callable[[str], str] | None = None,
     subscription_service: SubscriptionService | None = None,
+    subscription_run_service: SubscriptionRunService | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_runtime_files()
@@ -79,10 +88,21 @@ def create_app(
         registry=provider_registry,
         profile_store=provider_profile_store,
     )
+    subscription_repository = (
+        subscription_service.repository
+        if subscription_service is not None
+        else SubscriptionRepository(database)
+    )
     subscription_service = subscription_service or SubscriptionService(
-        SubscriptionRepository(database),
-        provider_registry,
-        provider_profile_store,
+        subscription_repository, provider_registry, provider_profile_store
+    )
+    historical_repository = HistoricalPaperRepository(database)
+    run_repository = SubscriptionRunRepository(database)
+    subscription_run_service = subscription_run_service or SubscriptionRunService(
+        search_service,
+        subscription_repository,
+        run_repository,
+        historical_repository,
     )
     scan_lock = threading.Lock()
     state_lock = threading.Lock()
@@ -101,6 +121,8 @@ def create_app(
     app.state.provider_profile_store = provider_profile_store
     app.state.credential_store = credential_store
     app.state.subscription_service = subscription_service
+    app.state.subscription_run_service = subscription_run_service
+    app.state.subscription_run_repository = run_repository
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
@@ -336,6 +358,21 @@ def create_app(
             ]
             raise HTTPException(status_code=422, detail=safe_errors) from None
         return SubscriptionResponse.from_subscription(subscription)
+
+    @app.post(
+        "/api/v1/subscriptions/{subscription_id}/run",
+        response_model=SubscriptionRunResponse,
+    )
+    def run_subscription(subscription_id: str) -> SubscriptionRunResponse:
+        try:
+            result = subscription_run_service.run_now(subscription_id)
+        except SubscriptionNotFoundError:
+            raise HTTPException(status_code=404, detail="Subscription not found") from None
+        except RunAlreadyActiveError:
+            raise HTTPException(status_code=409, detail="Subscription run already active") from None
+        except SubscriptionRunError:
+            raise HTTPException(status_code=502, detail="Subscription run failed") from None
+        return SubscriptionRunResponse.from_result(result)
 
     @app.get("/api/v1/providers", response_model=list[ProviderCapabilityResponse])
     def providers() -> list[ProviderCapabilityResponse]:

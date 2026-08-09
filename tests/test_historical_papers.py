@@ -273,7 +273,7 @@ def test_history_and_recommendation_state_survive_restart(tmp_path):
         rank_score=0.9,
         relevance_score=0.8,
         quality_score=0.7,
-        run_id=12,
+        run_id="run-12",
     )
     database.connection.close()
 
@@ -290,7 +290,7 @@ def test_history_and_recommendation_state_survive_restart(tmp_path):
     assert history.last_rank_score == 0.9
     assert history.last_relevance_score == 0.8
     assert history.last_quality_score == 0.7
-    assert history.last_run_id == 12
+    assert history.last_run_id == "run-12"
     reopened.connection.close()
 
 
@@ -371,5 +371,5 @@ def test_stage_three_migration_preserves_stage_two_rows(tmp_path):
     ).fetchone()[0] == ""
     assert [row[0] for row in migrated.connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
-    ).fetchall()] == [1, 2]
+    ).fetchall()] == [1, 2, 3]
     migrated.connection.close()

@@ -128,6 +128,61 @@ MIGRATIONS = (
             ON subscription_papers(subscription_id, status, last_seen_at DESC);
         """,
     ),
+    (
+        3,
+        "subscription_runs_and_recommendations",
+        """
+        CREATE TABLE IF NOT EXISTS subscription_runs (
+            id TEXT PRIMARY KEY,
+            subscription_id TEXT NOT NULL REFERENCES subscriptions(id) ON DELETE RESTRICT,
+            run_key TEXT NOT NULL UNIQUE,
+            trigger TEXT NOT NULL CHECK(trigger IN ('manual', 'scheduled', 'catch_up')),
+            scheduled_for_at TEXT,
+            period_key TEXT,
+            started_at TEXT NOT NULL,
+            heartbeat_at TEXT NOT NULL,
+            finished_at TEXT,
+            status TEXT NOT NULL CHECK(status IN (
+                'pending', 'running', 'success', 'partial_success', 'failed', 'interrupted'
+            )),
+            attempt_count INTEGER NOT NULL DEFAULT 1 CHECK(attempt_count >= 1),
+            lease_owner TEXT,
+            lease_expires_at TEXT,
+            raw_count INTEGER NOT NULL DEFAULT 0,
+            dedup_count INTEGER NOT NULL DEFAULT 0,
+            duplicates_removed INTEGER NOT NULL DEFAULT 0,
+            historical_duplicates_removed INTEGER NOT NULL DEFAULT 0,
+            new_count INTEGER NOT NULL DEFAULT 0,
+            eligible_count INTEGER NOT NULL DEFAULT 0,
+            recommended_count INTEGER NOT NULL DEFAULT 0,
+            provider_status_json TEXT NOT NULL DEFAULT '[]'
+                CHECK(json_valid(provider_status_json)),
+            safe_error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_subscription_runs_history
+            ON subscription_runs(subscription_id, started_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_subscription_runs_active
+            ON subscription_runs(subscription_id, status, lease_expires_at);
+
+        CREATE TABLE IF NOT EXISTS recommendations (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES subscription_runs(id) ON DELETE RESTRICT,
+            subscription_id TEXT NOT NULL REFERENCES subscriptions(id) ON DELETE RESTRICT,
+            canonical_id TEXT NOT NULL REFERENCES papers(canonical_id) ON DELETE RESTRICT,
+            rank_position INTEGER NOT NULL CHECK(rank_position >= 1),
+            rank_score REAL NOT NULL,
+            relevance_score REAL NOT NULL,
+            quality_score REAL NOT NULL,
+            score_detail_json TEXT NOT NULL DEFAULT '{}'
+                CHECK(json_valid(score_detail_json)),
+            recommended_at TEXT NOT NULL,
+            UNIQUE(run_id, canonical_id),
+            UNIQUE(subscription_id, canonical_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_recommendations_run
+            ON recommendations(run_id, rank_position ASC);
+        """,
+    ),
 )
 
 

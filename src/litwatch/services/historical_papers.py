@@ -27,6 +27,7 @@ class HistoricalPaperService:
         subscription_id: str,
         papers: Iterable[Paper],
         observed_at: datetime,
+        run_id: str | None = None,
     ) -> ObservationResult:
         if not self.subscription_repository.exists(subscription_id):
             raise SubscriptionNotFoundError(subscription_id)
@@ -49,4 +50,6 @@ class HistoricalPaperService:
             merged.topic_id = ranked.topic_id
             merged.topic_name = ranked.topic_name
             merged.analysis = ranked.analysis.copy()
-        return self.repository.observe(subscription_id, deduplicated, observed_at)
+        return self.repository.observe(
+            subscription_id, deduplicated, observed_at, run_id=run_id
+        )

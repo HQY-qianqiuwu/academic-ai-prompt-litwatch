@@ -318,4 +318,4 @@ def test_openapi_contains_crud_foundation_but_no_run_or_delete_endpoint(tmp_path
         "get",
         "patch",
     }
-    assert "/api/v1/subscriptions/{subscription_id}/run" not in paths
+    assert set(paths["/api/v1/subscriptions/{subscription_id}/run"]) == {"post"}
