@@ -220,10 +220,27 @@ continues to be the verified real behavior.
 
 ## Stack v1.5 — LitWatch Web UI
 
-Build the user-facing UI for topic, year range, result count, provider selection,
-provider status, search execution, and paper metadata. Add Provider Settings with
-Ready/Configured/Missing Key states. Keep `/docs` as a developer interface, not
-the end-user UI.
+Status: **Release Candidate — manual UI acceptance pending**
+
+Implemented on `feat/v1.5-web-ui`:
+
+- FastAPI/Jinja2/vanilla JavaScript research search at `/`
+- dynamic Provider selection and real LitWatch API search
+- backend-ordered cards, source badges, rank/relevance/quality display
+- deduplication diagnostics and isolated Provider status
+- loading, empty, safe error, retry, and partial-success states
+- Provider Settings with write-only optional BYOK handling
+- responsive desktop/mobile behavior and local navigation
+- legacy Dashboard preserved at `/dashboard`
+- existing LitWatch launcher reused without changing full-stack startup behavior
+
+The date filter is deferred because the stable HTTP API does not expose a
+consistent cross-Provider date range. Provider Test Connection is also deferred
+because no existing safe endpoint is available. Stable v1.0 and v1.1 DSL files
+remain unchanged. Browser and automated evidence is recorded in
+`docs/V1_5_E2E_RESULTS.md`.
+
+Do not create `dify-v1.5` until manual UI acceptance completes.
 
 ## Stack v1.6 — Zotero Integration
 

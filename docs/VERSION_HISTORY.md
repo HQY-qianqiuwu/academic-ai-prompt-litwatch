@@ -235,3 +235,52 @@ Automated validation state:
 Architecture record: `docs/V1_4_DEDUP_RANKING.md`
 
 Validation record: `docs/V1_4_E2E_RESULTS.md`
+
+## Stack v1.5
+
+Status: **Release Candidate — manual UI acceptance pending**
+
+Architecture:
+
+```text
+Browser
+    -> LitWatch FastAPI / Jinja2 / vanilla JavaScript UI
+    -> POST /api/v1/literature/search
+    -> LiteratureSearchService
+    -> Providers -> deduplication -> ranking
+```
+
+Web additions:
+
+- Local research search page at `/`
+- Dynamic Provider selection from the Provider Registry API
+- Backend-ordered paper cards with real metadata, sources, and score diagnostics
+- Raw, unique, and removed-duplicate summary
+- Per-Provider success, empty, rate-limit, authentication, timeout, upstream,
+  and parse status display
+- Partial-failure results with safe retry messages
+- Provider Settings backed by the existing Profile APIs
+- Write-only BYOK replacement and explicit clear semantics
+- Responsive local UI, accessible labels, focus states, and navigation
+- Existing database/weekly Dashboard preserved at `/dashboard`
+
+Dify Workflow:
+
+`dify/workflows/literature-search-v1.1.yml` (compatible reuse)
+
+Validation state:
+
+- TDOA and OFDM real browser searches: pass
+- Dynamic topic result difference: pass
+- TDOA dedup UI: 60 raw, 57 unique, 3 removed
+- Multi-source source badge: pass
+- Semantic Scholar anonymous HTTP 429 partial-failure UI: pass
+- Semantic Scholar authenticated real success: **not verified**
+- Fake-secret save, redaction, and cleanup: pass
+- Responsive no-overflow check: pass
+- Stable v1.0 and v1.1 DSL protection: pass
+- Stable tag: intentionally absent pending manual acceptance
+
+Design record: `docs/V1_5_WEB_UI.md`
+
+Validation record: `docs/V1_5_E2E_RESULTS.md`

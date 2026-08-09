@@ -1,6 +1,6 @@
 # Stack v1.5 LitWatch Web Interface
 
-Status: implementation design for the v1.5 release-candidate branch
+Status: implemented on the v1.5 release-candidate branch; manual acceptance pending
 
 ## Existing Web audit
 

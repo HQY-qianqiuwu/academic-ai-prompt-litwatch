@@ -23,18 +23,19 @@ solely to make version numbers align.
 | v1.2 | Stable | Provider Configuration + Provider Registry + BYOK boundary | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex | `dify-v1.2` |
 | v1.3 | Stable | Multi-source retrieval, deterministic aggregation, failure isolation, secure Provider BYOK; duplicates intentionally preserved | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.3` |
 | v1.4 | Stable | Deterministic deduplication, metadata merge, relevance/quality ranking, additive diagnostics | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.4` |
+| v1.5 | Release Candidate | Local research Web UI, diagnostics, Provider Settings, secret-safe BYOK UX | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | Pending manual acceptance |
 
 ## Provider Capability Matrix
 
-| Provider | Stack v1.2 | Stack v1.3 | Stack v1.4 |
-|---|---|---|---|
-| OpenAlex | Runnable | Runnable | Runnable |
-| Semantic Scholar | Declared, non-runnable | Runnable | Runnable |
-| arXiv | Declared, non-runnable | Runnable | Runnable |
-| Crossref | Declared, non-runnable | Runnable | Runnable |
-| IEEE Xplore | Declared, non-runnable | Non-runnable | Non-runnable |
-| Scopus | Declared, non-runnable | Non-runnable | Non-runnable |
-| Web of Science | Declared, non-runnable | Non-runnable | Non-runnable |
+| Provider | Stack v1.2 | Stack v1.3 | Stack v1.4 | Stack v1.5 RC |
+|---|---|---|---|---|
+| OpenAlex | Runnable | Runnable | Runnable | Runnable and selectable in UI |
+| Semantic Scholar | Declared, non-runnable | Runnable | Runnable | Runnable, optional BYOK |
+| arXiv | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI |
+| Crossref | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI |
+| IEEE Xplore | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later |
+| Scopus | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later |
+| Web of Science | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later |
 
 ## Workflow Upgrade Policy
 
@@ -61,6 +62,10 @@ Dify workflow contract.
 Stack v1.4 also reuses v1.1. The required `topic`, `limit`, `paper_count`,
 and `papers` fields are unchanged. Deduplication and ranking diagnostics are
 additive top-level fields. No `literature-search-v1.4.yml` is created.
+
+Stack v1.5 also reuses v1.1. The Web UI is an additional local entry point to
+the same LitWatch API and does not change Dify's request or response contract.
+No `literature-search-v1.5.yml` is created.
 
 ## Stack v1.2 Release Evidence
 
@@ -107,6 +112,21 @@ Final manual validation passed for TDOA ranking, OFDM ranking, dynamic ranking,
 deduplication, zero final duplicate DOIs, multi-source merging, and both Dify UI
 topics. Stack v1.4 is Stable at `dify-v1.4`. Semantic Scholar authenticated real
 success remains not verified.
+
+## Stack v1.5 Release Candidate Evidence
+
+The existing FastAPI/Jinja2/vanilla JavaScript application now provides a local
+multi-source search page and Provider Settings page without adding a frontend
+build dependency. Real browser searches returned topic-specific TDOA and OFDM
+paper cards, displayed backend scores and source provenance, and showed valid
+deduplication arithmetic. OpenAlex results remained usable while Semantic
+Scholar anonymous access was isolated as rate limited.
+
+Fake-secret Provider Settings tests passed without secret reflection, and the
+test credential was cleared. Responsive checks passed at a 375px effective
+viewport. Stable v1.0 and v1.1 DSL files remain unchanged. See
+`docs/V1_5_E2E_RESULTS.md`. Stack v1.5 remains a Release Candidate until manual
+UI acceptance; no `dify-v1.5` tag exists.
 
 ## Recovery Rule
 
