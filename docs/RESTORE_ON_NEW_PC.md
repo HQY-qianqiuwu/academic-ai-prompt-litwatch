@@ -176,3 +176,35 @@ The private repository does not restore:
 - Other ignored or untracked local-only files
 
 Back up those data sources separately before replacing or retiring the original PC.
+
+## Daily start and stop after recovery
+
+After the new PC has completed the prerequisite, repository, Python environment,
+local configuration, Dify Docker, workflow import, and data-volume recovery steps
+above, daily operation uses the stack management commands in the LitWatch project
+root.
+
+Start Docker Desktop when necessary, Dify, LitWatch, validate OpenAlex and the Dify
+SSRF proxy, and then open Dify:
+
+```text
+启动科研文献系统.cmd
+```
+
+Stop LitWatch and the Dify Compose services while preserving all Docker volumes:
+
+```text
+停止科研文献系统.cmd
+```
+
+Check the system without changing its state:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\status-stack.ps1
+```
+
+The startup script discovers the sibling `dify\docker` directory automatically.
+If Dify is installed elsewhere, set `DIFY_DOCKER_DIR` to the directory containing
+its Compose file before running the command. Port 8000 must either be unused or
+owned by this repository's LitWatch process; the scripts report the owning PID,
+executable, and command line instead of terminating an unrelated process.
