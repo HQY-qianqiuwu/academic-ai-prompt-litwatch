@@ -1,0 +1,160 @@
+.research-paper-card {
+  padding: 22px 24px;
+  border: 1px solid #d4ddda;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(25, 52, 60, 0.045);
+}
+
+.paper-rank-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.paper-rank {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #173d43;
+  color: #fff;
+  font: 16px Georgia, serif;
+}
+
+.paper-scores {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.paper-score {
+  display: grid;
+  gap: 1px;
+  min-width: 76px;
+  padding: 6px 9px;
+  border: 1px solid #d9e2df;
+  border-radius: 8px;
+  background: #f7f9f6;
+}
+
+.paper-score small {
+  color: #77878a;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.paper-score strong {
+  color: #254950;
+  font: 14px Georgia, serif;
+}
+
+.research-paper-card h2 {
+  margin: 15px 0 8px;
+  font: 25px/1.28 Georgia, "Songti SC", serif;
+}
+
+.research-paper-card h2 a {
+  color: #18333b;
+  text-decoration: none;
+}
+
+.research-paper-card h2 a:hover {
+  color: #0f766e;
+  text-decoration: underline;
+}
+
+.paper-metadata {
+  margin: 0 0 14px;
+  color: #687b80;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.paper-abstract {
+  color: #425d63;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.paper-abstract p {
+  margin: 0;
+}
+
+.paper-abstract.collapsed p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.abstract-toggle {
+  margin-top: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0f766e;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.research-paper-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #e3e9e7;
+}
+
+.paper-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-badge {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #e5f3f0;
+  color: #0f6d65;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.research-paper-card footer > a {
+  color: #0f6d65;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+@media (max-width: 620px) {
+  .research-paper-card {
+    padding: 18px;
+  }
+
+  .paper-rank-row {
+    align-items: flex-start;
+  }
+
+  .paper-scores {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+  }
+
+  .paper-score {
+    min-width: 0;
+  }
+
+  .research-paper-card footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
