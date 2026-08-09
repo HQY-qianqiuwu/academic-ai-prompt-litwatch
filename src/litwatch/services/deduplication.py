@@ -76,6 +76,17 @@ def titles_are_near_duplicates(first: str, second: str) -> bool:
     return jaccard >= 0.95 and sequence_ratio >= 0.95
 
 
+def papers_are_duplicates(first: Paper, second: Paper) -> bool:
+    """Apply the canonical v1.4 identity rules to one pair of papers."""
+    first_identity = _paper_identity(first)
+    second_identity = _paper_identity(second)
+    first_doi = first_identity[0]
+    second_doi = second_identity[0]
+    if first_doi and second_doi and first_doi != second_doi:
+        return False
+    return _papers_match(first, second, first_identity, second_identity)
+
+
 def deduplicate_papers(papers: Iterable[Paper]) -> DeduplicationResult:
     """Group and merge papers without depending on Provider or input order."""
     candidates = sorted((paper.model_copy(deep=True) for paper in papers), key=_paper_sort_key)

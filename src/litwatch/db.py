@@ -95,6 +95,39 @@ MIGRATIONS = (
             ON subscriptions(enabled, next_run_at);
         """,
     ),
+    (
+        2,
+        "historical_paper_tracking",
+        """
+        ALTER TABLE papers
+            ADD COLUMN normalized_title TEXT NOT NULL DEFAULT '';
+
+        CREATE INDEX IF NOT EXISTS idx_papers_normalized_title
+            ON papers(normalized_title);
+
+        CREATE TABLE IF NOT EXISTS subscription_papers (
+            subscription_id TEXT NOT NULL REFERENCES subscriptions(id) ON DELETE RESTRICT,
+            canonical_id TEXT NOT NULL REFERENCES papers(canonical_id) ON DELETE RESTRICT,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            seen_count INTEGER NOT NULL DEFAULT 1 CHECK(seen_count >= 1),
+            status TEXT NOT NULL DEFAULT 'seen' CHECK(status IN ('seen', 'recommended')),
+            first_recommended_at TEXT,
+            last_recommended_at TEXT,
+            recommendation_count INTEGER NOT NULL DEFAULT 0
+                CHECK(recommendation_count >= 0),
+            last_rank_score REAL,
+            last_relevance_score REAL,
+            last_quality_score REAL,
+            last_run_id INTEGER,
+            PRIMARY KEY (subscription_id, canonical_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_subscription_papers_canonical
+            ON subscription_papers(canonical_id);
+        CREATE INDEX IF NOT EXISTS idx_subscription_papers_status
+            ON subscription_papers(subscription_id, status, last_seen_at DESC);
+        """,
+    ),
 )
 
 

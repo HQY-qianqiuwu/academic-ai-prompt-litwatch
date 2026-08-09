@@ -512,6 +512,29 @@ Logs use subscription/run IDs and redacted Provider diagnostics.
 - prove canonical-ID reuse and per-subscription novelty; and
 - test richer repeat metadata without repeat novelty.
 
+Implementation completed on `feat/v1.6-weekly-recommendations`:
+
+- migration 2 adds `papers.normalized_title` and the composite-key
+  `subscription_papers` relation without replacing or rebuilding existing
+  paper/subscription data;
+- `HistoricalPaperService.observe_papers_for_subscription(...)` performs
+  search-result deduplication first, then delegates one atomic paper/history
+  observation to `HistoricalPaperRepository`;
+- historical matching reuses the v1.4 DOI normalization, canonical ID,
+  normalized-title, conservative near-title, and deterministic metadata merge
+  primitives; conflicting non-empty DOIs remain separate;
+- global and per-subscription `first_seen_at` values are preserved while
+  `last_seen_at` advances on later real observations, and novelty is scoped to
+  `(subscription_id, canonical_id)`;
+- repeat metadata can enrich a stored paper without changing its established
+  historical canonical ID or making it new again; and
+- the relation persists `seen`/`recommended` state and recommendation score
+  fields for Stage 4, but Stage 3 does not execute recommendations, runs,
+  scheduling, delivery, or UI behavior.
+
+The Stage 3 gate is 216 passed tests, Ruff PASS, `git diff --check` PASS, and
+unchanged v1.0/v1.1 Dify DSL files.
+
 ### Stage 4 - Subscription run engine
 
 - orchestrate `LiteratureSearchService`, historical filtering,

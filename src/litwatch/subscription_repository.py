@@ -48,6 +48,13 @@ class SubscriptionRepository:
             ).fetchone()
         return self._from_row(row) if row is not None else None
 
+    def exists(self, subscription_id: str) -> bool:
+        with self._lock:
+            row = self.database.connection.execute(
+                "SELECT 1 FROM subscriptions WHERE id=?", (subscription_id,)
+            ).fetchone()
+        return row is not None
+
     def update(self, subscription: Subscription) -> Subscription:
         values = self._database_values(subscription)
         with self._lock, self.database.connection:
