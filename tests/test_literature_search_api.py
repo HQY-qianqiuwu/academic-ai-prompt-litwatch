@@ -193,6 +193,7 @@ def test_provider_apis_are_exposed_and_default_profile_is_safe(tmp_path):
     }
     assert runnable["openalex"] is True
     assert runnable["semantic_scholar"] is True
+    assert runnable["arxiv"] is True
     openalex_capability = next(
         item for item in capabilities.json() if item["name"] == "openalex"
     )

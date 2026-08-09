@@ -8,6 +8,7 @@ from typing import Protocol
 
 from litwatch.config import Settings
 from litwatch.provider_config import ProviderConfig, ProviderType
+from litwatch.sources.arxiv import ArxivSource
 from litwatch.sources.base import PaperSource
 from litwatch.sources.openalex import OpenAlexSource
 from litwatch.sources.semantic_scholar import SemanticScholarSource
@@ -101,7 +102,7 @@ CAPABILITIES = (
         ("search", "metadata", "citations"),
     ),
     ProviderCapability(
-        ProviderType.ARXIV, "arXiv", False, False, False, True, ("search", "preprints")
+        ProviderType.ARXIV, "arXiv", True, False, False, True, ("search", "preprints")
     ),
     ProviderCapability(
         ProviderType.CROSSREF,
@@ -201,10 +202,42 @@ class ProviderRegistry:
                 max_retries=retries,
             )
 
+        def arxiv_factory(config: ProviderConfig, _: str | None) -> PaperSource:
+            timeout = config.options.get(
+                "timeout_seconds", settings.request_timeout_seconds
+            )
+            retries = config.options.get("max_retries", 2)
+            interval = config.options.get("min_request_interval", 3.0)
+            if (
+                isinstance(timeout, bool)
+                or not isinstance(timeout, (int, float))
+                or timeout <= 0
+            ):
+                raise ProviderRegistryError("arXiv timeout_seconds must be positive")
+            if isinstance(retries, bool) or not isinstance(retries, int) or retries < 0:
+                raise ProviderRegistryError(
+                    "arXiv max_retries must be a non-negative integer"
+                )
+            if (
+                isinstance(interval, bool)
+                or not isinstance(interval, (int, float))
+                or interval < 0
+            ):
+                raise ProviderRegistryError(
+                    "arXiv min_request_interval must not be negative"
+                )
+            return ArxivSource(
+                timeout=float(timeout),
+                base_url=str(config.base_url),
+                max_retries=retries,
+                min_request_interval=float(interval),
+            )
+
         return cls(
             factories={
                 ProviderType.OPENALEX: openalex_factory,
                 ProviderType.SEMANTIC_SCHOLAR: semantic_scholar_factory,
+                ProviderType.ARXIV: arxiv_factory,
             },
             credential_store=credential_store or InMemoryCredentialStore.from_settings(settings),
         )

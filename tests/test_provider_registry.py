@@ -4,6 +4,7 @@ import pytest
 
 from litwatch.config import Settings
 from litwatch.provider_config import ProviderConfig, ProviderType
+from litwatch.sources.arxiv import ArxivSource
 from litwatch.sources.openalex import OpenAlexSource
 from litwatch.sources.registry import (
     InMemoryCredentialStore,
@@ -40,7 +41,11 @@ def test_registry_declares_only_implemented_capabilities_as_runnable():
         not capability.runnable
         for provider_type, capability in capabilities.items()
         if provider_type
-        not in {ProviderType.OPENALEX, ProviderType.SEMANTIC_SCHOLAR}
+        not in {
+            ProviderType.OPENALEX,
+            ProviderType.SEMANTIC_SCHOLAR,
+            ProviderType.ARXIV,
+        }
     )
     assert all(
         not capability.default_selected
@@ -100,6 +105,23 @@ def test_registry_builds_semantic_scholar_with_optional_key_and_url():
     assert source.endpoint == "https://semantic.example.test/paper/search"
     assert source.client.headers["x-api-key"] == marker
     assert marker not in repr(source.__dict__)
+
+
+def test_registry_builds_arxiv_with_configured_url_and_options():
+    registry = ProviderRegistry.from_settings(Settings())
+    config = provider_config(
+        provider_id="arxiv",
+        provider_type=ProviderType.ARXIV,
+        base_url="https://arxiv.example.test/api/query",
+        options={"max_retries": 1, "min_request_interval": 4.0},
+    )
+
+    source = registry.build(config)
+
+    assert isinstance(source, ArxivSource)
+    assert source.endpoint == "https://arxiv.example.test/api/query"
+    assert source.max_retries == 1
+    assert source.min_request_interval == 4.0
 
 
 @pytest.mark.parametrize("credential_reference", [None, "missing_default"])
