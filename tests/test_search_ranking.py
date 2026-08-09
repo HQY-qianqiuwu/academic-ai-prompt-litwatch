@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from litwatch.models import Paper
-from litwatch.services.search_ranking import relevance_score, tokenize
+from datetime import date
+
+from litwatch.models import Author, Paper
+from litwatch.services.search_ranking import (
+    quality_score,
+    rank_papers,
+    relevance_score,
+    tokenize,
+)
 
 
 def paper(title: str, abstract: str = "") -> Paper:
@@ -78,3 +85,73 @@ def test_relevance_scoring_is_deterministic():
     second = relevance_score("underwater acoustic OFDM communication", candidate)
 
     assert first == second
+
+
+def test_complete_metadata_beats_sparse_metadata_at_equal_relevance():
+    sparse = paper("Underwater Acoustic TDOA Localization")
+    sparse.canonical_id = "sparse"
+    complete = paper(
+        "Underwater Acoustic TDOA Localization",
+        "A real provider-backed abstract.",
+    )
+    complete.canonical_id = "complete"
+    complete.authors = [Author(name="Ada Lovelace")]
+    complete.publication_date = date(2025, 1, 1)
+    complete.venue = "Journal of Underwater Acoustics"
+    complete.doi = "10.1234/complete"
+    complete.sources = ["openalex", "crossref"]
+
+    ranked = rank_papers("underwater acoustic TDOA localization", [sparse, complete])
+
+    assert quality_score(complete).score > quality_score(sparse).score
+    assert [item.canonical_id for item in ranked] == ["complete", "sparse"]
+
+
+def test_quality_cannot_overpower_large_relevance_advantage():
+    relevant = paper("Underwater Acoustic TDOA Localization")
+    relevant.canonical_id = "relevant"
+    complete_but_generic = paper(
+        "Energy Efficient Routing for Underwater Sensor Networks",
+        "A complete but unrelated networking study.",
+    )
+    complete_but_generic.canonical_id = "generic"
+    complete_but_generic.authors = [Author(name="Grace Hopper")]
+    complete_but_generic.publication_date = date(2026, 1, 1)
+    complete_but_generic.venue = "Complete Metadata Journal"
+    complete_but_generic.doi = "10.1234/generic"
+    complete_but_generic.sources = ["openalex", "crossref"]
+
+    ranked = rank_papers(
+        "underwater acoustic TDOA localization",
+        [complete_but_generic, relevant],
+    )
+
+    assert [item.canonical_id for item in ranked] == ["relevant", "generic"]
+
+
+def test_tie_break_uses_year_then_title_then_canonical_id():
+    query = "unmatched query"
+    papers = [
+        Paper(canonical_id="z", title="Beta", publication_date=date(2024, 1, 1)),
+        Paper(canonical_id="b", title="Alpha", publication_date=date(2025, 1, 1)),
+        Paper(canonical_id="a", title="Alpha", publication_date=date(2025, 1, 1)),
+    ]
+
+    ranked = rank_papers(query, papers)
+
+    assert [item.canonical_id for item in ranked] == ["a", "b", "z"]
+
+
+def test_ranking_is_input_order_independent_and_explainable():
+    candidates = [
+        Paper(canonical_id="generic", title="Generic Underwater Routing"),
+        Paper(canonical_id="ofdm", title="Underwater Acoustic OFDM Communication"),
+    ]
+
+    forward = rank_papers("underwater acoustic OFDM communication", candidates)
+    reverse = rank_papers("underwater acoustic OFDM communication", list(reversed(candidates)))
+
+    assert [paper.canonical_id for paper in forward] == [paper.canonical_id for paper in reverse]
+    assert forward[0].score_detail["rank_score"] == forward[0].score
+    assert "relevance_components" in forward[0].score_detail
+    assert "quality_components" in forward[0].score_detail
