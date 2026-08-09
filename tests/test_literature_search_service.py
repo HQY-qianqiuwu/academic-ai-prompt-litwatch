@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from litwatch.config import Topic
 from litwatch.models import Paper
@@ -14,11 +15,17 @@ from litwatch.provider_config import (
     ProviderProfileStore,
     ProviderType,
 )
-from litwatch.services import LiteratureSearchService
+from litwatch.services import (
+    LiteratureSearchService,
+    ProviderExecutionStatus,
+    ProviderSearchStatus,
+)
 from litwatch.services import literature_search as literature_search_module
 from litwatch.sources.registry import (
     InMemoryCredentialStore,
+    ProviderCapability,
     ProviderDisabledError,
+    ProviderNotFoundError,
     ProviderRegistry,
 )
 
@@ -68,6 +75,10 @@ def test_search_normalizes_topic_passes_limit_and_returns_papers():
     assert result.paper_count == len(result.papers) == 1
     assert all(isinstance(item, Paper) for item in result.papers)
     assert result.model_dump()["paper_count"] == 1
+    assert result.provider_status[0].provider == "fake"
+    assert result.provider_status[0].status is ProviderExecutionStatus.SUCCESS
+    assert result.provider_status[0].fetched_count == 2
+    assert result.provider_status[0].returned_count == 1
 
 
 def test_search_supports_an_injected_historical_start_date():
@@ -185,3 +196,88 @@ def test_registry_backed_service_rejects_disabled_explicit_provider():
         service.search(
             topic="underwater acoustics", limit=10, providers=["openalex"]
         )
+
+
+def test_registry_backed_service_rejects_unknown_provider():
+    service = registry_service(FakeSource())
+
+    with pytest.raises(ProviderNotFoundError, match="not in profile"):
+        service.search(
+            topic="underwater acoustics", limit=10, providers=["not-real"]
+        )
+
+
+def test_provider_status_rejects_raw_error_text():
+    with pytest.raises(ValidationError):
+        ProviderSearchStatus(
+            provider="openalex",
+            status=ProviderExecutionStatus.UPSTREAM_ERROR,
+            error_code="API_KEY=must-not-leak",
+        )
+
+
+def test_omitted_providers_use_default_selected_only():
+    openalex = FakeSource([paper("openalex")])
+    semantic = FakeSource([paper("semantic")])
+    openalex.name = "openalex"
+    semantic.name = "semantic_scholar"
+    configs = [
+        ProviderConfig(
+            provider_id="openalex",
+            provider_type=ProviderType.OPENALEX,
+            enabled=True,
+            default_selected=True,
+            base_url="https://example.test/openalex",
+        ),
+        ProviderConfig(
+            provider_id="semantic_scholar",
+            provider_type=ProviderType.SEMANTIC_SCHOLAR,
+            enabled=True,
+            default_selected=False,
+            base_url="https://example.test/semantic",
+        ),
+    ]
+    registry = ProviderRegistry(
+        factories={
+            ProviderType.OPENALEX: lambda _config, _credential: openalex,
+            ProviderType.SEMANTIC_SCHOLAR: lambda _config, _credential: semantic,
+        },
+        credential_store=InMemoryCredentialStore(),
+        capabilities=(
+            ProviderCapability(
+                ProviderType.OPENALEX,
+                "OpenAlex",
+                True,
+                True,
+                False,
+                True,
+                ("search",),
+            ),
+            ProviderCapability(
+                ProviderType.SEMANTIC_SCHOLAR,
+                "Semantic Scholar",
+                True,
+                False,
+                False,
+                True,
+                ("search",),
+            ),
+        ),
+    )
+    service = LiteratureSearchService(
+        registry=registry,
+        profile_store=ProviderProfileStore([ProviderProfile(providers=configs)]),
+    )
+
+    default_result = service.search(topic="underwater acoustics", limit=10)
+    explicit_result = service.search(
+        topic="underwater acoustics",
+        limit=10,
+        providers=["semantic_scholar", "openalex"],
+    )
+
+    assert [item.provider for item in default_result.provider_status] == ["openalex"]
+    assert [item.provider for item in explicit_result.provider_status] == [
+        "semantic_scholar",
+        "openalex",
+    ]

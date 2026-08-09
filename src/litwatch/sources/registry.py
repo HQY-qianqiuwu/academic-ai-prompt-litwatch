@@ -77,19 +77,67 @@ class ProviderCapability:
     provider_type: ProviderType
     display_name: str
     runnable: bool
+    default_selected: bool
+    requires_api_key: bool
+    supports_anonymous: bool
+    capabilities: tuple[str, ...]
 
 
 ProviderFactory = Callable[[ProviderConfig, str | None], PaperSource]
 
 
 CAPABILITIES = (
-    ProviderCapability(ProviderType.OPENALEX, "OpenAlex", True),
-    ProviderCapability(ProviderType.SEMANTIC_SCHOLAR, "Semantic Scholar", False),
-    ProviderCapability(ProviderType.ARXIV, "arXiv", False),
-    ProviderCapability(ProviderType.CROSSREF, "Crossref", False),
-    ProviderCapability(ProviderType.IEEE_XPLORE, "IEEE Xplore", False),
-    ProviderCapability(ProviderType.SCOPUS, "Scopus", False),
-    ProviderCapability(ProviderType.WEB_OF_SCIENCE, "Web of Science", False),
+    ProviderCapability(
+        ProviderType.OPENALEX, "OpenAlex", True, True, False, True, ("search", "metadata")
+    ),
+    ProviderCapability(
+        ProviderType.SEMANTIC_SCHOLAR,
+        "Semantic Scholar",
+        False,
+        False,
+        False,
+        True,
+        ("search", "metadata", "citations"),
+    ),
+    ProviderCapability(
+        ProviderType.ARXIV, "arXiv", False, False, False, True, ("search", "preprints")
+    ),
+    ProviderCapability(
+        ProviderType.CROSSREF,
+        "Crossref",
+        False,
+        False,
+        False,
+        True,
+        ("search", "metadata"),
+    ),
+    ProviderCapability(
+        ProviderType.IEEE_XPLORE,
+        "IEEE Xplore",
+        False,
+        False,
+        True,
+        False,
+        ("search", "metadata"),
+    ),
+    ProviderCapability(
+        ProviderType.SCOPUS,
+        "Scopus",
+        False,
+        False,
+        True,
+        False,
+        ("search", "metadata"),
+    ),
+    ProviderCapability(
+        ProviderType.WEB_OF_SCIENCE,
+        "Web of Science",
+        False,
+        False,
+        True,
+        False,
+        ("search", "metadata"),
+    ),
 )
 
 
@@ -146,12 +194,13 @@ class ProviderRegistry:
             )
 
         credential: str | None = None
+        if config.credential_reference:
+            credential = self.credential_store.resolve(config.credential_reference)
         if config.requires_api_key:
             if not config.credential_reference:
                 raise ProviderCredentialError(
                     f"provider {config.provider_id!r} requires credential_reference"
                 )
-            credential = self.credential_store.resolve(config.credential_reference)
             if not credential:
                 raise ProviderCredentialError(
                     f"credential for provider {config.provider_id!r} is not configured"

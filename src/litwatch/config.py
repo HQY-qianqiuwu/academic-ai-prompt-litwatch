@@ -59,9 +59,15 @@ class Settings(BaseSettings):
 
     openalex_email: str = ""
     openalex_base_url: str = "https://api.openalex.org/works"
+    semantic_scholar_base_url: str = (
+        "https://api.semanticscholar.org/graph/v1/paper/search"
+    )
     semantic_scholar_api_key: str = ""
     ieee_xplore_api_key: str = ""
     semantic_scholar_anonymous: bool = False
+    arxiv_base_url: str = "https://export.arxiv.org/api/query"
+    crossref_base_url: str = "https://api.crossref.org/v1/works"
+    crossref_email: str = ""
     llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-5-mini"

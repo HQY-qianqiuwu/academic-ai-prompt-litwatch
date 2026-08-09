@@ -94,6 +94,7 @@ def test_search_returns_normalized_contract_without_network(tmp_path, monkeypatc
     assert service.calls == [("underwater acoustic TDOA localization", 10)]
     assert payload["query"] == "underwater acoustic TDOA localization"
     assert payload["paper_count"] == len(payload["papers"]) == 2
+    assert payload["provider_status"] == []
     assert payload["papers"][0] == {
         "canonical_id": "doi:10.1234/acoustics",
         "title": "Underwater acoustic localization",
@@ -192,25 +193,30 @@ def test_provider_apis_are_exposed_and_default_profile_is_safe(tmp_path):
     }
     assert runnable["openalex"] is True
     assert runnable["semantic_scholar"] is False
+    openalex_capability = next(
+        item for item in capabilities.json() if item["name"] == "openalex"
+    )
+    assert openalex_capability["default_selected"] is True
+    assert openalex_capability["requires_api_key"] is False
+    assert openalex_capability["supports_anonymous"] is True
+    assert "search" in openalex_capability["capabilities"]
 
     assert profiles.status_code == 200
-    assert profiles.json() == [
-        {
-            "profile_id": "default",
-            "providers": [
-                {
-                    "provider_id": "openalex",
-                    "provider_type": "openalex",
-                    "enabled": True,
-                    "base_url": "https://api.openalex.org/works",
-                    "requires_api_key": False,
-                    "credential_reference": None,
-                    "options": {},
-                    "configured": True,
-                }
-            ],
-        }
+    profile = profiles.json()[0]
+    assert profile["profile_id"] == "default"
+    assert [item["provider_id"] for item in profile["providers"]] == [
+        "openalex",
+        "semantic_scholar",
+        "arxiv",
+        "crossref",
     ]
+    defaults = [
+        item["provider_id"]
+        for item in profile["providers"]
+        if item["default_selected"]
+    ]
+    assert defaults == ["openalex"]
+    assert all("api_key" not in item for item in profile["providers"])
     paths = openapi.json()["paths"]
     assert "post" in paths["/api/v1/literature/search"]
     assert "get" in paths["/api/v1/providers"]

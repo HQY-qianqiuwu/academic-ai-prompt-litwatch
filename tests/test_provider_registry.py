@@ -31,8 +31,16 @@ def test_registry_declares_future_capabilities_without_runnable_adapters():
 
     assert set(capabilities) == set(ProviderType)
     assert capabilities[ProviderType.OPENALEX].runnable is True
+    assert capabilities[ProviderType.OPENALEX].default_selected is True
+    assert capabilities[ProviderType.OPENALEX].supports_anonymous is True
+    assert "search" in capabilities[ProviderType.OPENALEX].capabilities
     assert all(
         not capability.runnable
+        for provider_type, capability in capabilities.items()
+        if provider_type is not ProviderType.OPENALEX
+    )
+    assert all(
+        not capability.default_selected
         for provider_type, capability in capabilities.items()
         if provider_type is not ProviderType.OPENALEX
     )

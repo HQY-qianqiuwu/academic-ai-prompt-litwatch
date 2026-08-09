@@ -51,7 +51,14 @@ def create_app(
         settings, credential_store=credential_store
     )
     provider_profile_store = provider_profile_store or ProviderProfileStore(
-        [default_provider_profile(openalex_base_url=settings.openalex_base_url)]
+        [
+            default_provider_profile(
+                openalex_base_url=settings.openalex_base_url,
+                semantic_scholar_base_url=settings.semantic_scholar_base_url,
+                arxiv_base_url=settings.arxiv_base_url,
+                crossref_base_url=settings.crossref_base_url,
+            )
+        ]
     )
     search_service = literature_search_service or LiteratureSearchService(
         registry=provider_registry,
@@ -255,10 +262,10 @@ def create_app(
         for provider in payload.providers:
             if provider.api_key is None:
                 continue
-            if not provider.requires_api_key or not provider.credential_reference:
+            if not provider.credential_reference:
                 raise HTTPException(
                     status_code=422,
-                    detail="API key requires requires_api_key and credential_reference",
+                    detail="API key requires credential_reference",
                 )
             credential_updates.append(
                 (provider.credential_reference, provider.api_key.get_secret_value())

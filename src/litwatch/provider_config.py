@@ -43,10 +43,19 @@ class ProviderConfig(BaseModel):
     provider_id: str = Field(pattern=PROVIDER_ID_PATTERN)
     provider_type: ProviderType
     enabled: bool = False
+    default_selected: bool = False
     base_url: AnyHttpUrl
     requires_api_key: bool = False
     credential_reference: str | None = Field(default=None, pattern=PROVIDER_ID_PATTERN)
     options: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def preserve_legacy_default_selection(cls, value):
+        """Treat an omitted v1.3 field exactly like the v1.2 enabled flag."""
+        if isinstance(value, dict) and "default_selected" not in value:
+            value = {**value, "default_selected": bool(value.get("enabled", False))}
+        return value
 
     @field_validator("options")
     @classmethod
@@ -59,6 +68,12 @@ class ProviderConfig(BaseModel):
                     f"provider option {key!r} may contain a secret; use credential_reference"
                 )
         return value
+
+    @model_validator(mode="after")
+    def default_provider_must_be_enabled(self) -> ProviderConfig:
+        if self.default_selected and not self.enabled:
+            raise ValueError("default-selected provider must be enabled")
+        return self
 
 
 class ProviderProfile(BaseModel):
@@ -82,7 +97,15 @@ class ProviderProfile(BaseModel):
         raise KeyError(provider_id)
 
 
-def default_provider_profile(*, openalex_base_url: str) -> ProviderProfile:
+def default_provider_profile(
+    *,
+    openalex_base_url: str,
+    semantic_scholar_base_url: str = (
+        "https://api.semanticscholar.org/graph/v1/paper/search"
+    ),
+    arxiv_base_url: str = "https://export.arxiv.org/api/query",
+    crossref_base_url: str = "https://api.crossref.org/v1/works",
+) -> ProviderProfile:
     """Build the backward-compatible profile used when callers specify no providers."""
     return ProviderProfile(
         providers=[
@@ -90,9 +113,35 @@ def default_provider_profile(*, openalex_base_url: str) -> ProviderProfile:
                 provider_id="openalex",
                 provider_type=ProviderType.OPENALEX,
                 enabled=True,
+                default_selected=True,
                 base_url=openalex_base_url,
                 requires_api_key=False,
-            )
+            ),
+            ProviderConfig(
+                provider_id="semantic_scholar",
+                provider_type=ProviderType.SEMANTIC_SCHOLAR,
+                enabled=True,
+                default_selected=False,
+                base_url=semantic_scholar_base_url,
+                requires_api_key=False,
+                credential_reference="semantic_scholar_default",
+            ),
+            ProviderConfig(
+                provider_id="arxiv",
+                provider_type=ProviderType.ARXIV,
+                enabled=True,
+                default_selected=False,
+                base_url=arxiv_base_url,
+                requires_api_key=False,
+            ),
+            ProviderConfig(
+                provider_id="crossref",
+                provider_type=ProviderType.CROSSREF,
+                enabled=True,
+                default_selected=False,
+                base_url=crossref_base_url,
+                requires_api_key=False,
+            ),
         ]
     )
 

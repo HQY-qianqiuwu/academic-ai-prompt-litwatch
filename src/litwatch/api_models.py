@@ -6,7 +6,12 @@ from pydantic import AnyHttpUrl, BaseModel, Field, JsonValue, SecretStr, field_v
 
 from litwatch.models import Paper
 from litwatch.provider_config import ProviderConfig, ProviderProfile, ProviderType
-from litwatch.services import LiteratureSearchResult
+from litwatch.services import (
+    LiteratureSearchResult,
+    ProviderErrorCode,
+    ProviderExecutionStatus,
+    ProviderSearchStatus,
+)
 from litwatch.sources.registry import InMemoryCredentialStore, ProviderCapability
 
 
@@ -67,12 +72,28 @@ class LiteraturePaperResponse(BaseModel):
         )
 
 
+class ProviderSearchStatusResponse(BaseModel):
+    """Sanitized execution diagnostics with no upstream exception text."""
+
+    provider: str
+    status: ProviderExecutionStatus
+    fetched_count: int
+    returned_count: int
+    elapsed_ms: int
+    error_code: ProviderErrorCode | None
+
+    @classmethod
+    def from_status(cls, status: ProviderSearchStatus) -> ProviderSearchStatusResponse:
+        return cls.model_validate(status.model_dump())
+
+
 class LiteratureSearchResponse(BaseModel):
     """Response envelope for a unified literature search."""
 
     query: str
     paper_count: int
     papers: list[LiteraturePaperResponse]
+    provider_status: list[ProviderSearchStatusResponse] = Field(default_factory=list)
 
     @classmethod
     def from_result(cls, result: LiteratureSearchResult) -> LiteratureSearchResponse:
@@ -81,22 +102,36 @@ class LiteratureSearchResponse(BaseModel):
             query=result.query,
             paper_count=result.paper_count,
             papers=[LiteraturePaperResponse.from_paper(paper) for paper in result.papers],
+            provider_status=[
+                ProviderSearchStatusResponse.from_status(status)
+                for status in result.provider_status
+            ],
         )
 
 
 class ProviderCapabilityResponse(BaseModel):
     """Public capability declaration; runnable is false for future adapters."""
 
+    name: str
     provider_type: ProviderType
     display_name: str
     runnable: bool
+    default_selected: bool
+    requires_api_key: bool
+    supports_anonymous: bool
+    capabilities: list[str]
 
     @classmethod
     def from_capability(cls, capability: ProviderCapability) -> ProviderCapabilityResponse:
         return cls(
+            name=capability.provider_type.value,
             provider_type=capability.provider_type,
             display_name=capability.display_name,
             runnable=capability.runnable,
+            default_selected=capability.default_selected,
+            requires_api_key=capability.requires_api_key,
+            supports_anonymous=capability.supports_anonymous,
+            capabilities=list(capability.capabilities),
         )
 
 
@@ -106,6 +141,7 @@ class ProviderConfigWrite(BaseModel):
     provider_id: str
     provider_type: ProviderType
     enabled: bool = False
+    default_selected: bool | None = None
     base_url: AnyHttpUrl
     requires_api_key: bool = False
     credential_reference: str | None = None
@@ -114,7 +150,7 @@ class ProviderConfigWrite(BaseModel):
 
     def to_config(self) -> ProviderConfig:
         return ProviderConfig.model_validate(
-            self.model_dump(exclude={"api_key"}, mode="python")
+            self.model_dump(exclude={"api_key"}, exclude_none=True, mode="python")
         )
 
 
@@ -137,6 +173,7 @@ class ProviderConfigResponse(BaseModel):
     provider_id: str
     provider_type: ProviderType
     enabled: bool
+    default_selected: bool
     base_url: str
     requires_api_key: bool
     credential_reference: str | None
@@ -163,6 +200,7 @@ class ProviderProfileResponse(BaseModel):
                     provider_id=provider.provider_id,
                     provider_type=provider.provider_type,
                     enabled=provider.enabled,
+                    default_selected=provider.default_selected,
                     base_url=str(provider.base_url),
                     requires_api_key=provider.requires_api_key,
                     credential_reference=provider.credential_reference,
