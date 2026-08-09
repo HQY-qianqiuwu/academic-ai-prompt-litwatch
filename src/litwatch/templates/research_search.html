@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LitWatch Research Literature Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="{{ url_for('static', path='/research-search.js') }}" defer></script>
+  </head>
+  <body class="research-app">
+    <header class="research-topbar">
+      <a class="research-brand" href="/" aria-label="LitWatch search home">
+        <span>LW</span>
+        <strong>LitWatch</strong>
+      </a>
+      <p>Research Literature Search</p>
+      <nav aria-label="Primary navigation">
+        <a class="active" href="/">Search</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/provider-settings">Provider Settings</a>
+        <a href="http://localhost" target="_blank" rel="noopener noreferrer">Dify</a>
+      </nav>
+    </header>
+
+    <main class="research-shell">
+      <section class="research-intro" aria-labelledby="search-title">
+        <p class="research-kicker">Local multi-source retrieval</p>
+        <h1 id="search-title">Find research you can verify.</h1>
+        <p>Search real academic Providers through LitWatch, then review deduplicated and
+          relevance-ranked results without sending your query directly from the browser.</p>
+      </section>
+
+      <section class="research-panel" aria-labelledby="search-form-title">
+        <div class="research-section-heading">
+          <div>
+            <p class="research-kicker">Search</p>
+            <h2 id="search-form-title">Research query</h2>
+          </div>
+          <span class="research-mode">Sort: Relevance</span>
+        </div>
+
+        <form class="research-form" data-search-form novalidate>
+          <label class="research-field research-topic-field" for="research-topic">
+            <span>Research Topic</span>
+            <textarea id="research-topic" name="topic" rows="3" required minlength="2"
+              maxlength="500" placeholder="underwater acoustic TDOA localization"></textarea>
+          </label>
+
+          <label class="research-field" for="research-limit">
+            <span>Results</span>
+            <select id="research-limit" name="limit">
+              <option value="5">5</option>
+              <option value="10" selected>10</option>
+              <option value="20">20</option>
+              <option value="30">30</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+
+          <fieldset class="provider-picker" data-provider-picker disabled>
+            <legend>Providers</legend>
+            <p class="provider-help">Loading Provider capabilities…</p>
+            <div class="provider-options" data-provider-options></div>
+          </fieldset>
+
+          <div class="research-form-actions">
+            <button class="research-primary" type="submit" data-search-submit disabled>
+              Search Literature
+            </button>
+            <p>Dates are not shown because the stable search API does not yet expose a
+              consistent cross-Provider year range.</p>
+          </div>
+        </form>
+      </section>
+
+      <section class="search-feedback" aria-live="polite" aria-atomic="true">
+        <div class="search-state" data-search-state>
+          <strong>Enter a research topic to search literature.</strong>
+          <span>Select one or more available Providers, then start the search.</span>
+        </div>
+        <button type="button" class="research-secondary" data-search-retry hidden>Retry</button>
+      </section>
+
+      <section class="search-summary" data-search-summary hidden aria-label="Search summary"></section>
+      <section class="research-results" data-search-results aria-label="Literature results"></section>
+    </main>
+  </body>
+</html>

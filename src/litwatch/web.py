@@ -128,7 +128,15 @@ def create_app(
         return True
 
     @app.get("/", response_class=HTMLResponse)
-    async def home(request: Request, topic: str = ""):
+    async def research_search(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="research_search.html",
+            context={"static_mode": False},
+        )
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def dashboard(request: Request, topic: str = ""):
         configured_topics = settings.load_topics()
         known_ids = {item.id for item in configured_topics}
         topics = configured_topics + [
