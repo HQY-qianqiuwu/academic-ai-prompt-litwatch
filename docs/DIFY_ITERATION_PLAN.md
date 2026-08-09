@@ -220,7 +220,7 @@ continues to be the verified real behavior.
 
 ## Stack v1.5 — LitWatch Web UI
 
-Status: **Release Candidate — manual UI acceptance pending**
+Status: **Stable**
 
 Implemented on `feat/v1.5-web-ui`:
 
@@ -240,7 +240,9 @@ because no existing safe endpoint is available. Stable v1.0 and v1.1 DSL files
 remain unchanged. Browser and automated evidence is recorded in
 `docs/V1_5_E2E_RESULTS.md`.
 
-Do not create `dify-v1.5` until manual UI acceptance completes.
+Manual UI acceptance passed for TDOA search, paper cards, ranking display,
+source merging, partial-failure UX, and Provider Settings. Stable tag:
+`dify-v1.5`.
 
 ## Stack v1.6 — Zotero Integration
 

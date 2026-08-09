@@ -23,7 +23,7 @@ solely to make version numbers align.
 | v1.2 | Stable | Provider Configuration + Provider Registry + BYOK boundary | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex | `dify-v1.2` |
 | v1.3 | Stable | Multi-source retrieval, deterministic aggregation, failure isolation, secure Provider BYOK; duplicates intentionally preserved | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.3` |
 | v1.4 | Stable | Deterministic deduplication, metadata merge, relevance/quality ranking, additive diagnostics | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.4` |
-| v1.5 | Release Candidate | Local research Web UI, diagnostics, Provider Settings, secret-safe BYOK UX | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | Pending manual acceptance |
+| v1.5 | Stable | Local research Web UI, diagnostics, Provider Settings, secret-safe BYOK UX | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.5` |
 
 ## Provider Capability Matrix
 
@@ -113,7 +113,7 @@ deduplication, zero final duplicate DOIs, multi-source merging, and both Dify UI
 topics. Stack v1.4 is Stable at `dify-v1.4`. Semantic Scholar authenticated real
 success remains not verified.
 
-## Stack v1.5 Release Candidate Evidence
+## Stack v1.5 Release Evidence
 
 The existing FastAPI/Jinja2/vanilla JavaScript application now provides a local
 multi-source search page and Provider Settings page without adding a frontend
@@ -125,8 +125,9 @@ Scholar anonymous access was isolated as rate limited.
 Fake-secret Provider Settings tests passed without secret reflection, and the
 test credential was cleared. Responsive checks passed at a 375px effective
 viewport. Stable v1.0 and v1.1 DSL files remain unchanged. See
-`docs/V1_5_E2E_RESULTS.md`. Stack v1.5 remains a Release Candidate until manual
-UI acceptance; no `dify-v1.5` tag exists.
+`docs/V1_5_E2E_RESULTS.md`. Manual acceptance passed for TDOA search, paper
+cards, ranking display, source merging, partial-failure UX, and Provider
+Settings. Stack v1.5 is Stable at `dify-v1.5`.
 
 ## Recovery Rule
 

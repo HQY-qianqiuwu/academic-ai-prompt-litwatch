@@ -238,7 +238,7 @@ Validation record: `docs/V1_4_E2E_RESULTS.md`
 
 ## Stack v1.5
 
-Status: **Release Candidate — manual UI acceptance pending**
+Status: **Stable**
 
 Architecture:
 
@@ -279,7 +279,9 @@ Validation state:
 - Fake-secret save, redaction, and cleanup: pass
 - Responsive no-overflow check: pass
 - Stable v1.0 and v1.1 DSL protection: pass
-- Stable tag: intentionally absent pending manual acceptance
+- Manual TDOA search, paper cards, ranking display, source merge, partial
+  failure UX, and Provider Settings acceptance: pass
+- Stable tag: `dify-v1.5`
 
 Design record: `docs/V1_5_WEB_UI.md`
 

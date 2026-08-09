@@ -1,6 +1,10 @@
 # Stack v1.5 LitWatch Web Interface
 
-Status: implemented on the v1.5 release-candidate branch; manual acceptance pending
+Status: **Stable**
+
+Manual acceptance passed for TDOA search, paper cards, ranking display,
+multi-source provenance, partial-failure behavior, Provider Settings, and the
+responsive local interface.
 
 ## Existing Web audit
 

@@ -1,6 +1,6 @@
 # Stack v1.5 Web UI E2E Results
 
-Status: **RELEASE CANDIDATE**
+Status: **STABLE**
 
 Branch: `feat/v1.5-web-ui`
 
@@ -110,7 +110,7 @@ No real API key was used or recorded during the UI test.
   expose a consistent cross-Provider range.
 - Provider Test Connection: deferred because there is no existing safe endpoint
   and v1.5 does not expand backend security semantics.
-- Stable `dify-v1.5` tag: intentionally absent pending manual UI acceptance.
+- Stable tag: `dify-v1.5`
 
 ## Automated gate
 
@@ -122,6 +122,7 @@ No real API key was used or recorded during the UI test.
 - v1.0 DSL: unchanged
 - v1.1 DSL: unchanged
 
-Final RC documentation is followed by one more complete automated gate. The
-manual acceptance gate remains open, so this document records a Release
-Candidate rather than a Stable release.
+The final automated gate and manual acceptance both passed. Manual verification
+covered TDOA search, paper cards, ranking display, multi-source provenance,
+partial-failure behavior, and Provider Settings. Stack v1.5 is released as
+Stable at `dify-v1.5`.
