@@ -10,7 +10,14 @@ from fastapi.testclient import TestClient
 
 from litwatch.config import Settings
 from litwatch.models import Author, Paper
-from litwatch.services import LiteratureSearchResult
+from litwatch.services import (
+    AllProvidersFailedError,
+    LiteratureSearchResult,
+    ProviderErrorCode,
+    ProviderExecutionStatus,
+    ProviderSearchStatus,
+)
+from litwatch.sources.registry import ProviderNotFoundError
 from litwatch.web import create_app
 
 
@@ -19,16 +26,28 @@ class FakeLiteratureSearchService:
         self,
         papers: list[Paper] | None = None,
         error: Exception | None = None,
+        provider_status: list[ProviderSearchStatus] | None = None,
     ) -> None:
         self.papers = papers or []
         self.error = error
+        self.provider_status = provider_status or []
         self.calls: list[tuple[str, int]] = []
 
-    def search(self, *, topic: str, limit: int) -> LiteratureSearchResult:
+    def search(
+        self,
+        *,
+        topic: str,
+        limit: int,
+        providers: list[str] | None = None,
+    ) -> LiteratureSearchResult:
         self.calls.append((topic, limit))
         if self.error is not None:
             raise self.error
-        return LiteratureSearchResult(query=topic, papers=self.papers[:limit])
+        return LiteratureSearchResult(
+            query=topic,
+            papers=self.papers[:limit],
+            provider_status=self.provider_status,
+        )
 
 
 def settings_for(tmp_path: Path) -> Settings:
@@ -143,19 +162,19 @@ def test_search_rejects_invalid_request_values(tmp_path, request_body):
                 "timeout at D:\\private\\project; TOKEN=should-not-leak"
             ),
             504,
-            "OpenAlex request timed out",
+            "Literature request timed out",
         ),
-        (upstream_status_error(429), 502, "OpenAlex upstream request failed"),
-        (upstream_status_error(500), 502, "OpenAlex upstream request failed"),
+        (upstream_status_error(429), 502, "Literature request failed"),
+        (upstream_status_error(500), 502, "Literature request failed"),
         (
             json.JSONDecodeError("PASSWORD=should-not-leak", "invalid", 0),
             502,
-            "OpenAlex upstream request failed",
+            "Literature request failed",
         ),
         (
             AttributeError("SECRET=should-not-leak at C:\\private\\source.py"),
             502,
-            "OpenAlex upstream request failed",
+            "Literature request failed",
         ),
     ],
 )
@@ -334,3 +353,124 @@ def test_search_passes_explicit_provider_selection_without_breaking_v1_1_request
 
     assert v1_1_response.status_code == selected_response.status_code == 200
     assert service.provider_calls == [None, ["openalex"]]
+
+
+def test_api_returns_additive_provider_status_for_partial_success(tmp_path):
+    statuses = [
+        ProviderSearchStatus(
+            provider="openalex",
+            status=ProviderExecutionStatus.SUCCESS,
+            fetched_count=2,
+            returned_count=1,
+            elapsed_ms=12,
+        ),
+        ProviderSearchStatus(
+            provider="semantic_scholar",
+            status=ProviderExecutionStatus.RATE_LIMITED,
+            elapsed_ms=25,
+            error_code=ProviderErrorCode.UPSTREAM_429,
+        ),
+    ]
+    service = FakeLiteratureSearchService(
+        sample_papers()[:1], provider_status=statuses
+    )
+
+    with TestClient(create_app(settings_for(tmp_path), service)) as client:
+        response = client.post(
+            "/api/v1/literature/search",
+            json={"topic": "underwater acoustics", "limit": 5},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["provider_status"] == [
+        {
+            "provider": "openalex",
+            "status": "success",
+            "fetched_count": 2,
+            "returned_count": 1,
+            "elapsed_ms": 12,
+            "error_code": None,
+        },
+        {
+            "provider": "semantic_scholar",
+            "status": "rate_limited",
+            "fetched_count": 0,
+            "returned_count": 0,
+            "elapsed_ms": 25,
+            "error_code": "upstream_429",
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    ("statuses", "expected_status", "expected_detail"),
+    [
+        (
+            [
+                ProviderSearchStatus(
+                    provider="openalex",
+                    status=ProviderExecutionStatus.TIMEOUT,
+                    error_code=ProviderErrorCode.TIMEOUT,
+                ),
+                ProviderSearchStatus(
+                    provider="arxiv",
+                    status=ProviderExecutionStatus.TIMEOUT,
+                    error_code=ProviderErrorCode.TIMEOUT,
+                ),
+            ],
+            504,
+            "All selected literature providers timed out",
+        ),
+        (
+            [
+                ProviderSearchStatus(
+                    provider="openalex",
+                    status=ProviderExecutionStatus.TIMEOUT,
+                    error_code=ProviderErrorCode.TIMEOUT,
+                ),
+                ProviderSearchStatus(
+                    provider="crossref",
+                    status=ProviderExecutionStatus.UPSTREAM_ERROR,
+                    error_code=ProviderErrorCode.UPSTREAM_HTTP,
+                ),
+            ],
+            502,
+            "All selected literature providers failed",
+        ),
+    ],
+)
+def test_api_maps_safe_all_provider_failures(
+    tmp_path,
+    statuses,
+    expected_status,
+    expected_detail,
+):
+    service = FakeLiteratureSearchService(error=AllProvidersFailedError(statuses))
+
+    with TestClient(create_app(settings_for(tmp_path), service)) as client:
+        response = client.post(
+            "/api/v1/literature/search",
+            json={"topic": "underwater acoustics", "limit": 5},
+        )
+
+    assert response.status_code == expected_status
+    assert response.json() == {"detail": expected_detail}
+
+
+def test_api_maps_invalid_provider_selection_to_422(tmp_path):
+    service = FakeLiteratureSearchService(error=ProviderNotFoundError("not-real"))
+
+    with TestClient(create_app(settings_for(tmp_path), service)) as client:
+        response = client.post(
+            "/api/v1/literature/search",
+            json={
+                "topic": "underwater acoustics",
+                "limit": 5,
+                "providers": ["not-real"],
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "Invalid provider selection or configuration"
+    }

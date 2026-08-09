@@ -25,7 +25,7 @@ from litwatch.db import Database
 from litwatch.export import rows_to_bibtex
 from litwatch.pipeline import Pipeline
 from litwatch.provider_config import ProviderProfileStore, default_provider_profile
-from litwatch.services import LiteratureSearchService
+from litwatch.services import AllProvidersFailedError, LiteratureSearchService
 from litwatch.sources.registry import (
     InMemoryCredentialStore,
     ProviderRegistry,
@@ -209,8 +209,8 @@ def create_app(
         "/api/v1/literature/search",
         response_model=LiteratureSearchResponse,
         responses={
-            502: {"description": "OpenAlex upstream HTTP or parse error"},
-            504: {"description": "OpenAlex upstream timeout"},
+            502: {"description": "All selected providers failed"},
+            504: {"description": "All selected providers timed out"},
         },
     )
     def literature_search(payload: LiteratureSearchRequest) -> LiteratureSearchResponse:
@@ -227,10 +227,20 @@ def create_app(
             raise HTTPException(
                 status_code=422, detail="Invalid provider selection or configuration"
             ) from None
+        except AllProvidersFailedError as error:
+            if error.all_timeouts:
+                raise HTTPException(
+                    status_code=504,
+                    detail="All selected literature providers timed out",
+                ) from None
+            raise HTTPException(
+                status_code=502,
+                detail="All selected literature providers failed",
+            ) from None
         except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="OpenAlex request timed out") from None
+            raise HTTPException(status_code=504, detail="Literature request timed out") from None
         except (httpx.HTTPError, AttributeError, KeyError, TypeError, ValueError):
-            raise HTTPException(status_code=502, detail="OpenAlex upstream request failed") from None
+            raise HTTPException(status_code=502, detail="Literature request failed") from None
 
         return LiteratureSearchResponse.from_result(result)
 

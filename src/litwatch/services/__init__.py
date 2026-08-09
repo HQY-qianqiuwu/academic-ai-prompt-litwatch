@@ -1,4 +1,5 @@
 from .literature_search import (
+    AllProvidersFailedError,
     LiteratureSearchResult,
     LiteratureSearchService,
     ProviderErrorCode,
@@ -7,6 +8,7 @@ from .literature_search import (
 )
 
 __all__ = [
+    "AllProvidersFailedError",
     "LiteratureSearchResult",
     "LiteratureSearchService",
     "ProviderErrorCode",

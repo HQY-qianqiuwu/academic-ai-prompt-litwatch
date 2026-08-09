@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import json
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from enum import StrEnum
 from time import perf_counter
 from typing import NamedTuple, Self
 
-from pydantic import BaseModel, Field, computed_field
+import httpx
+from pydantic import BaseModel, Field, ValidationError, computed_field
 
 from litwatch.config import Settings, Topic
 from litwatch.models import Paper
@@ -54,6 +57,21 @@ class ProviderSearchStatus(BaseModel):
     returned_count: int = 0
     elapsed_ms: int = 0
     error_code: ProviderErrorCode | None = None
+
+
+class AllProvidersFailedError(RuntimeError):
+    """Safe aggregate failure containing diagnostics but no raw exceptions."""
+
+    def __init__(self, provider_status: list[ProviderSearchStatus]) -> None:
+        super().__init__("all selected literature providers failed")
+        self.provider_status = provider_status
+
+    @property
+    def all_timeouts(self) -> bool:
+        return bool(self.provider_status) and all(
+            item.status is ProviderExecutionStatus.TIMEOUT
+            for item in self.provider_status
+        )
 
 
 class LiteratureSearchResult(BaseModel):
@@ -169,20 +187,34 @@ class LiteratureSearchService:
             query=normalized_topic,
             min_score=0,
         )
-        provider_papers: list[tuple[str, Paper]] = []
+        provider_results: list[tuple[str, list[Paper]]] = []
         provider_status: list[ProviderSearchStatus] = []
         for provider_id, source in self._selected_sources(providers):
             started_at = self.clock()
-            fetched = source.search(
+            try:
+                fetched = source.search(
                     provider_topic,
                     self.historical_start_date,
                     end_date,
                     limit,
                 )
-            elapsed_ms = max(0, round((self.clock() - started_at) * 1000))
-            if any(not isinstance(paper, Paper) for paper in fetched):
-                raise TypeError("literature sources must return Paper instances")
-            provider_papers.extend((provider_id, paper) for paper in fetched)
+                if not isinstance(fetched, list) or any(
+                    not isinstance(paper, Paper) for paper in fetched
+                ):
+                    raise TypeError("literature sources must return a list of Paper")
+            except Exception as error:  # noqa: BLE001 - provider failures are isolated
+                status, error_code = self._classify_provider_error(error)
+                provider_status.append(
+                    ProviderSearchStatus(
+                        provider=provider_id,
+                        status=status,
+                        elapsed_ms=self._elapsed_ms(started_at),
+                        error_code=error_code,
+                    )
+                )
+                continue
+
+            provider_results.append((provider_id, fetched))
             provider_status.append(
                 ProviderSearchStatus(
                     provider=provider_id,
@@ -192,18 +224,19 @@ class LiteratureSearchService:
                         else ProviderExecutionStatus.EMPTY
                     ),
                     fetched_count=len(fetched),
-                    elapsed_ms=elapsed_ms,
+                    elapsed_ms=self._elapsed_ms(started_at),
                 )
             )
 
-        selected_papers = provider_papers[:limit]
-        papers = [paper for _, paper in selected_papers]
-        if any(not isinstance(paper, Paper) for paper in papers):
-            raise TypeError("literature sources must return Paper instances")
+        successful_statuses = {
+            ProviderExecutionStatus.SUCCESS,
+            ProviderExecutionStatus.EMPTY,
+        }
+        if not any(item.status in successful_statuses for item in provider_status):
+            raise AllProvidersFailedError(provider_status)
 
-        returned_counts: dict[str, int] = {}
-        for provider_id, _ in selected_papers:
-            returned_counts[provider_id] = returned_counts.get(provider_id, 0) + 1
+        papers, returned_counts = self._round_robin(provider_results, limit)
+
         for item in provider_status:
             item.returned_count = returned_counts.get(item.provider, 0)
 
@@ -211,4 +244,71 @@ class LiteratureSearchService:
             query=normalized_topic,
             papers=papers,
             provider_status=provider_status,
+        )
+
+    def _elapsed_ms(self, started_at: float) -> int:
+        return max(0, round((self.clock() - started_at) * 1000))
+
+    @staticmethod
+    def _round_robin(
+        provider_results: list[tuple[str, list[Paper]]],
+        limit: int,
+    ) -> tuple[list[Paper], dict[str, int]]:
+        papers: list[Paper] = []
+        returned_counts: dict[str, int] = {}
+        positions = [0] * len(provider_results)
+        while len(papers) < limit:
+            made_progress = False
+            for index, (provider_id, provider_papers) in enumerate(provider_results):
+                if len(papers) >= limit:
+                    break
+                position = positions[index]
+                if position >= len(provider_papers):
+                    continue
+                papers.append(provider_papers[position])
+                positions[index] += 1
+                returned_counts[provider_id] = returned_counts.get(provider_id, 0) + 1
+                made_progress = True
+            if not made_progress:
+                break
+        return papers, returned_counts
+
+    @staticmethod
+    def _classify_provider_error(
+        error: Exception,
+    ) -> tuple[ProviderExecutionStatus, ProviderErrorCode]:
+        if isinstance(error, httpx.TimeoutException):
+            return ProviderExecutionStatus.TIMEOUT, ProviderErrorCode.TIMEOUT
+        if isinstance(error, httpx.HTTPStatusError):
+            status_code = error.response.status_code
+            if status_code == 429:
+                return (
+                    ProviderExecutionStatus.RATE_LIMITED,
+                    ProviderErrorCode.UPSTREAM_429,
+                )
+            if status_code in {401, 403}:
+                return (
+                    ProviderExecutionStatus.AUTH_ERROR,
+                    ProviderErrorCode.UPSTREAM_AUTH,
+                )
+            return (
+                ProviderExecutionStatus.UPSTREAM_ERROR,
+                ProviderErrorCode.UPSTREAM_HTTP,
+            )
+        if isinstance(error, httpx.HTTPError):
+            return (
+                ProviderExecutionStatus.UPSTREAM_ERROR,
+                ProviderErrorCode.UPSTREAM_HTTP,
+            )
+        if isinstance(
+            error,
+            (json.JSONDecodeError, ET.ParseError, ValidationError, TypeError, ValueError),
+        ):
+            return (
+                ProviderExecutionStatus.PARSE_ERROR,
+                ProviderErrorCode.MALFORMED_RESPONSE,
+            )
+        return (
+            ProviderExecutionStatus.UPSTREAM_ERROR,
+            ProviderErrorCode.PROVIDER_ERROR,
         )
