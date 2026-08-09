@@ -371,5 +371,5 @@ def test_stage_three_migration_preserves_stage_two_rows(tmp_path):
     ).fetchone()[0] == ""
     assert [row[0] for row in migrated.connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
-    ).fetchall()] == [1, 2, 3]
+    ).fetchall()] == [1, 2, 3, 4]
     migrated.connection.close()

@@ -39,6 +39,7 @@ from litwatch.services import (
     SubscriptionProviderError,
     SubscriptionService,
 )
+from litwatch.services.scheduler import SchedulerService
 from litwatch.services.subscription_runs import (
     RunAlreadyActiveError,
     SubscriptionRunError,
@@ -65,6 +66,7 @@ def create_app(
     provider_base_url_validator: Callable[[str], str] | None = None,
     subscription_service: SubscriptionService | None = None,
     subscription_run_service: SubscriptionRunService | None = None,
+    scheduler_service: SchedulerService | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_runtime_files()
@@ -104,14 +106,25 @@ def create_app(
         run_repository,
         historical_repository,
     )
+    scheduler_service = scheduler_service or SchedulerService(
+        subscription_repository,
+        run_repository,
+        subscription_run_service,
+        poll_seconds=settings.scheduler_poll_seconds,
+        lease_seconds=settings.scheduler_lease_seconds,
+    )
     scan_lock = threading.Lock()
     state_lock = threading.Lock()
     scan_state: dict[str, object] = {"scanning": False, "last_error": ""}
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        yield
-        database.connection.close()
+        scheduler_service.start()
+        try:
+            yield
+        finally:
+            scheduler_service.stop()
+            database.connection.close()
 
     app = FastAPI(title="LitWatch", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
@@ -123,6 +136,7 @@ def create_app(
     app.state.subscription_service = subscription_service
     app.state.subscription_run_service = subscription_run_service
     app.state.subscription_run_repository = run_repository
+    app.state.scheduler_service = scheduler_service
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")

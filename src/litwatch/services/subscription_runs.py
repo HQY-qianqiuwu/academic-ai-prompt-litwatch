@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -78,13 +78,17 @@ class SubscriptionRunService:
         run_key: str,
         scheduled_for_at: datetime | None = None,
         period_key: str | None = None,
+        lease_owner: str | None = None,
+        lease_seconds: int = 300,
     ) -> SubscriptionRunResult:
         subscription = self.subscription_repository.get(subscription_id)
         if subscription is None:
             raise SubscriptionNotFoundError(subscription_id)
         now = self._now()
+        run_id = self.id_factory()
+        effective_lease_owner = lease_owner or f"run:{run_id}"
         run = SubscriptionRun(
-            id=self.id_factory(),
+            id=run_id,
             subscription_id=subscription_id,
             run_key=run_key,
             trigger=trigger,
@@ -93,6 +97,8 @@ class SubscriptionRunService:
             started_at=now,
             heartbeat_at=now,
             status=SubscriptionRunStatus.RUNNING,
+            lease_owner=effective_lease_owner,
+            lease_expires_at=now + timedelta(seconds=lease_seconds),
         )
         run, created = self.run_repository.create(run)
         if not created:
@@ -168,6 +174,8 @@ class SubscriptionRunService:
         )
         run.finished_at = finished_at
         run.heartbeat_at = finished_at
+        run.lease_owner = None
+        run.lease_expires_at = None
         run.raw_count = result.diagnostics.raw_count
         run.dedup_count = result.diagnostics.dedup_count
         run.duplicates_removed = result.diagnostics.duplicates_removed
@@ -192,6 +200,8 @@ class SubscriptionRunService:
         run.status = SubscriptionRunStatus.FAILED
         run.finished_at = finished_at
         run.heartbeat_at = finished_at
+        run.lease_owner = None
+        run.lease_expires_at = None
         run.provider_status = self._safe_statuses(statuses)
         run.safe_error = safe_error
         self.run_repository.finish(run)

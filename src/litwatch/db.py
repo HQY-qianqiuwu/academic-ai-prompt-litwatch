@@ -183,6 +183,14 @@ MIGRATIONS = (
             ON recommendations(run_id, rank_position ASC);
         """,
     ),
+    (
+        4,
+        "subscription_run_concurrency",
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_runs_one_active
+            ON subscription_runs(subscription_id) WHERE status = 'running';
+        """,
+    ),
 )
 
 

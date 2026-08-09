@@ -96,6 +96,18 @@ class SubscriptionRepository:
         if cursor.rowcount != 1:
             raise KeyError(subscription_id)
 
+    def set_next_run_at(
+        self, subscription_id: str, next_run_at: datetime | None
+    ) -> None:
+        value = next_run_at.isoformat() if next_run_at is not None else None
+        with self._lock, self.database.connection:
+            cursor = self.database.connection.execute(
+                "UPDATE subscriptions SET next_run_at=? WHERE id=?",
+                (value, subscription_id),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(subscription_id)
+
     @staticmethod
     def _database_values(subscription: Subscription) -> Mapping[str, object]:
         return {

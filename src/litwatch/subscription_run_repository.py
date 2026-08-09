@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 from threading import RLock
 
 from litwatch.db import Database
@@ -21,16 +21,26 @@ class SubscriptionRunRepository:
             ).fetchone()
             if existing is not None:
                 return self._run_from_row(existing), False
-            self.database.connection.execute(
-                """INSERT INTO subscription_runs(
+            try:
+                self.database.connection.execute(
+                    """INSERT INTO subscription_runs(
                        id,subscription_id,run_key,trigger,scheduled_for_at,period_key,
                        started_at,heartbeat_at,finished_at,status,attempt_count,
                        lease_owner,lease_expires_at,raw_count,dedup_count,
                        duplicates_removed,historical_duplicates_removed,new_count,
                        eligible_count,recommended_count,provider_status_json,safe_error
                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                self._run_values(run),
-            )
+                    self._run_values(run),
+                )
+            except sqlite3.IntegrityError:
+                active = self.database.connection.execute(
+                    """SELECT * FROM subscription_runs
+                       WHERE subscription_id=? AND status='running'""",
+                    (run.subscription_id,),
+                ).fetchone()
+                if active is not None:
+                    return self._run_from_row(active), False
+                raise
         return run.model_copy(deep=True), True
 
     def finish(self, run: SubscriptionRun) -> SubscriptionRun:
@@ -115,6 +125,27 @@ class SubscriptionRunRepository:
                 (run_id,),
             ).fetchall()
         return [self._recommendation_from_row(row) for row in rows]
+
+    def recover_stale(self, now: datetime) -> list[str]:
+        now_utc = now.astimezone(UTC)
+        with self._lock, self.database.connection:
+            rows = self.database.connection.execute(
+                """SELECT id FROM subscription_runs
+                   WHERE status='running' AND lease_expires_at IS NOT NULL
+                     AND lease_expires_at < ? ORDER BY id""",
+                (now_utc.isoformat(),),
+            ).fetchall()
+            ids = [str(row["id"]) for row in rows]
+            if ids:
+                placeholders = ",".join("?" for _ in ids)
+                self.database.connection.execute(
+                    f"""UPDATE subscription_runs SET status='interrupted',finished_at=?,
+                               heartbeat_at=?,lease_owner=NULL,lease_expires_at=NULL,
+                               safe_error='stale_run_recovered'
+                           WHERE id IN ({placeholders})""",
+                    (now_utc.isoformat(), now_utc.isoformat(), *ids),
+                )
+        return ids
 
     @staticmethod
     def _run_values(run: SubscriptionRun) -> tuple[object, ...]:

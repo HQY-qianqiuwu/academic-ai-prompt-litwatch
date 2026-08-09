@@ -88,6 +88,8 @@ class Settings(BaseSettings):
     analyze_top_n: int = Field(default=8, ge=0, le=50)
     fulltext_top_n: int = Field(default=3, ge=0, le=20)
     request_timeout_seconds: float = Field(default=30, ge=5, le=120)
+    scheduler_poll_seconds: float = Field(default=30, ge=1, le=3600)
+    scheduler_lease_seconds: int = Field(default=300, ge=30, le=3600)
 
     def ensure_runtime_files(self) -> None:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
