@@ -202,7 +202,7 @@ Automated release-candidate evidence:
 - Semantic Scholar anonymous 429 isolation: pass
 - Dify Worker -> SSRF Proxy -> LitWatch: pass
 - BYOK, SSRF, secret redaction, Provider status, and partial failure: pass
-- Tests: 163 passed; Ruff and `git diff --check`: pass
+- Tests: 164 passed; Ruff and `git diff --check`: pass
 - v1.0 and v1.1 stable DSL files: unchanged
 - Workflow v1.1 remains the compatible workflow
 - No v1.4 stable tag exists

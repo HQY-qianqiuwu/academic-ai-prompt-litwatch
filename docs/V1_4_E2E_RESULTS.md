@@ -133,7 +133,8 @@ UI run remains part of manual release-candidate acceptance.
 
 ## Automated gates
 
-- Full test suite: 163 passed
+- Full test suite: 164 passed
+- conflicting canonical DOI merge protection: PASS
 - Ruff: PASS
 - `git diff --check`: PASS
 - OpenAlex regression: PASS

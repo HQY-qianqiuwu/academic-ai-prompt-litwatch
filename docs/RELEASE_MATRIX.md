@@ -99,7 +99,7 @@ Semantic Scholar anonymous HTTP 429 remained isolated while OpenAlex, arXiv,
 and Crossref succeeded.
 
 The Dify Worker reached the v1.4 service through the real SSRF proxy and
-received the unchanged OpenAlex-only default contract. Tests reached 163 passed;
+received the unchanged OpenAlex-only default contract. Tests reached 164 passed;
 Ruff, diff checks, Provider/BYOK/SSRF regressions, and stable DSL checks passed.
 See `docs/V1_4_E2E_RESULTS.md`.
 

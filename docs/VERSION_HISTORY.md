@@ -222,7 +222,7 @@ Automated validation state:
 - OFDM real search: 60 raw, 60 deduplicated
 - Topic-specific top-result ranking: automated checks pass
 - Dify Worker -> SSRF Proxy -> LitWatch: HTTP 200
-- Tests: 163 passed; Ruff and `git diff --check`: pass
+- Tests: 164 passed; Ruff and `git diff --check`: pass
 - Stable v1.0 and v1.1 DSL protection: pass
 - `literature-search-v1.4.yml`: intentionally absent
 - Stable tag: not created at release-candidate stage
