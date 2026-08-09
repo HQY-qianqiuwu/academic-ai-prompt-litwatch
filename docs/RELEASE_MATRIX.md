@@ -22,18 +22,19 @@ solely to make version numbers align.
 | v1.1 | Stable | LitWatch Search API + `LiteratureSearchService` | `literature-search-v1.1.yml` | OpenAlex | `dify-v1.1` |
 | v1.2 | Stable | Provider Configuration + Provider Registry + BYOK boundary | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex | `dify-v1.2` |
 | v1.3 | Stable | Multi-source retrieval, deterministic aggregation, failure isolation, secure Provider BYOK; duplicates intentionally preserved | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.3` |
+| v1.4 | Release Candidate | Deterministic deduplication, metadata merge, relevance/quality ranking, additive diagnostics | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | Not tagged |
 
 ## Provider Capability Matrix
 
-| Provider | Stack v1.2 | Stack v1.3 |
-|---|---|---|
-| OpenAlex | Runnable | Runnable |
-| Semantic Scholar | Declared, non-runnable | Runnable |
-| arXiv | Declared, non-runnable | Runnable |
-| Crossref | Declared, non-runnable | Runnable |
-| IEEE Xplore | Declared, non-runnable | Non-runnable |
-| Scopus | Declared, non-runnable | Non-runnable |
-| Web of Science | Declared, non-runnable | Non-runnable |
+| Provider | Stack v1.2 | Stack v1.3 | Stack v1.4 RC |
+|---|---|---|---|
+| OpenAlex | Runnable | Runnable | Runnable |
+| Semantic Scholar | Declared, non-runnable | Runnable | Runnable |
+| arXiv | Declared, non-runnable | Runnable | Runnable |
+| Crossref | Declared, non-runnable | Runnable | Runnable |
+| IEEE Xplore | Declared, non-runnable | Non-runnable | Non-runnable |
+| Scopus | Declared, non-runnable | Non-runnable | Non-runnable |
+| Web of Science | Declared, non-runnable | Non-runnable | Non-runnable |
 
 ## Workflow Upgrade Policy
 
@@ -56,6 +57,10 @@ Stack v1.3 reuses v1.1. The compatible workflow omits `providers` and therefore
 retains the default OpenAlex-only behavior. Multi-source retrieval is available
 through explicit provider selection in the LitWatch API without changing the
 Dify workflow contract.
+
+Stack v1.4 RC also reuses v1.1. The required `topic`, `limit`, `paper_count`,
+and `papers` fields are unchanged. Deduplication and ranking diagnostics are
+additive top-level fields. No `literature-search-v1.4.yml` is created.
 
 ## Stack v1.2 Release Evidence
 
@@ -84,6 +89,22 @@ Both Dify UI topics succeeded, returned `paper_count > 0` and non-empty
 retained `sources=openalex`. BYOK, endpoint SSRF protection, secret redaction,
 Provider Registry, partial failure, dynamic topics, 143 tests, Ruff, diff checks,
 and both stable DSL checks passed. See `docs/V1_3_E2E_RESULTS.md`.
+
+## Stack v1.4 Release-Candidate Evidence
+
+The TDOA four-provider request returned HTTP 200, reduced 60 raw candidates to
+57 unique papers, and merged OpenAlex/Crossref provenance on the top result. The
+OFDM request returned HTTP 200 with query-specific OFDM communication results.
+Semantic Scholar anonymous HTTP 429 remained isolated while OpenAlex, arXiv,
+and Crossref succeeded.
+
+The Dify Worker reached the v1.4 service through the real SSRF proxy and
+received the unchanged OpenAlex-only default contract. Tests reached 163 passed;
+Ruff, diff checks, Provider/BYOK/SSRF regressions, and stable DSL checks passed.
+See `docs/V1_4_E2E_RESULTS.md`.
+
+Stack v1.4 remains a Release Candidate. A Stable tag is forbidden until the
+TDOA and OFDM ranking order is manually accepted in the Dify UI.
 
 ## Recovery Rule
 

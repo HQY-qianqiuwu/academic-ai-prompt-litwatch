@@ -154,18 +154,65 @@ The complete release evidence is `docs/V1_3_E2E_RESULTS.md`.
 
 ## Stack v1.4 — Deduplication, Relevance, and Quality Ranking
 
-Candidate papers -> deduplication -> keyword relevance -> metadata completeness
--> citation/venue signals -> priority score. Deterministic ranking remains the
-default; LLMs do not replace deterministic scoring.
+Status: Release Candidate; automated gates complete, manual Dify UI ranking
+review required
+
+Released candidate path:
+
+```text
+Provider candidates
+    -> DOI / canonical-ID / conservative title deduplication
+    -> deterministic metadata merge
+    -> deterministic query relevance
+    -> real-metadata quality
+    -> relevance-dominant final score
+    -> stable tie-break
+    -> final limit
+```
+
+Deterministic ranking remains the only ranking path. No LLM, embedding, venue
+prestige guess, or fabricated impact factor participates.
 
 Initial deterministic deduplication priority:
 
 1. DOI exact match
 2. arXiv identifier exact match
-3. Canonical URL
-4. Normalized title
+3. normalized title exact match
+4. conservative normalized-title similarity
 
 Merged papers must preserve all contributing source names and identifiers.
+
+Candidate budget:
+
+```text
+min(50, 2 * final_limit) per Provider
+```
+
+The final response limit is applied only after deduplication and ranking.
+Top-level diagnostics expose raw count, deduplicated count, removed duplicates,
+candidate budget, and returned-paper score components without changing the
+existing Dify paper projection.
+
+Automated release-candidate evidence:
+
+- TDOA: HTTP 200, 60 raw, 57 unique, 3 duplicates removed
+- Top TDOA result merged `crossref` and `openalex` provenance
+- OFDM: HTTP 200, 60 raw, 60 unique; explicit OFDM titles lead the ranking
+- OpenAlex, arXiv, and Crossref real E2E: pass
+- Semantic Scholar anonymous 429 isolation: pass
+- Dify Worker -> SSRF Proxy -> LitWatch: pass
+- BYOK, SSRF, secret redaction, Provider status, and partial failure: pass
+- Tests: 163 passed; Ruff and `git diff --check`: pass
+- v1.0 and v1.1 stable DSL files: unchanged
+- Workflow v1.1 remains the compatible workflow
+- No v1.4 stable tag exists
+
+Architecture: `docs/V1_4_DEDUP_RANKING.md`
+
+Automated E2E: `docs/V1_4_E2E_RESULTS.md`
+
+Manual acceptance must confirm the TDOA and OFDM ranking order in the Dify UI
+before v1.4 is marked Stable or tagged.
 
 ## Stack v1.5 — LitWatch Web UI
 

@@ -1,6 +1,6 @@
 # Stack v1.4 Deterministic Deduplication and Ranking
 
-Status: implementation design approved for the v1.4 release-candidate branch
+Status: implemented on the v1.4 release-candidate branch; manual ranking review pending
 
 ## Scope and compatibility boundary
 

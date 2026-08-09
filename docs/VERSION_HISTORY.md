@@ -175,3 +175,61 @@ Validation state:
 BYOK record: `docs/V1_3_PROVIDER_BYOK.md`
 
 Validation record: `docs/V1_3_E2E_RESULTS.md`
+
+## Stack v1.4
+
+Status: Release Candidate
+
+Architecture:
+
+```text
+Provider retrieval
+    -> bounded candidate pool
+    -> DOI / canonical-ID / title deduplication
+    -> deterministic metadata merge
+    -> query relevance scoring
+    -> metadata quality scoring
+    -> stable final ranking
+    -> response limit
+```
+
+Backend additions:
+
+- Canonical DOI normalization and conservative title matching
+- Input-order-independent duplicate grouping and metadata merge
+- Sorted union of contributing Provider provenance
+- Title-dominant deterministic query relevance scoring
+- Real-metadata-only quality scoring
+- Relevance-dominant final score and explicit stable tie-break rules
+- Per-Provider candidate budget `min(50, 2 * final_limit)`
+- Limit-after-dedup semantics
+- Additive raw, deduplicated, removed, budget, and ranking diagnostics
+- Existing Provider failure isolation retained through ranking
+
+Dify Workflow:
+
+`dify/workflows/literature-search-v1.1.yml` (compatible reuse)
+
+Automated validation state:
+
+- OpenAlex, arXiv, and Crossref real E2E: pass
+- Semantic Scholar anonymous access: upstream rate limited HTTP 429
+- Semantic Scholar partial-failure isolation: pass
+- Semantic Scholar environment and Profile BYOK paths: pass by tests
+- Semantic Scholar authenticated real success: **not verified**
+- TDOA real search: 60 raw, 57 deduplicated, 3 removed
+- TDOA cross-source OpenAlex/Crossref merge: pass
+- OFDM real search: 60 raw, 60 deduplicated
+- Topic-specific top-result ranking: automated checks pass
+- Dify Worker -> SSRF Proxy -> LitWatch: HTTP 200
+- Tests: 163 passed; Ruff and `git diff --check`: pass
+- Stable v1.0 and v1.1 DSL protection: pass
+- `literature-search-v1.4.yml`: intentionally absent
+- Stable tag: not created at release-candidate stage
+
+Manual validation remains required for the real TDOA and OFDM ranking order in
+the Dify UI before Stack v1.4 can become Stable.
+
+Architecture record: `docs/V1_4_DEDUP_RANKING.md`
+
+Validation record: `docs/V1_4_E2E_RESULTS.md`
