@@ -6,9 +6,11 @@
     <title>LitWatch Research Literature Search</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/research-results.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
     <script src="{{ url_for('static', path='/research-search.js') }}" defer></script>
   </head>
   <body class="research-app">
+    <a class="skip-link" href="#main-content">Skip to search</a>
     <header class="research-topbar">
       <a class="research-brand" href="/" aria-label="LitWatch search home">
         <span>LW</span>
@@ -23,7 +25,7 @@
       </nav>
     </header>
 
-    <main class="research-shell">
+    <main id="main-content" class="research-shell">
       <section class="research-intro" aria-labelledby="search-title">
         <p class="research-kicker">Local multi-source retrieval</p>
         <h1 id="search-title">Find research you can verify.</h1>

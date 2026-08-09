@@ -5,11 +5,18 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>LitWatch 文献雷达</title>
     <link rel="stylesheet" href="{% if static_mode %}{{ static_css_path }}{% else %}{{ url_for('static', path='/styles.css') }}{% endif %}">
+    {% if not static_mode %}<link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">{% endif %}
     {% if static_mode %}<script src="{{ live_search_js_path }}" defer></script>{% endif %}
   </head>
   <body>
+    {% if not static_mode %}<a class="skip-link" href="#main-content">跳到文献 Dashboard</a>{% endif %}
     <header class="hero">
-      <nav><span class="brand">LitWatch</span><span class="tag">Research radar</span></nav>
+      <nav>
+        <span class="brand">LitWatch</span><span class="tag">Research radar</span>
+        {% if not static_mode %}
+        <span class="dashboard-links"><a href="/">Search</a> <a href="/provider-settings">Provider Settings</a></span>
+        {% endif %}
+      </nav>
       <div class="hero-grid">
         <div>
           <p class="eyebrow">持续发现，而不是一次性搜索</p>
@@ -32,7 +39,7 @@
       </div>
     </header>
 
-    <main>
+    <main id="main-content">
       {% if not static_mode and scan_state.scanning %}
       <div class="scan-status" role="status"><strong>正在后台检索并分析文献……</strong><span>完成后页面会自动刷新，你也可以继续浏览现有结果。</span></div>
       {% elif not static_mode and scan_state.last_error %}

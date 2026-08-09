@@ -6,9 +6,11 @@
     <title>LitWatch Provider Settings</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/provider-settings.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
     <script src="{{ url_for('static', path='/provider-settings.js') }}" defer></script>
   </head>
   <body class="research-app">
+    <a class="skip-link" href="#main-content">Skip to Provider settings</a>
     <header class="research-topbar">
       <a class="research-brand" href="/" aria-label="LitWatch search home">
         <span>LW</span>
@@ -23,7 +25,7 @@
       </nav>
     </header>
 
-    <main class="research-shell settings-shell">
+    <main id="main-content" class="research-shell settings-shell">
       <section class="research-intro" aria-labelledby="settings-title">
         <p class="research-kicker">Local configuration</p>
         <h1 id="settings-title">Provider Settings</h1>
