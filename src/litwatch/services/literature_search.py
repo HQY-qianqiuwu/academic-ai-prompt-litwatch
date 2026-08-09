@@ -18,6 +18,8 @@ from litwatch.provider_config import (
     ProviderProfileStore,
     default_provider_profile,
 )
+from litwatch.services.deduplication import deduplicate_papers
+from litwatch.services.search_ranking import rank_papers
 from litwatch.sources.base import PaperSource
 from litwatch.sources.registry import ProviderNotFoundError, ProviderRegistry
 
@@ -25,6 +27,8 @@ from litwatch.sources.registry import ProviderNotFoundError, ProviderRegistry
 # the upper bound tied to the current date. Both values are injectable so a later API revision can
 # expose an explicit date range without changing the provider or relying on a future hard-coded date.
 DEFAULT_HISTORICAL_START_DATE = date(1900, 1, 1)
+CANDIDATE_LIMIT_MULTIPLIER = 2
+MAX_CANDIDATES_PER_PROVIDER = 50
 
 
 def _utc_today() -> date:
@@ -59,6 +63,21 @@ class ProviderSearchStatus(BaseModel):
     error_code: ProviderErrorCode | None = None
 
 
+class PaperRankingDiagnostic(BaseModel):
+    canonical_id: str
+    rank_score: float
+    relevance_score: float
+    quality_score: float
+
+
+class LiteratureSearchDiagnostics(BaseModel):
+    raw_count: int = 0
+    dedup_count: int = 0
+    duplicates_removed: int = 0
+    candidate_limit_per_provider: int = 0
+    ranking: list[PaperRankingDiagnostic] = Field(default_factory=list)
+
+
 class AllProvidersFailedError(RuntimeError):
     """Safe aggregate failure containing diagnostics but no raw exceptions."""
 
@@ -78,6 +97,7 @@ class LiteratureSearchResult(BaseModel):
     query: str
     papers: list[Paper]
     provider_status: list[ProviderSearchStatus] = Field(default_factory=list)
+    diagnostics: LiteratureSearchDiagnostics = Field(default_factory=LiteratureSearchDiagnostics)
 
     @computed_field
     @property
@@ -187,6 +207,7 @@ class LiteratureSearchService:
             query=normalized_topic,
             min_score=0,
         )
+        candidate_limit = min(MAX_CANDIDATES_PER_PROVIDER, limit * CANDIDATE_LIMIT_MULTIPLIER)
         provider_results: list[tuple[str, list[Paper]]] = []
         provider_status: list[ProviderSearchStatus] = []
         for provider_id, source in self._selected_sources(providers):
@@ -196,7 +217,7 @@ class LiteratureSearchService:
                     provider_topic,
                     self.historical_start_date,
                     end_date,
-                    limit,
+                    candidate_limit,
                 )
                 if not isinstance(fetched, list) or any(
                     not isinstance(paper, Paper) for paper in fetched
@@ -214,7 +235,12 @@ class LiteratureSearchService:
                 )
                 continue
 
-            provider_results.append((provider_id, fetched))
+            prepared: list[Paper] = []
+            for paper in fetched:
+                candidate = paper.model_copy(deep=True)
+                candidate.sources = sorted(set(candidate.sources) | {provider_id})
+                prepared.append(candidate)
+            provider_results.append((provider_id, prepared))
             provider_status.append(
                 ProviderSearchStatus(
                     provider=provider_id,
@@ -235,7 +261,16 @@ class LiteratureSearchService:
         if not any(item.status in successful_statuses for item in provider_status):
             raise AllProvidersFailedError(provider_status)
 
-        papers, returned_counts = self._round_robin(provider_results, limit)
+        deduplication = deduplicate_papers(
+            paper
+            for _, provider_papers in provider_results
+            for paper in provider_papers
+        )
+        papers = rank_papers(normalized_topic, deduplication.papers)[:limit]
+        returned_counts = {
+            provider_id: sum(provider_id in paper.sources for paper in papers)
+            for provider_id, _ in provider_results
+        }
 
         for item in provider_status:
             item.returned_count = returned_counts.get(item.provider, 0)
@@ -244,34 +279,25 @@ class LiteratureSearchService:
             query=normalized_topic,
             papers=papers,
             provider_status=provider_status,
+            diagnostics=LiteratureSearchDiagnostics(
+                raw_count=deduplication.raw_count,
+                dedup_count=deduplication.dedup_count,
+                duplicates_removed=deduplication.duplicates_removed,
+                candidate_limit_per_provider=candidate_limit,
+                ranking=[
+                    PaperRankingDiagnostic(
+                        canonical_id=paper.canonical_id,
+                        rank_score=float(paper.score_detail["rank_score"]),
+                        relevance_score=float(paper.score_detail["relevance_score"]),
+                        quality_score=float(paper.score_detail["quality_score"]),
+                    )
+                    for paper in papers
+                ],
+            ),
         )
 
     def _elapsed_ms(self, started_at: float) -> int:
         return max(0, round((self.clock() - started_at) * 1000))
-
-    @staticmethod
-    def _round_robin(
-        provider_results: list[tuple[str, list[Paper]]],
-        limit: int,
-    ) -> tuple[list[Paper], dict[str, int]]:
-        papers: list[Paper] = []
-        returned_counts: dict[str, int] = {}
-        positions = [0] * len(provider_results)
-        while len(papers) < limit:
-            made_progress = False
-            for index, (provider_id, provider_papers) in enumerate(provider_results):
-                if len(papers) >= limit:
-                    break
-                position = positions[index]
-                if position >= len(provider_papers):
-                    continue
-                papers.append(provider_papers[position])
-                positions[index] += 1
-                returned_counts[provider_id] = returned_counts.get(provider_id, 0) + 1
-                made_progress = True
-            if not made_progress:
-                break
-        return papers, returned_counts
 
     @staticmethod
     def _classify_provider_error(

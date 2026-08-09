@@ -12,7 +12,9 @@ from litwatch.config import Settings
 from litwatch.models import Author, Paper
 from litwatch.services import (
     AllProvidersFailedError,
+    LiteratureSearchDiagnostics,
     LiteratureSearchResult,
+    PaperRankingDiagnostic,
     ProviderErrorCode,
     ProviderExecutionStatus,
     ProviderSearchStatus,
@@ -27,10 +29,12 @@ class FakeLiteratureSearchService:
         papers: list[Paper] | None = None,
         error: Exception | None = None,
         provider_status: list[ProviderSearchStatus] | None = None,
+        diagnostics: LiteratureSearchDiagnostics | None = None,
     ) -> None:
         self.papers = papers or []
         self.error = error
         self.provider_status = provider_status or []
+        self.diagnostics = diagnostics or LiteratureSearchDiagnostics()
         self.calls: list[tuple[str, int]] = []
 
     def search(
@@ -47,6 +51,7 @@ class FakeLiteratureSearchService:
             query=topic,
             papers=self.papers[:limit],
             provider_status=self.provider_status,
+            diagnostics=self.diagnostics,
         )
 
 
@@ -119,6 +124,13 @@ def test_search_returns_normalized_contract_without_network(tmp_path, monkeypatc
     assert payload["query"] == "underwater acoustic TDOA localization"
     assert payload["paper_count"] == len(payload["papers"]) == 2
     assert payload["provider_status"] == []
+    assert payload["diagnostics"] == {
+        "raw_count": 0,
+        "dedup_count": 0,
+        "duplicates_removed": 0,
+        "candidate_limit_per_provider": 0,
+        "ranking": [],
+    }
     assert payload["papers"][0] == {
         "canonical_id": "doi:10.1234/acoustics",
         "title": "Underwater acoustic localization",
@@ -134,6 +146,33 @@ def test_search_returns_normalized_contract_without_network(tmp_path, monkeypatc
     assert payload["papers"][1]["sources"] == ["openalex"]
     for field in ("venue", "doi", "url", "abstract"):
         assert payload["papers"][1][field] is None
+
+
+def test_search_returns_additive_dedup_and_ranking_diagnostics(tmp_path):
+    diagnostics = LiteratureSearchDiagnostics(
+        raw_count=4,
+        dedup_count=3,
+        duplicates_removed=1,
+        candidate_limit_per_provider=20,
+        ranking=[
+            PaperRankingDiagnostic(
+                canonical_id="doi:10.1234/acoustics",
+                rank_score=0.91,
+                relevance_score=0.95,
+                quality_score=0.68,
+            )
+        ],
+    )
+    service = FakeLiteratureSearchService(sample_papers()[:1], diagnostics=diagnostics)
+
+    with TestClient(create_app(settings_for(tmp_path), service)) as client:
+        response = client.post(
+            "/api/v1/literature/search",
+            json={"topic": "underwater acoustic localization", "limit": 10},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["diagnostics"] == diagnostics.model_dump()
 
 
 @pytest.mark.parametrize(

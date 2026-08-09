@@ -20,6 +20,7 @@ from litwatch.provider_config import (
     ProviderType,
 )
 from litwatch.services import (
+    LiteratureSearchDiagnostics,
     LiteratureSearchResult,
     ProviderErrorCode,
     ProviderExecutionStatus,
@@ -100,6 +101,27 @@ class ProviderSearchStatusResponse(BaseModel):
         return cls.model_validate(status.model_dump())
 
 
+class PaperRankingDiagnosticResponse(BaseModel):
+    canonical_id: str
+    rank_score: float
+    relevance_score: float
+    quality_score: float
+
+
+class LiteratureSearchDiagnosticsResponse(BaseModel):
+    raw_count: int
+    dedup_count: int
+    duplicates_removed: int
+    candidate_limit_per_provider: int
+    ranking: list[PaperRankingDiagnosticResponse]
+
+    @classmethod
+    def from_diagnostics(
+        cls, diagnostics: LiteratureSearchDiagnostics
+    ) -> LiteratureSearchDiagnosticsResponse:
+        return cls.model_validate(diagnostics.model_dump())
+
+
 class LiteratureSearchResponse(BaseModel):
     """Response envelope for a unified literature search."""
 
@@ -107,6 +129,7 @@ class LiteratureSearchResponse(BaseModel):
     paper_count: int
     papers: list[LiteraturePaperResponse]
     provider_status: list[ProviderSearchStatusResponse] = Field(default_factory=list)
+    diagnostics: LiteratureSearchDiagnosticsResponse
 
     @classmethod
     def from_result(cls, result: LiteratureSearchResult) -> LiteratureSearchResponse:
@@ -119,6 +142,9 @@ class LiteratureSearchResponse(BaseModel):
                 ProviderSearchStatusResponse.from_status(status)
                 for status in result.provider_status
             ],
+            diagnostics=LiteratureSearchDiagnosticsResponse.from_diagnostics(
+                result.diagnostics
+            ),
         )
 
 

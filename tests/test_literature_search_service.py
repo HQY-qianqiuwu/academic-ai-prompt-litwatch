@@ -65,11 +65,11 @@ class FakeSource:
         return self.papers
 
 
-def paper(canonical_id: str) -> Paper:
+def paper(canonical_id: str, *, source: str = "openalex", title: str | None = None) -> Paper:
     return Paper(
         canonical_id=canonical_id,
-        title=f"Paper {canonical_id}",
-        sources=["openalex"],
+        title=title or f"Paper {canonical_id}",
+        sources=[source],
     )
 
 
@@ -84,7 +84,7 @@ def test_search_normalizes_topic_passes_limit_and_returns_papers():
     assert provider_topic.name == "underwater acoustic TDOA localization"
     assert start_date == date(1900, 1, 1)
     assert end_date == date(2026, 8, 8)
-    assert provider_limit == 1
+    assert provider_limit == 2
     assert result.query == "underwater acoustic TDOA localization"
     assert result.paper_count == len(result.papers) == 1
     assert all(isinstance(item, Paper) for item in result.papers)
@@ -93,6 +93,11 @@ def test_search_normalizes_topic_passes_limit_and_returns_papers():
     assert result.provider_status[0].status is ProviderExecutionStatus.SUCCESS
     assert result.provider_status[0].fetched_count == 2
     assert result.provider_status[0].returned_count == 1
+    assert result.diagnostics.raw_count == 2
+    assert result.diagnostics.dedup_count == 2
+    assert result.diagnostics.duplicates_removed == 0
+    assert result.diagnostics.candidate_limit_per_provider == 2
+    assert len(result.diagnostics.ranking) == 1
 
 
 def test_search_supports_an_injected_historical_start_date():
@@ -357,7 +362,7 @@ def status_error(status_code: int) -> httpx.HTTPStatusError:
     return httpx.HTTPStatusError("safe test error", request=request, response=response)
 
 
-def test_multi_provider_search_is_sequential_and_round_robin_with_total_limit():
+def test_multi_provider_search_is_sequential_then_stably_ranked_with_total_limit():
     events: list[str] = []
     sources = {
         "openalex": FakeSource(
@@ -366,13 +371,20 @@ def test_multi_provider_search_is_sequential_and_round_robin_with_total_limit():
             events=events,
         ),
         "semantic_scholar": FakeSource(
-            [paper("s1"), paper("s2")],
+            [
+                paper("s1", source="semantic_scholar"),
+                paper("s2", source="semantic_scholar"),
+            ],
             name="semantic_scholar",
             events=events,
         ),
-        "arxiv": FakeSource([paper("a1")], name="arxiv", events=events),
+        "arxiv": FakeSource(
+            [paper("a1", source="arxiv")], name="arxiv", events=events
+        ),
         "crossref": FakeSource(
-            [paper("c1"), paper("c2")], name="crossref", events=events
+            [paper("c1", source="crossref"), paper("c2", source="crossref")],
+            name="crossref",
+            events=events,
         ),
     }
     providers = ["openalex", "semantic_scholar", "arxiv", "crossref"]
@@ -385,25 +397,28 @@ def test_multi_provider_search_is_sequential_and_round_robin_with_total_limit():
 
     assert events == providers
     assert [item.canonical_id for item in result.papers] == [
-        "oa1",
-        "s1",
         "a1",
         "c1",
-        "oa2",
-        "s2",
         "c2",
+        "oa1",
+        "oa2",
+        "oa3",
+        "s1",
     ]
     assert result.paper_count == 7
-    assert all(source.calls[0][3] == 7 for source in sources.values())
+    assert all(source.calls[0][3] == 14 for source in sources.values())
     statuses = {item.provider: item for item in result.provider_status}
     assert statuses["openalex"].fetched_count == 3
-    assert statuses["openalex"].returned_count == 2
-    assert statuses["semantic_scholar"].returned_count == 2
+    assert statuses["openalex"].returned_count == 3
+    assert statuses["semantic_scholar"].returned_count == 1
     assert statuses["arxiv"].returned_count == 1
     assert statuses["crossref"].returned_count == 2
+    assert result.diagnostics.raw_count == 8
+    assert result.diagnostics.dedup_count == 8
+    assert result.diagnostics.candidate_limit_per_provider == 14
 
 
-def test_multi_provider_search_preserves_duplicates():
+def test_multi_provider_search_merges_duplicates_and_source_provenance():
     duplicate = paper("same-id")
     service = multi_provider_service(
         {
@@ -418,7 +433,57 @@ def test_multi_provider_search_preserves_duplicates():
         providers=["openalex", "crossref"],
     )
 
-    assert [item.canonical_id for item in result.papers] == ["same-id", "same-id"]
+    assert [item.canonical_id for item in result.papers] == ["same-id"]
+    assert result.papers[0].sources == ["crossref", "openalex"]
+    assert result.diagnostics.raw_count == 2
+    assert result.diagnostics.dedup_count == 1
+    assert result.diagnostics.duplicates_removed == 1
+
+
+def test_final_limit_is_applied_after_deduplication():
+    first = paper(
+        "openalex:w1",
+        title="Underwater Acoustic TDOA Localization",
+    )
+    first.doi = "10.1234/duplicate"
+    duplicate = paper(
+        "crossref:x1",
+        source="crossref",
+        title="Underwater Acoustic TDOA Localization",
+    )
+    duplicate.doi = "https://doi.org/10.1234/DUPLICATE"
+    unique = paper(
+        "crossref:x2",
+        source="crossref",
+        title="TDOA Localization for Underwater Acoustic Arrays",
+    )
+    sources = {
+        "openalex": FakeSource([first], name="openalex"),
+        "crossref": FakeSource([duplicate, unique], name="crossref"),
+    }
+    service = multi_provider_service(sources)
+
+    result = service.search(
+        topic="underwater acoustic TDOA localization",
+        limit=2,
+        providers=["openalex", "crossref"],
+    )
+
+    assert result.paper_count == 2
+    assert result.diagnostics.raw_count == 3
+    assert result.diagnostics.dedup_count == 2
+    assert result.diagnostics.duplicates_removed == 1
+    assert all(source.calls[0][3] == 4 for source in sources.values())
+
+
+def test_candidate_budget_is_capped_at_fifty_per_provider():
+    source = FakeSource([paper("one")])
+    service = LiteratureSearchService(source, current_date=lambda: date(2026, 8, 8))
+
+    result = service.search(topic="underwater acoustics", limit=30)
+
+    assert source.calls[0][3] == 50
+    assert result.diagnostics.candidate_limit_per_provider == 50
 
 
 def test_empty_and_failed_providers_do_not_discard_successful_results():
