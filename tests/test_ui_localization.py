@@ -55,6 +55,7 @@ def test_i18n_layer_defaults_safely_and_persists_only_locale(tmp_path):
         "paper.abstract",
         "settings.apiKey",
         "subscriptions.runNow",
+        "runs.title",
         "digest.recommended",
         "weekday.6",
     ):

@@ -210,6 +210,18 @@ def create_app(
             context={},
         )
 
+    @app.get("/subscriptions/{subscription_id}/runs", response_class=HTMLResponse)
+    async def subscription_run_history_page(request: Request, subscription_id: str):
+        try:
+            subscription = subscription_service.get(subscription_id)
+        except SubscriptionNotFoundError:
+            raise HTTPException(status_code=404, detail="Subscription not found") from None
+        return templates.TemplateResponse(
+            request=request,
+            name="subscription_run_history.html",
+            context={"subscription": subscription},
+        )
+
     @app.get("/weekly-digests", response_class=HTMLResponse)
     async def weekly_digests(request: Request):
         return templates.TemplateResponse(

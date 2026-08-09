@@ -38,7 +38,7 @@
     list.innerHTML = subscriptions.map((item) => `<article class="subscription-card" data-enabled="${item.enabled}">
       <h2>${escapeHtml(item.name)}</h2><p class="topic">${escapeHtml(item.topic)}</p>
       <div class="subscription-meta"><span>${escapeHtml(t("subscriptions.providersLabel", {providers:item.providers.join(", ")}))}</span><span>${escapeHtml(t("subscriptions.schedule", {weekday:t(`weekday.${item.weekday}`),time:item.local_time}))}</span><span>${escapeHtml(t("subscriptions.lastRun", {date:dateText(item.last_run_at)}))}</span><span>${escapeHtml(t("subscriptions.nextRun", {date:dateText(item.next_run_at)}))}</span></div>
-      <div class="subscription-actions"><button class="research-primary" data-action="run" data-id="${item.id}">${escapeHtml(t("subscriptions.runNow"))}</button><button class="research-secondary" data-action="view" data-id="${item.id}">${escapeHtml(t("subscriptions.view"))}</button><button class="research-secondary" data-action="edit" data-id="${item.id}">${escapeHtml(t("subscriptions.edit"))}</button><button class="research-secondary" data-action="toggle" data-id="${item.id}">${escapeHtml(item.enabled ? t("subscriptions.disable") : t("subscriptions.enable"))}</button></div>
+      <div class="subscription-actions"><button class="research-primary" data-action="run" data-id="${item.id}">${escapeHtml(t("subscriptions.runNow"))}</button><a class="research-secondary" href="/subscriptions/${encodeURIComponent(item.id)}/runs">${escapeHtml(t("subscriptions.runHistory"))}</a><a class="research-secondary" href="/weekly-digests?subscription_id=${encodeURIComponent(item.id)}">${escapeHtml(t("subscriptions.view"))}</a><button class="research-secondary" data-action="edit" data-id="${item.id}">${escapeHtml(t("subscriptions.edit"))}</button><button class="research-secondary" data-action="toggle" data-id="${item.id}">${escapeHtml(item.enabled ? t("subscriptions.disable") : t("subscriptions.enable"))}</button></div>
     </article>`).join("");
   };
 
@@ -78,7 +78,6 @@
     const button = event.target.closest("button[data-action]"); if (!button) return;
     const item = subscriptions.find((entry) => entry.id === button.dataset.id); if (!item) return;
     if (button.dataset.action === "edit") return openEditor(item);
-    if (button.dataset.action === "view") { detail.hidden = false; detail.innerHTML = `<strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.topic)}</p><p>${escapeHtml(t("subscriptions.keywordsLabel", {keywords:item.keywords.join(", ") || t("common.none")}))}</p><p><a href="/weekly-digests?subscription_id=${encodeURIComponent(item.id)}">${escapeHtml(t("subscriptions.history"))}</a></p>`; return; }
     button.disabled = true;
     try {
       if (button.dataset.action === "toggle") await request(`/api/v1/subscriptions/${item.id}`, {method:"PATCH",body:JSON.stringify({enabled:!item.enabled})});

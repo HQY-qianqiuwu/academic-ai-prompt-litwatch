@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title data-i18n="runs.pageTitle">LitWatch 订阅运行历史</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/subscriptions.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
+    <script src="{{ url_for('static', path='/subscription-run-history.js') }}" defer></script>
+  </head>
+  <body class="research-app" data-subscription-id="{{ subscription.id }}">
+    <a class="skip-link" href="#main-content" data-i18n="runs.skip">跳到运行历史</a>
+    <header class="research-topbar">
+      <a class="research-brand" href="/" aria-label="LitWatch 文献检索首页" data-i18n-aria-label="brand.home" translate="no"><span>LW</span><strong>LitWatch</strong></a>
+      <p data-i18n="runs.topbar">订阅运行历史</p>
+      <nav aria-label="主导航" data-i18n-aria-label="nav.primary">
+        <a href="/" data-i18n="nav.search">文献检索</a>
+        <a href="/dashboard" data-i18n="nav.radar">科研雷达</a>
+        <a class="active" href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a>
+        <a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a>
+        <a href="/provider-settings" data-i18n="nav.settings">数据源设置</a>
+        <a href="http://localhost" target="_blank" rel="noopener noreferrer" translate="no">Dify</a>
+      </nav>
+      <div class="locale-switch" role="group" aria-label="界面语言" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span aria-hidden="true">|</span><button type="button" data-locale="en">EN</button></div>
+    </header>
+
+    <main id="main-content" class="research-shell subscription-shell">
+      <section class="subscription-hero run-history-hero">
+        <div>
+          <p class="research-kicker" data-i18n="runs.kicker">研究订阅</p>
+          <h1 data-i18n="runs.title">运行历史</h1>
+          <h2>{{ subscription.name }}</h2>
+          <p>{{ subscription.topic }}</p>
+        </div>
+        <div class="run-history-actions">
+          <a class="research-secondary" href="/subscriptions" data-i18n="runs.back">返回研究订阅</a>
+          <a class="research-secondary" href="/weekly-digests?subscription_id={{ subscription.id }}" data-i18n="runs.viewDigest">查看每周推荐</a>
+        </div>
+      </section>
+
+      <section class="subscription-state" data-run-history-state aria-live="polite">
+        <strong data-i18n="runs.loading">正在加载运行历史...</strong>
+        <span data-i18n="runs.loadingBody">正在读取该研究订阅的执行记录。</span>
+      </section>
+      <section class="run-history-list" data-run-history-list aria-label="运行历史"></section>
+    </main>
+  </body>
+</html>
