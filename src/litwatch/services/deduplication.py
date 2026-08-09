@@ -82,7 +82,9 @@ def deduplicate_papers(papers: Iterable[Paper]) -> DeduplicationResult:
     if not candidates:
         return DeduplicationResult(papers=[], raw_count=0, dedup_count=0)
 
+    identities = [_paper_identity(paper) for paper in candidates]
     parents = list(range(len(candidates)))
+    group_dois = [{identity[0]} if identity[0] else set() for identity in identities]
 
     def find(index: int) -> int:
         while parents[index] != index:
@@ -95,9 +97,17 @@ def deduplicate_papers(papers: Iterable[Paper]) -> DeduplicationResult:
         second_root = find(second)
         if first_root == second_root:
             return
-        parents[max(first_root, second_root)] = min(first_root, second_root)
+        if (
+            group_dois[first_root]
+            and group_dois[second_root]
+            and group_dois[first_root] != group_dois[second_root]
+        ):
+            return
+        new_root = min(first_root, second_root)
+        old_root = max(first_root, second_root)
+        parents[old_root] = new_root
+        group_dois[new_root].update(group_dois[old_root])
 
-    identities = [_paper_identity(paper) for paper in candidates]
     for first_index, first in enumerate(candidates):
         for second_index in range(first_index + 1, len(candidates)):
             if _papers_match(first, candidates[second_index], identities[first_index], identities[second_index]):

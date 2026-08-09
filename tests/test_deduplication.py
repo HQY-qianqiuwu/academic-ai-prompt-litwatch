@@ -178,3 +178,25 @@ def test_distinct_titles_without_shared_identity_are_not_merged():
     )
 
     assert result.dedup_count == 2
+
+
+def test_conflicting_real_dois_block_even_exact_title_merge():
+    result = deduplicate_papers(
+        [
+            paper(
+                "openalex:w1",
+                "Identical Underwater Acoustic Localization Title",
+                source="openalex",
+                doi="10.1234/first",
+            ),
+            paper(
+                "crossref:x1",
+                "Identical Underwater Acoustic Localization Title",
+                source="crossref",
+                doi="10.1234/second",
+            ),
+        ]
+    )
+
+    assert result.dedup_count == 2
+    assert {paper.doi for paper in result.papers} == {"10.1234/first", "10.1234/second"}

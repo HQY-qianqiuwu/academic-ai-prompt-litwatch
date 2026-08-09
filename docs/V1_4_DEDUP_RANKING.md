@@ -94,6 +94,10 @@ deterministic union-find pass:
 3. exact normalized title;
 4. conservative near-title match defined above.
 
+Two groups containing different non-empty canonical DOIs are never linked by a
+weaker identifier or title rule. This group-level guard also prevents a
+DOI-missing record from transitively bridging two conflicting DOI records.
+
 The input is sorted before grouping, and every merged field uses a deterministic
 selector. Reversing provider order must therefore produce the same merged paper
 and final ordering.
