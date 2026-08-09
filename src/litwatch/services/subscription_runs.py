@@ -6,9 +6,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from litwatch.deliveries import Delivery
 from litwatch.historical_paper_repository import HistoricalPaperRepository
 from litwatch.models import Paper
 from litwatch.services.deduplication import papers_are_duplicates
+from litwatch.services.delivery import DeliveryService
 from litwatch.services.historical_papers import HistoricalPaperService
 from litwatch.services.literature_search import (
     AllProvidersFailedError,
@@ -38,6 +40,7 @@ class SubscriptionRunError(RuntimeError):
 class SubscriptionRunResult(BaseModel):
     run: SubscriptionRun
     recommendations: list[Recommendation] = Field(default_factory=list)
+    delivery: Delivery | None = None
 
 
 class SubscriptionRunService:
@@ -49,6 +52,7 @@ class SubscriptionRunService:
         subscription_repository: SubscriptionRepository,
         run_repository: SubscriptionRunRepository,
         historical_repository: HistoricalPaperRepository,
+        delivery_service: DeliveryService | None = None,
         *,
         clock: Callable[[], datetime] | None = None,
         id_factory: Callable[[], str] | None = None,
@@ -60,6 +64,7 @@ class SubscriptionRunService:
         self.historical_service = HistoricalPaperService(
             historical_repository, subscription_repository
         )
+        self.delivery_service = delivery_service
         self.clock = clock or (lambda: datetime.now(UTC))
         self.id_factory = id_factory or (lambda: uuid4().hex)
 
@@ -107,6 +112,11 @@ class SubscriptionRunService:
             return SubscriptionRunResult(
                 run=run,
                 recommendations=self.run_repository.list_recommendations(run.id),
+                delivery=(
+                    self.delivery_service.repository.get_for_run(run.id)
+                    if self.delivery_service is not None
+                    else None
+                ),
             )
 
         try:
@@ -188,7 +198,14 @@ class SubscriptionRunService:
         self.subscription_repository.record_execution(
             subscription_id, run_at=finished_at, successful=True
         )
-        return SubscriptionRunResult(run=run, recommendations=recommendations)
+        delivery = (
+            self.delivery_service.deliver_dashboard(subscription, run, recommendations)
+            if self.delivery_service is not None
+            else None
+        )
+        return SubscriptionRunResult(
+            run=run, recommendations=recommendations, delivery=delivery
+        )
 
     def _finish_failed(
         self,

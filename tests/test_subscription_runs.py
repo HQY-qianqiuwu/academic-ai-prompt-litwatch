@@ -7,8 +7,10 @@ from fastapi.testclient import TestClient
 
 from litwatch.config import Settings
 from litwatch.db import Database
+from litwatch.delivery_repository import DeliveryRepository
 from litwatch.historical_paper_repository import HistoricalPaperRepository
 from litwatch.models import Author, Paper
+from litwatch.services.delivery import DeliveryService
 from litwatch.services.literature_search import (
     AllProvidersFailedError,
     LiteratureSearchDiagnostics,
@@ -116,12 +118,14 @@ def build_service(tmp_path: Path, search, *, recommendation_limit: int = 2):
     subscriptions.create(saved_subscription(recommendation_limit=recommendation_limit))
     runs = SubscriptionRunRepository(database)
     history = HistoricalPaperRepository(database)
+    delivery = DeliveryService(DeliveryRepository(database), history)
     ids = iter(f"id-{index}" for index in range(100))
     service = SubscriptionRunService(
         search,
         subscriptions,
         runs,
         history,
+        delivery,
         clock=TickingClock(),
         id_factory=lambda: next(ids),
     )
@@ -147,6 +151,8 @@ def test_successful_run_persists_counts_and_recommendation_limit(tmp_path):
     assert execution.run.duplicates_removed == 1
     assert execution.run.new_count == execution.run.eligible_count == 3
     assert execution.run.recommended_count == 2
+    assert execution.delivery is not None
+    assert execution.delivery.digest["run"]["recommended_count"] == 2
     assert [item.canonical_id for item in execution.recommendations] == [
         "openalex:a",
         "openalex:b",
@@ -309,3 +315,4 @@ def test_run_now_api_uses_run_engine_and_exposes_safe_result(tmp_path):
     assert payload["run"]["status"] == "success"
     assert payload["run"]["recommended_count"] == 1
     assert payload["recommendations"][0]["canonical_id"] == "openalex:a"
+    assert payload["delivery"]["channel"] == "dashboard"

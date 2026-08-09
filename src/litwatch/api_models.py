@@ -15,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from litwatch.deliveries import Delivery
 from litwatch.models import Paper
 from litwatch.provider_config import (
     DEFAULT_CREDENTIAL_REFERENCES,
@@ -235,6 +236,7 @@ class RecommendationResponse(BaseModel):
 class SubscriptionRunResponse(BaseModel):
     run: SubscriptionRun
     recommendations: list[RecommendationResponse]
+    delivery: Delivery | None = None
 
     @classmethod
     def from_result(cls, result: SubscriptionRunResult) -> SubscriptionRunResponse:
@@ -246,6 +248,7 @@ class SubscriptionRunResponse(BaseModel):
                 RecommendationResponse.from_recommendation(item)
                 for item in recommendations
             ],
+            delivery=result.delivery,
         )
 
 

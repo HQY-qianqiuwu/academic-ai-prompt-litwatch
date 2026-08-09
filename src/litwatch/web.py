@@ -27,6 +27,7 @@ from litwatch.api_models import (
 )
 from litwatch.config import Settings, Topic
 from litwatch.db import Database
+from litwatch.delivery_repository import DeliveryRepository
 from litwatch.export import rows_to_bibtex
 from litwatch.historical_paper_repository import HistoricalPaperRepository
 from litwatch.pipeline import Pipeline
@@ -39,6 +40,7 @@ from litwatch.services import (
     SubscriptionProviderError,
     SubscriptionService,
 )
+from litwatch.services.delivery import DeliveryService
 from litwatch.services.scheduler import SchedulerService
 from litwatch.services.subscription_runs import (
     RunAlreadyActiveError,
@@ -100,11 +102,14 @@ def create_app(
     )
     historical_repository = HistoricalPaperRepository(database)
     run_repository = SubscriptionRunRepository(database)
+    delivery_repository = DeliveryRepository(database)
+    delivery_service = DeliveryService(delivery_repository, historical_repository)
     subscription_run_service = subscription_run_service or SubscriptionRunService(
         search_service,
         subscription_repository,
         run_repository,
         historical_repository,
+        delivery_service,
     )
     scheduler_service = scheduler_service or SchedulerService(
         subscription_repository,
@@ -136,6 +141,7 @@ def create_app(
     app.state.subscription_service = subscription_service
     app.state.subscription_run_service = subscription_run_service
     app.state.subscription_run_repository = run_repository
+    app.state.delivery_repository = delivery_repository
     app.state.scheduler_service = scheduler_service
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
@@ -201,6 +207,14 @@ def create_app(
         return templates.TemplateResponse(
             request=request,
             name="subscriptions.html",
+            context={},
+        )
+
+    @app.get("/weekly-digests", response_class=HTMLResponse)
+    async def weekly_digests(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="weekly_digests.html",
             context={},
         )
 
@@ -395,6 +409,29 @@ def create_app(
         except SubscriptionRunError:
             raise HTTPException(status_code=502, detail="Subscription run failed") from None
         return SubscriptionRunResponse.from_result(result)
+
+    @app.get("/api/v1/deliveries")
+    def deliveries(subscription_id: str | None = None) -> list[dict[str, object]]:
+        return [
+            delivery.model_dump(mode="json")
+            for delivery in delivery_repository.list(subscription_id)
+        ]
+
+    @app.get("/api/v1/deliveries/{delivery_id}")
+    def delivery_detail(delivery_id: str) -> dict[str, object]:
+        delivery = delivery_repository.get(delivery_id)
+        if delivery is None:
+            raise HTTPException(status_code=404, detail="Digest not found")
+        return delivery.model_dump(mode="json")
+
+    @app.get("/api/v1/subscriptions/{subscription_id}/runs")
+    def subscription_runs(subscription_id: str) -> list[dict[str, object]]:
+        if not subscription_repository.exists(subscription_id):
+            raise HTTPException(status_code=404, detail="Subscription not found")
+        return [
+            run.model_dump(mode="json")
+            for run in run_repository.list_for_subscription(subscription_id)
+        ]
 
     @app.get("/api/v1/providers", response_model=list[ProviderCapabilityResponse])
     def providers() -> list[ProviderCapabilityResponse]:

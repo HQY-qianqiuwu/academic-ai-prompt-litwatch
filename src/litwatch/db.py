@@ -191,6 +191,26 @@ MIGRATIONS = (
             ON subscription_runs(subscription_id) WHERE status = 'running';
         """,
     ),
+    (
+        5,
+        "dashboard_deliveries",
+        """
+        CREATE TABLE IF NOT EXISTS deliveries (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES subscription_runs(id) ON DELETE RESTRICT,
+            subscription_id TEXT NOT NULL REFERENCES subscriptions(id) ON DELETE RESTRICT,
+            channel TEXT NOT NULL CHECK(channel IN ('dashboard', 'email')),
+            status TEXT NOT NULL CHECK(status IN ('pending', 'delivered', 'failed')),
+            digest_json TEXT NOT NULL CHECK(json_valid(digest_json)),
+            attempted_at TEXT NOT NULL,
+            delivered_at TEXT,
+            safe_error TEXT,
+            UNIQUE(run_id, channel)
+        );
+        CREATE INDEX IF NOT EXISTS idx_deliveries_history
+            ON deliveries(subscription_id, attempted_at DESC, id DESC);
+        """,
+    ),
 )
 
 

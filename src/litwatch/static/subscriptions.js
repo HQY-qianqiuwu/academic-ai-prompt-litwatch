@@ -76,14 +76,14 @@
     const button = event.target.closest("button[data-action]"); if (!button) return;
     const item = subscriptions.find((entry) => entry.id === button.dataset.id); if (!item) return;
     if (button.dataset.action === "edit") return openEditor(item);
-    if (button.dataset.action === "view") { detail.hidden = false; detail.innerHTML = `<strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.topic)}</p><p>Keywords: ${item.keywords.map(escapeHtml).join(", ") || "None"}</p>`; return; }
+    if (button.dataset.action === "view") { detail.hidden = false; detail.innerHTML = `<strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.topic)}</p><p>Keywords: ${item.keywords.map(escapeHtml).join(", ") || "None"}</p><p><a href="/weekly-digests?subscription_id=${encodeURIComponent(item.id)}">View historical digests</a></p>`; return; }
     button.disabled = true;
     try {
       if (button.dataset.action === "toggle") await request(`/api/v1/subscriptions/${item.id}`, {method:"PATCH",body:JSON.stringify({enabled:!item.enabled})});
       if (button.dataset.action === "run") {
         button.textContent = "Running...";
         const payload = await request(`/api/v1/subscriptions/${item.id}/run`, {method:"POST"});
-        const run = payload.run; const runTitle = run.status === "partial_success" ? "Provider partial failure" : `Run ${run.status}`; detail.hidden = false; detail.innerHTML = `<strong>${escapeHtml(runTitle)}</strong><div class="run-summary"><span><strong>${run.raw_count}</strong>Found</span><span><strong>${run.dedup_count}</strong>Unique</span><span><strong>${run.historical_duplicates_removed}</strong>Previously Seen</span><span><strong>${run.new_count}</strong>New</span><span><strong>${run.recommended_count}</strong>Recommended</span></div>`;
+        const run = payload.run; const runTitle = run.status === "partial_success" ? "Provider partial failure" : `Run ${run.status}`; const digestLink = payload.delivery ? `<p><a href="/weekly-digests?delivery_id=${encodeURIComponent(payload.delivery.id)}">Open Weekly Digest</a></p>` : ""; detail.hidden = false; detail.innerHTML = `<strong>${escapeHtml(runTitle)}</strong><div class="run-summary"><span><strong>${run.raw_count}</strong>Found</span><span><strong>${run.dedup_count}</strong>Unique</span><span><strong>${run.historical_duplicates_removed}</strong>Previously Seen</span><span><strong>${run.new_count}</strong>New</span><span><strong>${run.recommended_count}</strong>Recommended</span></div>${digestLink}`;
       }
       await load();
     } catch (error) { setState(button.dataset.action === "run" ? "Run failed" : "Subscription unavailable", error.message, true); }

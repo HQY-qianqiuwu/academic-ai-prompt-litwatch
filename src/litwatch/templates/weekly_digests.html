@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LitWatch Weekly Digests</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/weekly-digests.css') }}">
+    <script src="{{ url_for('static', path='/weekly-digests.js') }}" defer></script>
+  </head>
+  <body class="research-app">
+    <a class="skip-link" href="#main-content">Skip to weekly digests</a>
+    <header class="research-topbar">
+      <a class="research-brand" href="/" aria-label="LitWatch search home"><span>LW</span><strong>LitWatch</strong></a>
+      <p>Weekly Recommendation Dashboard</p>
+      <nav aria-label="Primary navigation"><a href="/">Search</a><a href="/dashboard">Dashboard</a><a href="/subscriptions">Subscriptions</a><a class="active" href="/weekly-digests">Weekly Digests</a><a href="/provider-settings">Provider Settings</a><a href="http://localhost" target="_blank" rel="noopener noreferrer">Dify</a></nav>
+    </header>
+    <main id="main-content" class="research-shell digest-shell">
+      <section class="digest-hero"><p class="research-kicker">Persisted recommendations</p><h1>Weekly Digests</h1><p>Review immutable dashboard snapshots from current and historical subscription runs.</p></section>
+      <section class="digest-state" data-digest-state aria-live="polite"><strong>Loading digests...</strong></section>
+      <div class="digest-layout"><aside data-digest-list aria-label="Digest history"></aside><section data-digest-detail aria-label="Selected digest"></section></div>
+    </main>
+  </body>
+</html>
