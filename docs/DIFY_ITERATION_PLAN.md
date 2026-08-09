@@ -72,7 +72,7 @@ also passed. The complete record is `docs/V1_2_E2E_RESULTS.md`.
 
 ## Stack v1.3 — Multi-Source Literature Retrieval
 
-Status: Planned; do not start before Stack v1.2 is Stable
+Status: In development; Stage 1 architecture planning complete
 
 First runnable provider set:
 
@@ -95,7 +95,6 @@ User Query
        `-- Crossref
     -> Paper normalization
     -> Merge
-    -> Deterministic deduplication
     -> Response with provider status
 ```
 
@@ -103,17 +102,12 @@ All providers must return the existing `Paper` model. Provider metadata remains
 source-grounded; missing metadata stays null/empty according to the existing
 model and must never be invented by an LLM.
 
-Initial deterministic deduplication priority:
-
-1. DOI exact match
-2. arXiv identifier exact match
-3. Canonical URL
-4. Normalized title
-
-Merged papers must preserve all contributing source names. Provider failures
-must be isolated, partial results may be returned, and response diagnostics must
-state which providers succeeded, timed out, or failed. The API schema for those
-diagnostics must be designed and approved before implementation.
+V1.3 aggregates normalized records without deduplication or ranking. Duplicate
+records are intentionally preserved so that v1.4 can introduce and validate
+deterministic deduplication separately. Provider failures must be isolated,
+partial results may be returned, and response diagnostics must state which
+providers succeeded, timed out, or failed. The approved architecture and stage
+boundaries are recorded in `docs/V1_3_MULTI_SOURCE_PLAN.md`.
 
 Semantic Scholar and any future keyed provider must reuse the v1.2 profile and
 credential-reference layer. Anonymous mode may be supported where the provider
@@ -137,6 +131,15 @@ git switch -c feat/v1.3-multisource dify-v1.2
 Candidate papers -> deduplication -> keyword relevance -> metadata completeness
 -> citation/venue signals -> priority score. Deterministic ranking remains the
 default; LLMs do not replace deterministic scoring.
+
+Initial deterministic deduplication priority:
+
+1. DOI exact match
+2. arXiv identifier exact match
+3. Canonical URL
+4. Normalized title
+
+Merged papers must preserve all contributing source names and identifiers.
 
 ## Stack v1.5 — LitWatch Web UI
 

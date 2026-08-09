@@ -21,7 +21,7 @@ solely to make version numbers align.
 | v1.0 | Stable | Direct OpenAlex | `literature-search-v1.0.yml` | OpenAlex | `dify-v1.0` |
 | v1.1 | Stable | LitWatch Search API + `LiteratureSearchService` | `literature-search-v1.1.yml` | OpenAlex | `dify-v1.1` |
 | v1.2 | Stable | Provider Configuration + Provider Registry + BYOK boundary | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex | `dify-v1.2` |
-| v1.3 | Planned | Multi-source retrieval, merge, deterministic dedup, provider failure diagnostics | TBD: reuse v1.1 if compatible; create v1.3 only for a real workflow change | OpenAlex + Semantic Scholar + arXiv + Crossref | TBD |
+| v1.3 | In development | Multi-source retrieval, deterministic aggregation, provider failure diagnostics; duplicates intentionally preserved | Reuse v1.1 unless provider selection becomes a real Dify input | OpenAlex + Semantic Scholar + arXiv + Crossref | TBD |
 
 ## Provider Capability Matrix
 
