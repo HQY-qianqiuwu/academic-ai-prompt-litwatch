@@ -1,6 +1,6 @@
 # Stack v1.4 Deterministic Deduplication and Ranking
 
-Status: implemented on the v1.4 release-candidate branch; manual ranking review pending
+Status: Stable; implementation and manual ranking validation complete
 
 ## Scope and compatibility boundary
 
@@ -111,7 +111,7 @@ or completed by an LLM.
 |---|---|
 | `sources` | sorted unique union |
 | `source_ids` | sorted keys; conflicting non-empty values choose lexical minimum |
-| `doi` | normalized real DOI; lexical minimum if conflicting |
+| `doi` | normalized real DOI; conflicting non-empty DOI groups are never merged |
 | `canonical_id` | DOI identity, else lexical minimum shared non-title identity, else chosen-title identity |
 | `title` | most normalized tokens, then longest normalized text, then lexical minimum |
 | `authors` | greatest author count, then greatest total normalized name length, then lexical tuple |
@@ -247,4 +247,6 @@ Synthetic unit fixtures cover:
 
 Real E2E is performed only after unit gates pass. It compares the TDOA and OFDM
 topics without altering Provider results and records raw, deduplicated, merged
-source, and top-result evidence for manual release-candidate review.
+source, and top-result evidence. Both rankings, dynamic behavior, zero final
+duplicate DOIs, source merging, and Dify Topic A/B subsequently passed manual
+validation. See `docs/V1_4_E2E_RESULTS.md`.

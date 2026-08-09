@@ -154,10 +154,9 @@ The complete release evidence is `docs/V1_3_E2E_RESULTS.md`.
 
 ## Stack v1.4 — Deduplication, Relevance, and Quality Ranking
 
-Status: Release Candidate; automated gates complete, manual Dify UI ranking
-review required
+Status: Stable
 
-Released candidate path:
+Released path:
 
 ```text
 Provider candidates
@@ -193,7 +192,7 @@ Top-level diagnostics expose raw count, deduplicated count, removed duplicates,
 candidate budget, and returned-paper score components without changing the
 existing Dify paper projection.
 
-Automated release-candidate evidence:
+Release evidence:
 
 - TDOA: HTTP 200, 60 raw, 57 unique, 3 duplicates removed
 - Top TDOA result merged `crossref` and `openalex` provenance
@@ -205,14 +204,19 @@ Automated release-candidate evidence:
 - Tests: 164 passed; Ruff and `git diff --check`: pass
 - v1.0 and v1.1 stable DSL files: unchanged
 - Workflow v1.1 remains the compatible workflow
-- No v1.4 stable tag exists
+- Manual TDOA, OFDM, and dynamic ranking: pass
+- Manual deduplication: 60 raw, 57 unique, 3 removed
+- Final duplicate DOI count: 0
+- Manual multi-source merge and Dify Topic A/B: pass
+- Stable tag: `dify-v1.4`
 
 Architecture: `docs/V1_4_DEDUP_RANKING.md`
 
 Automated E2E: `docs/V1_4_E2E_RESULTS.md`
 
-Manual acceptance must confirm the TDOA and OFDM ranking order in the Dify UI
-before v1.4 is marked Stable or tagged.
+The automated and manual acceptance gates are complete. Semantic Scholar
+authenticated real success remains not verified; anonymous HTTP 429 isolation
+continues to be the verified real behavior.
 
 ## Stack v1.5 — LitWatch Web UI
 

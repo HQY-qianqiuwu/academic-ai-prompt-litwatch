@@ -178,7 +178,7 @@ Validation record: `docs/V1_3_E2E_RESULTS.md`
 
 ## Stack v1.4
 
-Status: Release Candidate
+Status: Stable
 
 Architecture:
 
@@ -225,10 +225,12 @@ Automated validation state:
 - Tests: 164 passed; Ruff and `git diff --check`: pass
 - Stable v1.0 and v1.1 DSL protection: pass
 - `literature-search-v1.4.yml`: intentionally absent
-- Stable tag: not created at release-candidate stage
-
-Manual validation remains required for the real TDOA and OFDM ranking order in
-the Dify UI before Stack v1.4 can become Stable.
+- Manual TDOA, OFDM, and dynamic ranking: pass
+- Manual deduplication: 60 raw, 57 unique, 3 removed
+- Final duplicate DOI count: 0
+- Manual multi-source merge: pass
+- Dify Topic A and Topic B: pass
+- Stable tag: `dify-v1.4`
 
 Architecture record: `docs/V1_4_DEDUP_RANKING.md`
 

@@ -1,6 +1,6 @@
 # Stack v1.4 Ranking E2E Results
 
-Status: automated release-candidate validation complete; manual ranking review required
+Status: Stable; automated and manual validation complete
 
 Validation date: 2026-08-09
 
@@ -14,6 +14,7 @@ Validation date: 2026-08-09
 - Selected Providers: OpenAlex, Semantic Scholar, arXiv, Crossref
 - Final limit: 10
 - Candidate limit per Provider: 20
+- Stable tag: `dify-v1.4`
 
 No runtime result was manually reordered or edited.
 
@@ -128,8 +129,7 @@ Result:
 - both stable YAML files parse successfully
 
 This automated check validates the Dify Worker -> SSRF Proxy -> LitWatch
-transport and the unchanged response fields used by Workflow v1.1. A final Dify
-UI run remains part of manual release-candidate acceptance.
+transport and the unchanged response fields used by Workflow v1.1.
 
 ## Automated gates
 
@@ -148,15 +148,19 @@ UI run remains part of manual release-candidate acceptance.
 - SSRF-safe custom Base URL tests: PASS
 - secret-redaction tests: PASS
 
-## Manual validation required
+## Manual validation
 
-Before Stack v1.4 can be tagged Stable, review both real result lists in the
-Dify UI and confirm:
+Final manual acceptance passed:
 
-1. the TDOA top results are materially more relevant than generic underwater
-   networking results;
-2. the OFDM top results are materially more relevant than generic AUV routing;
-3. merged source provenance is understandable in the returned data; and
-4. the Workflow continues to display `paper_count` and non-empty `papers_json`.
+- TDOA ranking: PASS
+- OFDM ranking: PASS
+- Dynamic ranking: PASS
+- Deduplication: 60 raw, 57 unique, 3 removed — PASS
+- Final duplicate DOI count: 0 — PASS
+- Multi-source merge: PASS
+- Dify Topic A, `underwater acoustic TDOA localization`: PASS
+- Dify Topic B, `underwater acoustic OFDM communication`: PASS
 
-No `dify-v1.4` tag is created at release-candidate stage.
+Stack v1.4 is approved for the annotated `dify-v1.4` Stable tag. Semantic
+Scholar authenticated real success remains **NOT VERIFIED** and is not claimed
+by this release.
