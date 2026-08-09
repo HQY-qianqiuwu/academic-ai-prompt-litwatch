@@ -119,6 +119,21 @@ docker compose ps
 Do not modify Dify's PostgreSQL database directly. Docker volumes and Dify runtime data require a
 separate data backup; they are not restored by this Git repository.
 
+### Restore the Dify 1.16.1 LitWatch SSRF exception
+
+The local Dify HTTP Request node requires a narrow Squid exception for
+`host.docker.internal:8000`. Reapply the version-controlled integration from the LitWatch root:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File scripts\apply-dify-ssrf-integration.ps1 `
+  -RestartProxy
+```
+
+This script is restricted to Dify 1.16.1 and allows only the LitWatch host and port combination.
+It does not open other Docker-host ports or private networks. See
+`docs/DIFY_SSRF_INTEGRATION.md` for the security checks and upgrade boundary.
+
 ## 8. Import the Dify workflow
 
 The stable workflow is:

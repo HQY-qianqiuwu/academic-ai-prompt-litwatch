@@ -1,0 +1,24 @@
+diff --git a/docker/ssrf_proxy/squid.conf.template b/docker/ssrf_proxy/squid.conf.template
+index 28eede2609..9811acb88e 100644
+--- a/docker/ssrf_proxy/squid.conf.template
++++ b/docker/ssrf_proxy/squid.conf.template
+@@ -2,6 +2,11 @@ include /etc/squid/dify_common.conf
+ 
+ acl allowed_domains dstdomain .marketplace.dify.ai
+ 
++# Local-development exception for LitWatch. Both ACLs must match, so this does
++# not allow other services or ports on the Docker host.
++acl litwatch_local_dev_host dstdomain host.docker.internal
++acl litwatch_local_dev_port port 8000
++
+ http_port ${HTTP_PORT}
+ 
+ http_access deny !Safe_ports
+@@ -10,6 +15,7 @@ http_access allow localhost manager
+ http_access deny manager
+ include /etc/squid/dify_sandbox_proxy.conf
+ include /etc/squid/dify_allow_private.conf
++http_access allow client_localnet litwatch_local_dev_host litwatch_local_dev_port
+ http_access deny to_private_networks
+ http_access allow allowed_domains
+ http_access allow client_localnet
