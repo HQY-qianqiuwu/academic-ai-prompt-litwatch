@@ -10,6 +10,7 @@ from litwatch.config import Settings
 from litwatch.provider_config import ProviderConfig, ProviderType
 from litwatch.sources.arxiv import ArxivSource
 from litwatch.sources.base import PaperSource
+from litwatch.sources.crossref import CrossrefSource
 from litwatch.sources.openalex import OpenAlexSource
 from litwatch.sources.semantic_scholar import SemanticScholarSource
 
@@ -107,7 +108,7 @@ CAPABILITIES = (
     ProviderCapability(
         ProviderType.CROSSREF,
         "Crossref",
-        False,
+        True,
         False,
         False,
         True,
@@ -233,11 +234,34 @@ class ProviderRegistry:
                 min_request_interval=float(interval),
             )
 
+        def crossref_factory(config: ProviderConfig, _: str | None) -> PaperSource:
+            timeout = config.options.get(
+                "timeout_seconds", settings.request_timeout_seconds
+            )
+            retries = config.options.get("max_retries", 2)
+            if (
+                isinstance(timeout, bool)
+                or not isinstance(timeout, (int, float))
+                or timeout <= 0
+            ):
+                raise ProviderRegistryError("Crossref timeout_seconds must be positive")
+            if isinstance(retries, bool) or not isinstance(retries, int) or retries < 0:
+                raise ProviderRegistryError(
+                    "Crossref max_retries must be a non-negative integer"
+                )
+            return CrossrefSource(
+                email=settings.crossref_email,
+                timeout=float(timeout),
+                base_url=str(config.base_url),
+                max_retries=retries,
+            )
+
         return cls(
             factories={
                 ProviderType.OPENALEX: openalex_factory,
                 ProviderType.SEMANTIC_SCHOLAR: semantic_scholar_factory,
                 ProviderType.ARXIV: arxiv_factory,
+                ProviderType.CROSSREF: crossref_factory,
             },
             credential_store=credential_store or InMemoryCredentialStore.from_settings(settings),
         )

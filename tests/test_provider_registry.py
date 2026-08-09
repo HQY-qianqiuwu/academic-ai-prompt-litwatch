@@ -5,6 +5,7 @@ import pytest
 from litwatch.config import Settings
 from litwatch.provider_config import ProviderConfig, ProviderType
 from litwatch.sources.arxiv import ArxivSource
+from litwatch.sources.crossref import CrossrefSource
 from litwatch.sources.openalex import OpenAlexSource
 from litwatch.sources.registry import (
     InMemoryCredentialStore,
@@ -45,6 +46,7 @@ def test_registry_declares_only_implemented_capabilities_as_runnable():
             ProviderType.OPENALEX,
             ProviderType.SEMANTIC_SCHOLAR,
             ProviderType.ARXIV,
+            ProviderType.CROSSREF,
         }
     )
     assert all(
@@ -122,6 +124,25 @@ def test_registry_builds_arxiv_with_configured_url_and_options():
     assert source.endpoint == "https://arxiv.example.test/api/query"
     assert source.max_retries == 1
     assert source.min_request_interval == 4.0
+
+
+def test_registry_builds_crossref_with_configured_url_and_email():
+    registry = ProviderRegistry.from_settings(
+        Settings(crossref_email="researcher@example.com")
+    )
+    config = provider_config(
+        provider_id="crossref",
+        provider_type=ProviderType.CROSSREF,
+        base_url="https://crossref.example.test/v1/works",
+        options={"max_retries": 1},
+    )
+
+    source = registry.build(config)
+
+    assert isinstance(source, CrossrefSource)
+    assert source.endpoint == "https://crossref.example.test/v1/works"
+    assert source.email == "researcher@example.com"
+    assert source.max_retries == 1
 
 
 @pytest.mark.parametrize("credential_reference", [None, "missing_default"])
