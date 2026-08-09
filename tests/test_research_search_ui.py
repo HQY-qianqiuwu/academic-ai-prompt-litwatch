@@ -84,6 +84,8 @@ def test_result_cards_preserve_backend_ranking_and_metadata(tmp_path):
     assert "paper.abstract" in script
     assert "paper.sources" in script
     assert "paper.doi" in script
+    assert "Authors unavailable" in script
+    assert "Abstract unavailable" in script
 
 
 def test_result_cards_show_backend_scores_without_recomputing_them(tmp_path):
@@ -146,9 +148,12 @@ def test_search_ui_maps_safe_http_error_messages_without_echoing_details(tmp_pat
 
     script = response.text
     assert "errorMessageFor" in script
+    assert "400:" in script
     assert "422:" in script
     assert "429:" in script
     assert "502:" in script
     assert "504:" in script
     assert "response.text()" not in script
     assert "response.json().detail" not in script
+    assert "LitWatch service unavailable" in script
+    assert "Invalid response from LitWatch" in script

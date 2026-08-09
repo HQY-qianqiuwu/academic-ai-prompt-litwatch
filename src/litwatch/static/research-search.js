@@ -135,14 +135,16 @@
     const metadata = document.createElement("p");
     metadata.className = "paper-metadata";
     const metadataParts = [];
-    if (paper.authors?.length) metadataParts.push(paper.authors.join(", "));
+    metadataParts.push(
+      paper.authors?.length ? paper.authors.join(", ") : "Authors unavailable",
+    );
     if (paper.year) metadataParts.push(String(paper.year));
     if (paper.venue) metadataParts.push(paper.venue);
-    metadata.textContent = metadataParts.join(" · ") || "Metadata unavailable";
+    metadata.textContent = metadataParts.join(" · ");
 
     const abstract = document.createElement("div");
     abstract.className = "paper-abstract";
-    const abstractText = paper.abstract || "No abstract supplied by the source.";
+    const abstractText = paper.abstract || "Abstract unavailable.";
     abstract.append(textElement("p", "", abstractText));
     if (abstractText.length > 360) {
       abstract.classList.add("collapsed");
@@ -264,14 +266,21 @@
     summary.replaceChildren(container);
   };
 
-  const errorMessageFor = (status) => {
+  const errorMessageFor = (error) => {
+    if (error.kind === "invalid_response") {
+      return ["Invalid response from LitWatch", "Retry the search or restart the local service."];
+    }
+    if (!error.status) {
+      return ["LitWatch service unavailable", "Confirm the local service is running, then retry."];
+    }
     const messages = {
+      400: ["Search request needs attention", "Check the topic and Provider selection."],
       422: ["Search request needs attention", "Check the topic and Provider selection."],
       429: ["Search is temporarily rate limited", "Wait briefly, then retry the request."],
       502: ["Literature Providers are unavailable", "The selected Providers could not complete the search."],
       504: ["Literature search timed out", "The selected Providers took too long to respond."],
     };
-    return messages[status] || ["Search failed", "LitWatch could not complete this request."];
+    return messages[error.status] || ["Search failed", "LitWatch could not complete this request."];
   };
 
   const search = async () => {
@@ -308,8 +317,19 @@
         error.status = response.status;
         throw error;
       }
-      const payload = await response.json();
-      if (!payload || !Array.isArray(payload.papers)) throw new Error("invalid search response");
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (_error) {
+        const invalidResponse = new Error("invalid search response");
+        invalidResponse.kind = "invalid_response";
+        throw invalidResponse;
+      }
+      if (!payload || !Array.isArray(payload.papers)) {
+        const invalidResponse = new Error("invalid search response");
+        invalidResponse.kind = "invalid_response";
+        throw invalidResponse;
+      }
       summary.hidden = false;
       renderDiagnostics(payload);
       const partial = (payload.provider_status || []).some(
@@ -325,7 +345,7 @@
       }
       document.dispatchEvent(new CustomEvent("litwatch:search-results", { detail: payload }));
     } catch (error) {
-      const [title, message] = errorMessageFor(error.status);
+      const [title, message] = errorMessageFor(error);
       setState("error", title, message);
       retryButton.hidden = false;
     } finally {
