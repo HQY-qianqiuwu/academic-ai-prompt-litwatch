@@ -10,6 +10,7 @@ from litwatch.config import Settings
 from litwatch.provider_config import ProviderConfig, ProviderType
 from litwatch.sources.base import PaperSource
 from litwatch.sources.openalex import OpenAlexSource
+from litwatch.sources.semantic_scholar import SemanticScholarSource
 
 
 class ProviderRegistryError(ValueError):
@@ -93,7 +94,7 @@ CAPABILITIES = (
     ProviderCapability(
         ProviderType.SEMANTIC_SCHOLAR,
         "Semantic Scholar",
-        False,
+        True,
         False,
         False,
         True,
@@ -174,8 +175,37 @@ class ProviderRegistry:
                 base_url=str(config.base_url),
             )
 
+        def semantic_scholar_factory(
+            config: ProviderConfig, credential: str | None
+        ) -> PaperSource:
+            timeout = config.options.get(
+                "timeout_seconds", settings.request_timeout_seconds
+            )
+            retries = config.options.get("max_retries", 2)
+            if (
+                isinstance(timeout, bool)
+                or not isinstance(timeout, (int, float))
+                or timeout <= 0
+            ):
+                raise ProviderRegistryError(
+                    "Semantic Scholar timeout_seconds must be positive"
+                )
+            if isinstance(retries, bool) or not isinstance(retries, int) or retries < 0:
+                raise ProviderRegistryError(
+                    "Semantic Scholar max_retries must be a non-negative integer"
+                )
+            return SemanticScholarSource(
+                api_key=credential or "",
+                timeout=float(timeout),
+                base_url=str(config.base_url),
+                max_retries=retries,
+            )
+
         return cls(
-            factories={ProviderType.OPENALEX: openalex_factory},
+            factories={
+                ProviderType.OPENALEX: openalex_factory,
+                ProviderType.SEMANTIC_SCHOLAR: semantic_scholar_factory,
+            },
             credential_store=credential_store or InMemoryCredentialStore.from_settings(settings),
         )
 
@@ -190,7 +220,7 @@ class ProviderRegistry:
         factory = self._factories.get(config.provider_type)
         if capability is None or factory is None or not capability.runnable:
             raise ProviderNotRunnableError(
-                f"provider type {config.provider_type.value!r} is not runnable in v1.2"
+                f"provider type {config.provider_type.value!r} is not runnable"
             )
 
         credential: str | None = None
