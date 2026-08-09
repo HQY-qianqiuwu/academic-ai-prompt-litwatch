@@ -78,7 +78,7 @@ Near-title matching is intentionally conservative. It is allowed only when:
 2. both titles contain exactly the same numeric tokens;
 3. both titles contain exactly the same protected technical tokens;
 4. token-set Jaccard similarity is at least `0.95`; and
-5. character-sequence similarity is at least `0.96`.
+5. character-sequence similarity is at least `0.95`.
 
 This level handles harmless word-order or punctuation differences without
 merging titles that differ in a method, dimensionality, model name, or other
