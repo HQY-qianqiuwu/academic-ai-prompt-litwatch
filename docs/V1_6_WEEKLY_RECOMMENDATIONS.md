@@ -567,6 +567,14 @@ unchanged v1.0/v1.1 Dify DSL files.
 - begin only after the Dashboard release path is complete and an explicit
   scope review confirms SMTP will not delay v1.6.
 
+Stage 8 decision: **DEFERRED**. The legacy notifier reads SMTP credentials
+directly from environment-backed Settings and is not integrated with the v1.6
+subscription/delivery model. A safe product implementation would additionally
+require write-only credential configuration, isolated delivery retries, safe
+error reporting, and dedicated UI/tests. Dashboard Delivery is the complete
+v1.6 delivery path; no SMTP secret is persisted in SQLite, returned by an API,
+embedded in HTML/DSL, or written to logs.
+
 ### Stage 9 - Regression and real E2E
 
 - run full offline tests, Ruff, diff checks, restart persistence, catch-up,
