@@ -196,6 +196,14 @@ def create_app(
             context={},
         )
 
+    @app.get("/subscriptions", response_class=HTMLResponse)
+    async def subscription_page(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="subscriptions.html",
+            context={},
+        )
+
     @app.get("/dashboard", response_class=HTMLResponse)
     async def dashboard(request: Request, topic: str = ""):
         configured_topics = settings.load_topics()

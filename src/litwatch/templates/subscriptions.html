@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LitWatch Research Subscriptions</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/subscriptions.css') }}">
+    <script src="{{ url_for('static', path='/subscriptions.js') }}" defer></script>
+  </head>
+  <body class="research-app">
+    <a class="skip-link" href="#main-content">Skip to subscriptions</a>
+    <header class="research-topbar">
+      <a class="research-brand" href="/" aria-label="LitWatch search home">
+        <span>LW</span><strong>LitWatch</strong>
+      </a>
+      <p>Research Subscriptions</p>
+      <nav aria-label="Primary navigation">
+        <a href="/">Search</a>
+        <a href="/dashboard">Dashboard</a>
+        <a class="active" href="/subscriptions">Subscriptions</a>
+        <a href="/provider-settings">Provider Settings</a>
+        <a href="http://localhost" target="_blank" rel="noopener noreferrer">Dify</a>
+      </nav>
+    </header>
+
+    <main id="main-content" class="research-shell subscription-shell">
+      <section class="subscription-hero">
+        <div>
+          <p class="research-kicker">Saved weekly research</p>
+          <h1>Research Subscriptions</h1>
+          <p>Save a topic once, run it on demand, and keep a per-topic history of new papers.</p>
+        </div>
+        <button class="research-primary" type="button" data-new-subscription>New subscription</button>
+      </section>
+
+      <section class="subscription-state" data-subscription-state aria-live="polite">
+        <strong>Loading subscriptions...</strong>
+        <span>Reading local, non-secret subscription settings.</span>
+      </section>
+
+      <section class="subscription-editor" data-subscription-editor hidden>
+        <div class="subscription-heading">
+          <div><p class="research-kicker">Configuration</p><h2 data-editor-title>New subscription</h2></div>
+          <button class="research-secondary" type="button" data-cancel-edit>Cancel</button>
+        </div>
+        <form data-subscription-form novalidate>
+          <input type="hidden" name="subscription_id">
+          <label>Name<input name="name" required maxlength="120"></label>
+          <label class="wide">Topic<textarea name="topic" required maxlength="500" rows="3"></textarea></label>
+          <label class="wide">Keywords <span>(comma separated)</span><input name="keywords"></label>
+          <fieldset class="wide" data-subscription-providers disabled>
+            <legend>Providers</legend><div class="subscription-provider-grid" data-subscription-provider-options></div>
+          </fieldset>
+          <label>Search limit<input name="search_limit" type="number" min="1" max="50" value="20" required></label>
+          <label>Recommend top N<input name="recommendation_limit" type="number" min="1" max="50" value="5" required></label>
+          <label>Weekday<select name="weekday"><option value="0">Monday</option><option value="1">Tuesday</option><option value="2">Wednesday</option><option value="3">Thursday</option><option value="4">Friday</option><option value="5">Saturday</option><option value="6" selected>Sunday</option></select></label>
+          <label>Local time<input name="local_time" type="time" value="08:00" required></label>
+          <label>Timezone<input name="timezone" value="Asia/Shanghai" required></label>
+          <label class="subscription-toggle"><input name="enabled" type="checkbox" checked> Enabled</label>
+          <div class="subscription-form-actions wide">
+            <button class="research-primary" type="submit" data-save-subscription>Save subscription</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="subscription-list" data-subscription-list aria-label="Saved subscriptions"></section>
+      <section class="subscription-detail" data-subscription-detail hidden aria-live="polite"></section>
+    </main>
+  </body>
+</html>
