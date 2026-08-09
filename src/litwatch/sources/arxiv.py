@@ -43,7 +43,7 @@ class ArxivSource:
         self._last_request_at: float | None = None
         self.client = httpx.Client(
             timeout=timeout,
-            follow_redirects=True,
+            follow_redirects=False,
             transport=httpx.HTTPTransport(retries=2),
             headers={"User-Agent": "LitWatch/0.1 (literature monitoring; contact via repository)"},
         )

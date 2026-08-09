@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from threading import RLock
 from typing import Protocol
 
 from litwatch.config import Settings
 from litwatch.provider_config import ProviderConfig, ProviderType
+from litwatch.provider_security import ProviderBaseUrlError, validate_provider_base_url
 from litwatch.sources.arxiv import ArxivSource
 from litwatch.sources.base import PaperSource
 from litwatch.sources.crossref import CrossrefSource
@@ -42,14 +44,16 @@ class CredentialStore(Protocol):
 
 
 class InMemoryCredentialStore:
-    """Process-local credential store used by environment and API configuration."""
+    """Layer runtime profile secrets over environment-provided credentials."""
 
     def __init__(self, credentials: Mapping[str, str] | None = None) -> None:
-        self._credentials = {
+        self._environment_credentials = {
             reference: secret
             for reference, secret in (credentials or {}).items()
             if secret
         }
+        self._runtime_credentials: dict[str, str] = {}
+        self._lock = RLock()
 
     @classmethod
     def from_settings(cls, settings: Settings) -> InMemoryCredentialStore:
@@ -62,7 +66,10 @@ class InMemoryCredentialStore:
         )
 
     def resolve(self, reference: str) -> str | None:
-        return self._credentials.get(reference)
+        with self._lock:
+            if reference in self._runtime_credentials:
+                return self._runtime_credentials[reference]
+            return self._environment_credentials.get(reference)
 
     def configured(self, reference: str | None) -> bool:
         return bool(reference and self.resolve(reference))
@@ -70,7 +77,31 @@ class InMemoryCredentialStore:
     def set(self, reference: str, secret: str) -> None:
         if not secret:
             raise ValueError("credential must not be blank")
-        self._credentials[reference] = secret
+        with self._lock:
+            self._runtime_credentials[reference] = secret
+
+    def clear(self, reference: str) -> None:
+        """Clear only the runtime override so environment fallback remains available."""
+        with self._lock:
+            self._runtime_credentials.pop(reference, None)
+
+    def source(self, reference: str | None) -> str | None:
+        """Describe credential precedence without exposing the credential value."""
+        if not reference:
+            return None
+        with self._lock:
+            if reference in self._runtime_credentials:
+                return "profile"
+            if reference in self._environment_credentials:
+                return "environment"
+            return None
+
+    def __repr__(self) -> str:
+        with self._lock:
+            configured = len(
+                set(self._environment_credentials) | set(self._runtime_credentials)
+            )
+        return f"InMemoryCredentialStore(configured={configured})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +118,7 @@ class ProviderCapability:
 
 
 ProviderFactory = Callable[[ProviderConfig, str | None], PaperSource]
+ProviderBaseUrlValidator = Callable[[str], str]
 
 
 CAPABILITIES = (
@@ -153,10 +185,12 @@ class ProviderRegistry:
         factories: Mapping[ProviderType, ProviderFactory],
         credential_store: CredentialStore,
         capabilities: tuple[ProviderCapability, ...] = CAPABILITIES,
+        base_url_validator: ProviderBaseUrlValidator | None = None,
     ) -> None:
         self._factories = dict(factories)
         self.credential_store = credential_store
         self._capabilities = {item.provider_type: item for item in capabilities}
+        self._base_url_validator = base_url_validator
 
     @classmethod
     def from_settings(
@@ -164,6 +198,7 @@ class ProviderRegistry:
         settings: Settings,
         *,
         credential_store: CredentialStore | None = None,
+        base_url_validator: ProviderBaseUrlValidator = validate_provider_base_url,
     ) -> ProviderRegistry:
         def openalex_factory(config: ProviderConfig, _: str | None) -> PaperSource:
             timeout = config.options.get(
@@ -249,8 +284,11 @@ class ProviderRegistry:
                 raise ProviderRegistryError(
                     "Crossref max_retries must be a non-negative integer"
                 )
+            mailto = config.options.get("mailto", settings.crossref_email)
+            if not isinstance(mailto, str):
+                raise ProviderRegistryError("Crossref mailto must be a string")
             return CrossrefSource(
-                email=settings.crossref_email,
+                email=mailto,
                 timeout=float(timeout),
                 base_url=str(config.base_url),
                 max_retries=retries,
@@ -264,6 +302,7 @@ class ProviderRegistry:
                 ProviderType.CROSSREF: crossref_factory,
             },
             credential_store=credential_store or InMemoryCredentialStore.from_settings(settings),
+            base_url_validator=base_url_validator,
         )
 
     def capabilities(self) -> tuple[ProviderCapability, ...]:
@@ -279,6 +318,15 @@ class ProviderRegistry:
             raise ProviderNotRunnableError(
                 f"provider type {config.provider_type.value!r} is not runnable"
             )
+
+        if self._base_url_validator is not None:
+            try:
+                validated_base_url = self._base_url_validator(str(config.base_url))
+            except ProviderBaseUrlError:
+                raise ProviderRegistryError(
+                    f"provider {config.provider_id!r} failed base URL security validation"
+                ) from None
+            config = config.model_copy(update={"base_url": validated_base_url})
 
         credential: str | None = None
         if config.credential_reference:

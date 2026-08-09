@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
-from pydantic import AnyHttpUrl, BaseModel, Field, JsonValue, SecretStr, field_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    Field,
+    JsonValue,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from litwatch.models import Paper
-from litwatch.provider_config import ProviderConfig, ProviderProfile, ProviderType
+from litwatch.provider_config import (
+    DEFAULT_CREDENTIAL_REFERENCES,
+    ProviderConfig,
+    ProviderProfile,
+    ProviderType,
+)
 from litwatch.services import (
     LiteratureSearchResult,
     ProviderErrorCode,
@@ -136,22 +149,65 @@ class ProviderCapabilityResponse(BaseModel):
 
 
 class ProviderConfigWrite(BaseModel):
-    """Write-only credential input paired with a safe provider configuration."""
+    """Full or partial provider update with write-only credential input."""
 
     provider_id: str
-    provider_type: ProviderType
-    enabled: bool = False
+    provider_type: ProviderType | None = None
+    enabled: bool | None = None
     default_selected: bool | None = None
-    base_url: AnyHttpUrl
-    requires_api_key: bool = False
+    base_url: AnyHttpUrl | None = None
+    requires_api_key: bool | None = None
     credential_reference: str | None = None
-    options: dict[str, JsonValue] = Field(default_factory=dict)
+    options: dict[str, JsonValue] | None = None
     api_key: SecretStr | None = Field(default=None, json_schema_extra={"writeOnly": True})
+    clear_secret: bool = False
 
-    def to_config(self) -> ProviderConfig:
-        return ProviderConfig.model_validate(
-            self.model_dump(exclude={"api_key"}, exclude_none=True, mode="python")
-        )
+    @model_validator(mode="after")
+    def secret_update_is_unambiguous(self) -> ProviderConfigWrite:
+        if self.api_key is not None and self.clear_secret:
+            raise ValueError("api_key and clear_secret cannot be used together")
+        if self.api_key is not None and not self.api_key.get_secret_value().strip():
+            raise ValueError("api_key must not be blank; use clear_secret to remove it")
+        return self
+
+    @property
+    def is_partial(self) -> bool:
+        required = {"provider_type", "enabled", "base_url"}
+        return not required.issubset(self.model_fields_set)
+
+    def to_config(self, existing: ProviderConfig | None = None) -> ProviderConfig:
+        values = existing.model_dump(mode="python") if existing is not None else {
+            "provider_id": self.provider_id,
+            "requires_api_key": False,
+            "options": {},
+        }
+        values["provider_id"] = self.provider_id
+        configurable_fields = {
+            "provider_type",
+            "enabled",
+            "default_selected",
+            "base_url",
+            "requires_api_key",
+            "credential_reference",
+            "options",
+        }
+        for field_name in configurable_fields:
+            if field_name not in self.model_fields_set:
+                continue
+            field_value = getattr(self, field_name)
+            if field_value is None and field_name != "credential_reference":
+                raise ValueError(f"{field_name} must not be null")
+            values[field_name] = field_value
+
+        if existing is not None and self.enabled is False and "default_selected" not in self.model_fields_set:
+            values["default_selected"] = False
+
+        provider_type = values.get("provider_type")
+        if self.api_key is not None and not values.get("credential_reference"):
+            reference = DEFAULT_CREDENTIAL_REFERENCES.get(provider_type)
+            if reference:
+                values["credential_reference"] = reference
+        return ProviderConfig.model_validate(values)
 
 
 class ProviderProfileWrite(BaseModel):
@@ -160,11 +216,26 @@ class ProviderProfileWrite(BaseModel):
     profile_id: str = "default"
     providers: list[ProviderConfigWrite] = Field(min_length=1)
 
-    def to_profile(self) -> ProviderProfile:
-        return ProviderProfile(
-            profile_id=self.profile_id,
-            providers=[provider.to_config() for provider in self.providers],
-        )
+    def to_profile(self, existing: ProviderProfile | None = None) -> ProviderProfile:
+        if not any(provider.is_partial for provider in self.providers):
+            return ProviderProfile(
+                profile_id=self.profile_id,
+                providers=[provider.to_config() for provider in self.providers],
+            )
+        if existing is None:
+            raise ValueError("partial update requires an existing provider profile")
+
+        merged = [provider.model_copy(deep=True) for provider in existing.providers]
+        positions = {provider.provider_id: index for index, provider in enumerate(merged)}
+        for update in self.providers:
+            try:
+                position = positions[update.provider_id]
+            except KeyError:
+                raise ValueError(
+                    f"partial update cannot create provider {update.provider_id!r}"
+                ) from None
+            merged[position] = update.to_config(merged[position])
+        return ProviderProfile(profile_id=self.profile_id, providers=merged)
 
 
 class ProviderConfigResponse(BaseModel):
@@ -179,6 +250,7 @@ class ProviderConfigResponse(BaseModel):
     credential_reference: str | None
     options: dict[str, JsonValue]
     configured: bool
+    credential_configured: bool
 
 
 class ProviderProfileResponse(BaseModel):
@@ -208,6 +280,9 @@ class ProviderProfileResponse(BaseModel):
                     configured=(
                         not provider.requires_api_key
                         or credential_store.configured(provider.credential_reference)
+                    ),
+                    credential_configured=credential_store.configured(
+                        provider.credential_reference
                     ),
                 )
                 for provider in profile.providers

@@ -34,6 +34,9 @@ def test_default_profile_enables_keyless_openalex():
         for item in profile.providers
         if item.provider_id != "openalex"
     )
+    assert str(profile.provider("semantic_scholar").base_url) == (
+        "https://api.semanticscholar.org/"
+    )
 
 
 def test_legacy_provider_config_derives_default_selection_from_enabled():

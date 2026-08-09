@@ -22,10 +22,10 @@ SECRET_OPTION_TERMS = (
 
 
 class ProviderType(StrEnum):
-    """Provider capabilities known to v1.2.
+    """Provider capabilities known to the configuration layer.
 
-    Only OpenAlex has a runnable adapter in this release. The remaining values
-    reserve stable configuration identifiers without pretending they can search.
+    The first four values have v1.3 adapters. Remaining values reserve stable
+    configuration identifiers without pretending they can search.
     """
 
     OPENALEX = "openalex"
@@ -35,6 +35,12 @@ class ProviderType(StrEnum):
     IEEE_XPLORE = "ieee_xplore"
     SCOPUS = "scopus"
     WEB_OF_SCIENCE = "web_of_science"
+
+
+DEFAULT_CREDENTIAL_REFERENCES = {
+    ProviderType.SEMANTIC_SCHOLAR: "semantic_scholar_default",
+    ProviderType.IEEE_XPLORE: "ieee_xplore_default",
+}
 
 
 class ProviderConfig(BaseModel):
@@ -101,7 +107,7 @@ def default_provider_profile(
     *,
     openalex_base_url: str,
     semantic_scholar_base_url: str = (
-        "https://api.semanticscholar.org/graph/v1/paper/search"
+        "https://api.semanticscholar.org"
     ),
     arxiv_base_url: str = "https://export.arxiv.org/api/query",
     crossref_base_url: str = "https://api.crossref.org/v1/works",

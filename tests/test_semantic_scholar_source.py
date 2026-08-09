@@ -212,3 +212,11 @@ def test_semantic_scholar_client_repr_does_not_expose_key():
     source = SemanticScholarSource(api_key=marker)
 
     assert marker not in repr(source.__dict__)
+
+
+def test_semantic_scholar_accepts_api_root_and_appends_search_path():
+    source = SemanticScholarSource(base_url="https://api.semanticscholar.org")
+
+    assert source.endpoint == (
+        "https://api.semanticscholar.org/graph/v1/paper/search"
+    )

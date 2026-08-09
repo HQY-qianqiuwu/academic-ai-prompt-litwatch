@@ -17,7 +17,7 @@ from litwatch.services import (
     ProviderExecutionStatus,
     ProviderSearchStatus,
 )
-from litwatch.sources.registry import ProviderNotFoundError
+from litwatch.sources.registry import InMemoryCredentialStore, ProviderNotFoundError
 from litwatch.web import create_app
 
 
@@ -58,6 +58,11 @@ def settings_for(tmp_path: Path) -> Settings:
         topics_path=topics,
         analysis_modes_path=Path("config/analysis_modes.yaml").resolve(),
     )
+
+
+def allow_test_provider_url(value: str) -> str:
+    """Offline API tests replace DNS validation with an explicit safe test double."""
+    return value
 
 
 def sample_papers() -> list[Paper]:
@@ -242,6 +247,10 @@ def test_provider_apis_are_exposed_and_default_profile_is_safe(tmp_path):
     assert "post" in paths["/api/v1/literature/search"]
     assert "get" in paths["/api/v1/providers"]
     assert set(paths["/api/v1/provider-profiles"]) == {"get", "post"}
+    provider_write_schema = openapi.json()["components"]["schemas"][
+        "ProviderConfigWrite"
+    ]
+    assert provider_write_schema["properties"]["api_key"]["writeOnly"] is True
 
 
 def test_provider_profile_accepts_api_key_without_returning_it(tmp_path):
@@ -261,12 +270,18 @@ def test_provider_profile_accepts_api_key_without_returning_it(tmp_path):
         ],
     }
 
-    with TestClient(create_app(settings_for(tmp_path))) as client:
+    with TestClient(
+        create_app(
+            settings_for(tmp_path),
+            provider_base_url_validator=allow_test_provider_url,
+        )
+    ) as client:
         response = client.post("/api/v1/provider-profiles", json=request_body)
         profiles = client.get("/api/v1/provider-profiles")
 
     assert response.status_code == 200
     assert response.json()["providers"][0]["configured"] is True
+    assert response.json()["providers"][0]["credential_configured"] is True
     for payload in (response.text, profiles.text):
         assert marker not in payload
         assert '"api_key":' not in payload
@@ -287,11 +302,17 @@ def test_provider_profile_reports_missing_credential_without_faking_readiness(tm
         ],
     }
 
-    with TestClient(create_app(settings_for(tmp_path))) as client:
+    with TestClient(
+        create_app(
+            settings_for(tmp_path),
+            provider_base_url_validator=allow_test_provider_url,
+        )
+    ) as client:
         response = client.post("/api/v1/provider-profiles", json=request_body)
 
     assert response.status_code == 200
     assert response.json()["providers"][0]["configured"] is False
+    assert response.json()["providers"][0]["credential_configured"] is False
 
 
 def test_validation_error_does_not_echo_provider_api_key(tmp_path):
@@ -318,6 +339,118 @@ def test_validation_error_does_not_echo_provider_api_key(tmp_path):
 
     assert response.status_code == 422
     assert marker not in response.text
+
+
+def test_provider_profile_partial_update_preserves_write_only_secret(tmp_path):
+    marker = "test-profile-secret-not-real"
+    full_profile = {
+        "profile_id": "default",
+        "providers": [
+            {
+                "provider_id": "semantic_scholar",
+                "provider_type": "semantic_scholar",
+                "enabled": True,
+                "default_selected": False,
+                "base_url": "https://api.semanticscholar.org",
+                "api_key": marker,
+            }
+        ],
+    }
+    partial_update = {
+        "profile_id": "default",
+        "providers": [{"provider_id": "semantic_scholar", "enabled": False}],
+    }
+
+    with TestClient(
+        create_app(
+            settings_for(tmp_path),
+            provider_base_url_validator=allow_test_provider_url,
+        )
+    ) as client:
+        created = client.post("/api/v1/provider-profiles", json=full_profile)
+        updated = client.post("/api/v1/provider-profiles", json=partial_update)
+        fetched = client.get("/api/v1/provider-profiles")
+
+    assert created.status_code == updated.status_code == fetched.status_code == 200
+    updated_provider = updated.json()["providers"][0]
+    assert updated_provider["enabled"] is False
+    assert updated_provider["credential_reference"] == "semantic_scholar_default"
+    assert updated_provider["credential_configured"] is True
+    for payload in (created.text, updated.text, fetched.text):
+        assert marker not in payload
+        assert '"api_key":' not in payload
+
+
+def test_provider_profile_explicit_clear_restores_unconfigured_state(tmp_path):
+    marker = "test-clear-secret-not-real"
+    credential_store = InMemoryCredentialStore()
+    app = create_app(
+        settings_for(tmp_path),
+        credential_store=credential_store,
+        provider_base_url_validator=allow_test_provider_url,
+    )
+    full_profile = {
+        "profile_id": "default",
+        "providers": [
+            {
+                "provider_id": "semantic_scholar",
+                "provider_type": "semantic_scholar",
+                "enabled": True,
+                "default_selected": False,
+                "base_url": "https://api.semanticscholar.org",
+                "api_key": marker,
+            }
+        ],
+    }
+
+    with TestClient(app) as client:
+        created = client.post("/api/v1/provider-profiles", json=full_profile)
+        cleared = client.post(
+            "/api/v1/provider-profiles",
+            json={
+                "profile_id": "default",
+                "providers": [
+                    {"provider_id": "semantic_scholar", "clear_secret": True}
+                ],
+            },
+        )
+
+    assert created.status_code == cleared.status_code == 200
+    assert cleared.json()["providers"][0]["credential_configured"] is False
+    assert credential_store.source("semantic_scholar_default") is None
+    assert marker not in cleared.text
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://127.0.0.1",
+        "https://127.0.0.1",
+        "https://localhost",
+        "https://10.0.0.1",
+        "https://169.254.169.254",
+        "https://[::1]",
+    ],
+)
+def test_provider_profile_rejects_unsafe_base_url(tmp_path, base_url):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        response = client.post(
+            "/api/v1/provider-profiles",
+            json={
+                "profile_id": "default",
+                "providers": [
+                    {
+                        "provider_id": "semantic_scholar",
+                        "provider_type": "semantic_scholar",
+                        "enabled": False,
+                        "base_url": base_url,
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid provider profile"}
 
 
 def test_search_passes_explicit_provider_selection_without_breaking_v1_1_request(tmp_path):

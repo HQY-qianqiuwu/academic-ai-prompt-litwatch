@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from datetime import date
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -26,15 +27,31 @@ class SemanticScholarSource:
     ) -> None:
         if max_retries < 0:
             raise ValueError("max_retries must not be negative")
-        self.endpoint = base_url or self.endpoint
+        self.endpoint = self._search_endpoint(base_url or self.endpoint)
         self.max_retries = max_retries
         self.sleep = sleep
         headers = {"x-api-key": api_key} if api_key else {}
         self.client = httpx.Client(
             timeout=timeout,
-            follow_redirects=True,
+            follow_redirects=False,
             headers=headers,
             transport=httpx.HTTPTransport(retries=2),
+        )
+
+    @classmethod
+    def _search_endpoint(cls, base_url: str) -> str:
+        """Accept the official API root while preserving legacy full endpoint URLs."""
+        parsed = urlsplit(base_url)
+        if parsed.path.rstrip("/"):
+            return base_url
+        return urlunsplit(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                "/graph/v1/paper/search",
+                parsed.query,
+                "",
+            )
         )
 
     def search(self, topic: Topic, start_date: date, end_date: date, limit: int) -> list[Paper]:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from litwatch.db import Database
 from litwatch.export import rows_to_bibtex
 from litwatch.pipeline import Pipeline
 from litwatch.provider_config import ProviderProfileStore, default_provider_profile
+from litwatch.provider_security import ProviderBaseUrlError, validate_provider_base_url
 from litwatch.services import AllProvidersFailedError, LiteratureSearchService
 from litwatch.sources.registry import (
     InMemoryCredentialStore,
@@ -42,6 +44,7 @@ def create_app(
     provider_registry: ProviderRegistry | None = None,
     provider_profile_store: ProviderProfileStore | None = None,
     credential_store: InMemoryCredentialStore | None = None,
+    provider_base_url_validator: Callable[[str], str] | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_runtime_files()
@@ -60,6 +63,7 @@ def create_app(
             )
         ]
     )
+    provider_base_url_validator = provider_base_url_validator or validate_provider_base_url
     search_service = literature_search_service or LiteratureSearchService(
         registry=provider_registry,
         profile_store=provider_profile_store,
@@ -264,24 +268,40 @@ def create_app(
     def upsert_provider_profile(payload: ProviderProfileWrite) -> ProviderProfileResponse:
         """Upsert a profile and retain supplied credentials only in process memory."""
         try:
-            profile = payload.to_profile()
-        except ValidationError:
+            try:
+                existing_profile = provider_profile_store.get(payload.profile_id)
+            except KeyError:
+                existing_profile = None
+            profile = payload.to_profile(existing_profile)
+            for provider_update in payload.providers:
+                if "base_url" not in provider_update.model_fields_set:
+                    continue
+                provider = profile.provider(provider_update.provider_id)
+                provider_base_url_validator(str(provider.base_url))
+        except (ProviderBaseUrlError, ValidationError, ValueError):
             raise HTTPException(status_code=422, detail="Invalid provider profile") from None
 
-        credential_updates: list[tuple[str, str]] = []
-        for provider in payload.providers:
-            if provider.api_key is None:
+        credential_updates: list[tuple[str, str | None]] = []
+        for provider_update in payload.providers:
+            if provider_update.api_key is None and not provider_update.clear_secret:
                 continue
+            provider = profile.provider(provider_update.provider_id)
             if not provider.credential_reference:
                 raise HTTPException(
                     status_code=422,
-                    detail="API key requires credential_reference",
+                    detail="Credential update requires credential_reference",
                 )
-            credential_updates.append(
-                (provider.credential_reference, provider.api_key.get_secret_value())
+            secret = (
+                provider_update.api_key.get_secret_value()
+                if provider_update.api_key is not None
+                else None
             )
+            credential_updates.append((provider.credential_reference, secret))
         for reference, secret in credential_updates:
-            credential_store.set(reference, secret)
+            if secret is None:
+                credential_store.clear(reference)
+            else:
+                credential_store.set(reference, secret)
         stored_profile = provider_profile_store.upsert(profile)
         return ProviderProfileResponse.from_profile(stored_profile, credential_store)
 

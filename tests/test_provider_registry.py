@@ -17,6 +17,14 @@ from litwatch.sources.registry import (
 from litwatch.sources.semantic_scholar import SemanticScholarSource
 
 
+def registry_from_settings(settings: Settings, **kwargs) -> ProviderRegistry:
+    return ProviderRegistry.from_settings(
+        settings,
+        base_url_validator=lambda value: value,
+        **kwargs,
+    )
+
+
 def provider_config(**overrides) -> ProviderConfig:
     values = {
         "provider_id": "openalex",
@@ -29,7 +37,7 @@ def provider_config(**overrides) -> ProviderConfig:
 
 
 def test_registry_declares_only_implemented_capabilities_as_runnable():
-    registry = ProviderRegistry.from_settings(Settings())
+    registry = registry_from_settings(Settings())
     capabilities = {item.provider_type: item for item in registry.capabilities()}
 
     assert set(capabilities) == set(ProviderType)
@@ -57,7 +65,7 @@ def test_registry_declares_only_implemented_capabilities_as_runnable():
 
 
 def test_registry_builds_existing_openalex_source_with_configured_url():
-    registry = ProviderRegistry.from_settings(Settings(request_timeout_seconds=17))
+    registry = registry_from_settings(Settings(request_timeout_seconds=17))
 
     source = registry.build(provider_config())
 
@@ -67,14 +75,14 @@ def test_registry_builds_existing_openalex_source_with_configured_url():
 
 
 def test_registry_rejects_disabled_provider():
-    registry = ProviderRegistry.from_settings(Settings())
+    registry = registry_from_settings(Settings())
 
     with pytest.raises(ProviderDisabledError, match="disabled"):
         registry.build(provider_config(enabled=False))
 
 
 def test_registry_rejects_future_provider_without_fake_search():
-    registry = ProviderRegistry.from_settings(Settings())
+    registry = registry_from_settings(Settings())
     config = provider_config(
         provider_id="ieee_xplore",
         provider_type=ProviderType.IEEE_XPLORE,
@@ -87,7 +95,7 @@ def test_registry_rejects_future_provider_without_fake_search():
 
 def test_registry_builds_semantic_scholar_with_optional_key_and_url():
     marker = "private-semantic-registry-key"
-    registry = ProviderRegistry.from_settings(
+    registry = registry_from_settings(
         Settings(),
         credential_store=InMemoryCredentialStore(
             {"semantic_scholar_default": marker}
@@ -110,7 +118,7 @@ def test_registry_builds_semantic_scholar_with_optional_key_and_url():
 
 
 def test_registry_builds_arxiv_with_configured_url_and_options():
-    registry = ProviderRegistry.from_settings(Settings())
+    registry = registry_from_settings(Settings())
     config = provider_config(
         provider_id="arxiv",
         provider_type=ProviderType.ARXIV,
@@ -127,7 +135,7 @@ def test_registry_builds_arxiv_with_configured_url_and_options():
 
 
 def test_registry_builds_crossref_with_configured_url_and_email():
-    registry = ProviderRegistry.from_settings(
+    registry = registry_from_settings(
         Settings(crossref_email="researcher@example.com")
     )
     config = provider_config(
@@ -147,7 +155,7 @@ def test_registry_builds_crossref_with_configured_url_and_email():
 
 @pytest.mark.parametrize("credential_reference", [None, "missing_default"])
 def test_registry_rejects_missing_required_credential(credential_reference: str | None):
-    registry = ProviderRegistry.from_settings(
+    registry = registry_from_settings(
         Settings(), credential_store=InMemoryCredentialStore()
     )
     config = provider_config(
@@ -161,7 +169,7 @@ def test_registry_rejects_missing_required_credential(credential_reference: str 
 
 def test_registry_accepts_required_credential_by_reference_without_exposing_it():
     store = InMemoryCredentialStore({"openalex_test": "private-test-value"})
-    registry = ProviderRegistry.from_settings(Settings(), credential_store=store)
+    registry = registry_from_settings(Settings(), credential_store=store)
 
     source = registry.build(
         provider_config(requires_api_key=True, credential_reference="openalex_test")
@@ -169,3 +177,89 @@ def test_registry_accepts_required_credential_by_reference_without_exposing_it()
 
     assert isinstance(source, OpenAlexSource)
     assert "private-test-value" not in repr(source.__dict__)
+
+
+def test_registry_revalidates_base_url_immediately_before_build():
+    validated: list[str] = []
+
+    def validator(value: str) -> str:
+        validated.append(value)
+        return value
+
+    registry = ProviderRegistry.from_settings(
+        Settings(),
+        base_url_validator=validator,
+    )
+
+    source = registry.build(provider_config())
+
+    assert isinstance(source, OpenAlexSource)
+    assert validated == ["https://example.test/openalex/works"]
+
+
+def test_profile_secret_overrides_environment_and_clear_restores_fallback():
+    store = InMemoryCredentialStore(
+        {"semantic_scholar_default": "test-environment-secret-not-real"}
+    )
+    store.set("semantic_scholar_default", "test-profile-secret-not-real")
+    registry = registry_from_settings(Settings(), credential_store=store)
+    config = provider_config(
+        provider_id="semantic_scholar",
+        provider_type=ProviderType.SEMANTIC_SCHOLAR,
+        base_url="https://semantic.example.test",
+        credential_reference="semantic_scholar_default",
+    )
+
+    profile_source = registry.build(config)
+    assert profile_source.client.headers["x-api-key"] == "test-profile-secret-not-real"
+    assert store.source("semantic_scholar_default") == "profile"
+
+    store.clear("semantic_scholar_default")
+    environment_source = registry.build(config)
+    assert environment_source.client.headers["x-api-key"] == (
+        "test-environment-secret-not-real"
+    )
+    assert store.source("semantic_scholar_default") == "environment"
+
+
+def test_settings_credential_populates_environment_fallback_without_exposure():
+    marker = "test-settings-secret-not-real"
+    store = InMemoryCredentialStore.from_settings(
+        Settings(semantic_scholar_api_key=marker)
+    )
+
+    assert store.configured("semantic_scholar_default") is True
+    assert store.source("semantic_scholar_default") == "environment"
+    assert marker not in repr(store)
+
+
+def test_semantic_scholar_anonymous_fallback_has_no_api_key_header():
+    registry = registry_from_settings(
+        Settings(), credential_store=InMemoryCredentialStore()
+    )
+    source = registry.build(
+        provider_config(
+            provider_id="semantic_scholar",
+            provider_type=ProviderType.SEMANTIC_SCHOLAR,
+            base_url="https://semantic.example.test",
+            credential_reference="semantic_scholar_default",
+        )
+    )
+
+    assert "x-api-key" not in source.client.headers
+
+
+def test_crossref_profile_mailto_overrides_environment_setting():
+    registry = registry_from_settings(
+        Settings(crossref_email="environment@example.test")
+    )
+    source = registry.build(
+        provider_config(
+            provider_id="crossref",
+            provider_type=ProviderType.CROSSREF,
+            base_url="https://crossref.example.test/v1/works",
+            options={"mailto": "profile@example.test"},
+        )
+    )
+
+    assert source.email == "profile@example.test"

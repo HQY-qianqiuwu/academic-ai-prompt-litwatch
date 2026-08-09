@@ -24,7 +24,7 @@ class OpenAlexSource:
         self.endpoint = base_url or self.endpoint
         self.client = httpx.Client(
             timeout=timeout,
-            follow_redirects=True,
+            follow_redirects=False,
             transport=httpx.HTTPTransport(retries=2),
         )
 

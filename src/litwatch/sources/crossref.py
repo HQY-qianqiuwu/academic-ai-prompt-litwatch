@@ -41,7 +41,7 @@ class CrossrefSource:
         )
         self.client = httpx.Client(
             timeout=timeout,
-            follow_redirects=True,
+            follow_redirects=False,
             headers={"User-Agent": identity},
             transport=httpx.HTTPTransport(retries=2),
         )
