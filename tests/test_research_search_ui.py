@@ -107,3 +107,48 @@ def test_result_rendering_uses_safe_dom_and_external_links(tmp_path):
     assert 'target = "_blank"' in script
     assert 'rel = "noopener noreferrer"' in script
     assert '["http:", "https:"]' in script
+
+
+def test_search_summary_exposes_dedup_and_provider_diagnostics(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        response = client.get("/static/research-search.js")
+
+    script = response.text
+    assert "diagnostics.raw_count" in script
+    assert "diagnostics.dedup_count" in script
+    assert "diagnostics.duplicates_removed" in script
+    assert "payload.provider_status" in script
+    assert "providerStatusLabels" in script
+    assert "Provider diagnostics" in script
+
+
+def test_search_ui_handles_partial_failure_empty_and_retry_states(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        response = client.get("/static/research-search.js")
+
+    script = response.text
+    for state in (
+        "rate_limited",
+        "auth_error",
+        "timeout",
+        "upstream_error",
+        "parse_error",
+    ):
+        assert state in script
+    assert "successful results remain available" in script
+    assert "No papers found" in script
+    assert "retryButton.hidden = false" in script
+
+
+def test_search_ui_maps_safe_http_error_messages_without_echoing_details(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        response = client.get("/static/research-search.js")
+
+    script = response.text
+    assert "errorMessageFor" in script
+    assert "422:" in script
+    assert "429:" in script
+    assert "502:" in script
+    assert "504:" in script
+    assert "response.text()" not in script
+    assert "response.json().detail" not in script

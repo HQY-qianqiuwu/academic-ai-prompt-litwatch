@@ -158,3 +158,144 @@
     flex-direction: column;
   }
 }
+
+.search-diagnostics {
+  display: grid;
+  gap: 12px;
+}
+
+.diagnostic-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.diagnostic-headline strong {
+  color: #18333b;
+  font: 21px Georgia, serif;
+}
+
+.diagnostic-headline span {
+  overflow: hidden;
+  color: #718287;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.diagnostic-metrics > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #f1f5f2;
+}
+
+.diagnostic-metrics small {
+  color: #6b7d81;
+}
+
+.partial-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #db8a4c;
+  background: #fff5e9;
+  color: #81502d;
+  font-size: 12px;
+}
+
+.provider-diagnostics summary {
+  cursor: pointer;
+  color: #0f6d65;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.provider-status-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.provider-status {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 12px;
+  padding: 9px 11px;
+  border: 1px solid #dce4e1;
+  border-radius: 8px;
+  background: #fafbf9;
+}
+
+.provider-status strong {
+  font-size: 12px;
+}
+
+.provider-status .status-label {
+  color: #63777c;
+  font-size: 11px;
+}
+
+.provider-status small {
+  grid-column: 1 / -1;
+  color: #819093;
+  font-size: 10px;
+}
+
+.provider-status.status-success .status-label {
+  color: #28734e;
+}
+
+.provider-status.status-rate_limited .status-label,
+.provider-status.status-timeout .status-label,
+.provider-status.status-auth_error .status-label,
+.provider-status.status-upstream_error .status-label,
+.provider-status.status-parse_error .status-label {
+  color: #a05131;
+}
+
+.search-state.warning strong {
+  color: #975124;
+}
+
+.research-empty-state {
+  display: grid;
+  gap: 7px;
+  padding: 48px 24px;
+  border: 1px dashed #a8bab6;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.65);
+  color: #6d7f83;
+  text-align: center;
+}
+
+.research-empty-state strong {
+  color: #294950;
+  font: 26px Georgia, serif;
+}
+
+@media (max-width: 620px) {
+  .diagnostic-headline {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .diagnostic-headline span {
+    max-width: 100%;
+  }
+
+  .diagnostic-metrics,
+  .provider-status-list {
+    grid-template-columns: 1fr;
+  }
+}
