@@ -1,58 +1,59 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>LitWatch Research Literature Search</title>
+    <title data-i18n="search.pageTitle">LitWatch 文献检索</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/research-results.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
     <script src="{{ url_for('static', path='/research-search.js') }}" defer></script>
   </head>
   <body class="research-app">
-    <a class="skip-link" href="#main-content">Skip to search</a>
+    <a class="skip-link" href="#main-content" data-i18n="search.skip">跳到文献检索</a>
     <header class="research-topbar">
-      <a class="research-brand" href="/" aria-label="LitWatch search home">
+      <a class="research-brand" href="/" aria-label="LitWatch 文献检索首页" data-i18n-aria-label="brand.home" translate="no">
         <span>LW</span>
         <strong>LitWatch</strong>
       </a>
-      <p>Research Literature Search</p>
-      <nav aria-label="Primary navigation">
-        <a class="active" href="/">Search</a>
-        <a href="/dashboard">Dashboard</a>
-        <a href="/subscriptions">Subscriptions</a>
-        <a href="/weekly-digests">Weekly Digests</a>
-        <a href="/provider-settings">Provider Settings</a>
-        <a href="http://localhost" target="_blank" rel="noopener noreferrer">Dify</a>
+      <p data-i18n="search.topbar">科研文献检索</p>
+      <nav aria-label="主导航" data-i18n-aria-label="nav.primary">
+        <a class="active" href="/" data-i18n="nav.search">文献检索</a>
+        <a href="/dashboard" data-i18n="nav.history">运行历史</a>
+        <a href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a>
+        <a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a>
+        <a href="/provider-settings" data-i18n="nav.settings">数据源设置</a>
+        <a href="http://localhost" target="_blank" rel="noopener noreferrer" translate="no">Dify</a>
       </nav>
+      <div class="locale-switch" role="group" aria-label="界面语言" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span aria-hidden="true">|</span><button type="button" data-locale="en">EN</button></div>
     </header>
 
     <main id="main-content" class="research-shell">
       <section class="research-intro" aria-labelledby="search-title">
-        <p class="research-kicker">Local multi-source retrieval</p>
-        <h1 id="search-title">Find research you can verify.</h1>
-        <p>Search real academic Providers through LitWatch, then review deduplicated and
-          relevance-ranked results without sending your query directly from the browser.</p>
+        <p class="research-kicker" data-i18n="search.kicker">本地多数据源检索</p>
+        <h1 id="search-title" data-i18n="search.heroTitle">查找可验证的真实文献。</h1>
+        <p data-i18n="search.heroBody">通过 LitWatch 检索真实学术数据源，并查看去重、相关度排序后的结果。浏览器不会绕过 LitWatch 直接请求外部数据源。</p>
       </section>
 
       <section class="research-panel" aria-labelledby="search-form-title">
         <div class="research-section-heading">
           <div>
-            <p class="research-kicker">Search</p>
-            <h2 id="search-form-title">Research query</h2>
+            <p class="research-kicker" data-i18n="search.sectionKicker">检索</p>
+            <h2 id="search-form-title" data-i18n="search.formTitle">研究检索式</h2>
           </div>
-          <span class="research-mode">Sort: Relevance</span>
+          <span class="research-mode" data-i18n="search.sort">排序：相关度</span>
         </div>
 
         <form class="research-form" data-search-form novalidate>
           <label class="research-field research-topic-field" for="research-topic">
-            <span>Research Topic</span>
+            <span data-i18n="search.topic">研究主题</span>
             <textarea id="research-topic" name="topic" rows="3" required minlength="2"
               maxlength="500" placeholder="underwater acoustic TDOA localization"></textarea>
           </label>
 
           <label class="research-field" for="research-limit">
-            <span>Results</span>
+            <span data-i18n="search.results">返回数量</span>
             <select id="research-limit" name="limit">
               <option value="5">5</option>
               <option value="10" selected>10</option>
@@ -63,31 +64,30 @@
           </label>
 
           <fieldset class="provider-picker" data-provider-picker disabled>
-            <legend>Providers</legend>
-            <p class="provider-help">Loading Provider capabilities...</p>
+            <legend data-i18n="search.providers">文献数据源</legend>
+            <p class="provider-help" data-i18n="search.providersLoading">正在加载数据源能力...</p>
             <div class="provider-options" data-provider-options></div>
           </fieldset>
 
           <div class="research-form-actions">
             <button class="research-primary" type="submit" data-search-submit disabled>
-              Search Literature
+              <span data-i18n="search.submit">检索文献</span>
             </button>
-            <p>Dates are not shown because the stable search API does not yet expose a
-              consistent cross-Provider year range.</p>
+            <p data-i18n="search.dateNote">当前稳定检索 API 尚未提供跨数据源一致的年份范围，因此暂不显示日期筛选。</p>
           </div>
         </form>
       </section>
 
       <section class="search-feedback" aria-live="polite" aria-atomic="true">
         <div class="search-state" data-search-state>
-          <strong>Enter a research topic to search literature.</strong>
-          <span>Select one or more available Providers, then start the search.</span>
+          <strong data-i18n="search.initialTitle">输入研究主题后开始检索。</strong>
+          <span data-i18n="search.initialBody">选择一个或多个可用数据源，然后开始检索。</span>
         </div>
-        <button type="button" class="research-secondary" data-search-retry hidden>Retry</button>
+        <button type="button" class="research-secondary" data-search-retry hidden data-i18n="common.retry">重试</button>
       </section>
 
-      <section class="search-summary" data-search-summary hidden aria-label="Search summary"></section>
-      <section class="research-results" data-search-results aria-label="Literature results"></section>
+      <section class="search-summary" data-search-summary hidden aria-label="检索摘要" data-i18n-aria-label="search.summaryAria"></section>
+      <section class="research-results" data-search-results aria-label="文献结果" data-i18n-aria-label="search.resultsAria"></section>
     </main>
   </body>
 </html>

@@ -177,7 +177,8 @@ def test_weekly_digest_page_assets_and_empty_api(tmp_path):
     assert page.status_code == script.status_code == styles.status_code == 200
     assert deliveries.status_code == 200
     assert deliveries.json() == []
-    assert "Weekly Digests" in page.text
+    assert "每周文献推荐" in page.text
+    assert "/static/i18n.js" in page.text
     assert "digest.empty_message" in script.text
     for field in ("authors", "year", "venue", "abstract", "sources", "doi"):
         assert f"paper.{field}" in script.text

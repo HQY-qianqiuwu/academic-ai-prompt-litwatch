@@ -7,7 +7,7 @@ Branch: `feat/v1.6-weekly-recommendations`
 
 ## Automated gate
 
-- `python -m pytest -q`: 239 passed, one existing FastAPI/Starlette dependency warning;
+- `python -m pytest -q`: 245 passed, one existing FastAPI/Starlette dependency warning;
 - `ruff check src tests`: PASS;
 - `git diff --check`: PASS;
 - scheduler due/not-due, disabled, catch-up, concurrency lease, stale recovery,
@@ -77,9 +77,26 @@ by that environment repair.
 - v1.0 DSL: unchanged; and
 - v1.1 DSL: unchanged.
 
+## UI localization verification
+
+- default local UI locale: `zh-CN`;
+- supported locales: `zh-CN` and `en`;
+- right-side `中文 | EN` switch: PASS;
+- non-sensitive `litwatch.locale` preference persisted across pages: PASS;
+- Search, paper cards, Provider Settings, Subscriptions, Run Now summaries,
+  run status, weekdays, and Weekly Digest labels: PASS;
+- real browser switch from Chinese to English and back to Chinese: PASS;
+- Provider and Dify brand text preserved: PASS;
+- paper title, abstract, authors, venue, DOI, and source metadata kept directly
+  from Provider/digest payloads: PASS;
+- backend Provider/run enum values and database contracts: unchanged; and
+- write-only Provider secret handling and redaction: unchanged.
+
 ## Release Candidate decision
 
 Stages 4 through 10 passed their independent implementation and validation
-gates. Dashboard delivery is complete; optional email delivery is deferred.
+gates. The Simplified Chinese UI polish gate also passed without changing core
+retrieval or recommendation semantics. Dashboard delivery is complete;
+optional email delivery is deferred.
 Stack v1.6 is a Release Candidate, not Stable. No `dify-v1.6` tag was created.
 Manual browser acceptance remains required before Stable finalization.

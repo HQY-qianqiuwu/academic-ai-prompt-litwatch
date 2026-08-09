@@ -84,8 +84,8 @@ def test_result_cards_preserve_backend_ranking_and_metadata(tmp_path):
     assert "paper.abstract" in script
     assert "paper.sources" in script
     assert "paper.doi" in script
-    assert "Authors unavailable" in script
-    assert "Abstract unavailable" in script
+    assert 't("paper.authorsUnavailable")' in script
+    assert 't("paper.abstractUnavailable")' in script
 
 
 def test_result_cards_show_backend_scores_without_recomputing_them(tmp_path):
@@ -97,7 +97,7 @@ def test_result_cards_show_backend_scores_without_recomputing_them(tmp_path):
     assert "ranking?.rank_score" in script
     assert "ranking?.relevance_score" in script
     assert "ranking?.quality_score" in script
-    assert "Metadata completeness and multi-source evidence" in script
+    assert 't("paper.qualityHelp")' in script
 
 
 def test_result_rendering_uses_safe_dom_and_external_links(tmp_path):
@@ -121,7 +121,7 @@ def test_search_summary_exposes_dedup_and_provider_diagnostics(tmp_path):
     assert "diagnostics.duplicates_removed" in script
     assert "payload.provider_status" in script
     assert "providerStatusLabels" in script
-    assert "Provider diagnostics" in script
+    assert 't("diagnostics.details")' in script
 
 
 def test_search_ui_handles_partial_failure_empty_and_retry_states(tmp_path):
@@ -129,16 +129,9 @@ def test_search_ui_handles_partial_failure_empty_and_retry_states(tmp_path):
         response = client.get("/static/research-search.js")
 
     script = response.text
-    for state in (
-        "rate_limited",
-        "auth_error",
-        "timeout",
-        "upstream_error",
-        "parse_error",
-    ):
-        assert state in script
-    assert "successful results remain available" in script
-    assert "No papers found" in script
+    assert "providerStatusLabels(item.status)" in script
+    assert 't("diagnostics.partial"' in script
+    assert 't("search.noPapers")' in script
     assert "retryButton.hidden = false" in script
 
 
@@ -155,5 +148,5 @@ def test_search_ui_maps_safe_http_error_messages_without_echoing_details(tmp_pat
     assert "504:" in script
     assert "response.text()" not in script
     assert "response.json().detail" not in script
-    assert "LitWatch service unavailable" in script
-    assert "Invalid response from LitWatch" in script
+    assert 't("search.unavailable")' in script
+    assert 't("search.invalidResponse")' in script

@@ -608,7 +608,13 @@ Stages 0 through 10 are complete on
 - regression protection for Manual Search, Provider Settings, Dify, BYOK,
   SSRF, and the stable v1.0/v1.1 DSL files.
 
-The Release Candidate gate has 239 passing tests, Ruff PASS, and
+The UI additionally defaults to Simplified Chinese (`zh-CN`) and supports an
+English (`en`) switch through the non-sensitive `litwatch.locale` browser
+preference. Localization is restricted to templates, static JavaScript, and
+CSS. Provider names and paper title/abstract/authors/venue/DOI remain original
+metadata, while Provider/run enums and database contracts remain unchanged.
+
+The localized Release Candidate gate has 245 passing tests, Ruff PASS, and
 `git diff --check` PASS. Dashboard delivery is complete. Optional email
 delivery remains deferred because a safe product implementation requires
 write-only SMTP configuration and isolated retry/error handling. Manual

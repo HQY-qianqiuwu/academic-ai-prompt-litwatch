@@ -1,72 +1,75 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>LitWatch Research Subscriptions</title>
+    <title data-i18n="subscriptions.pageTitle">LitWatch 研究订阅</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/subscriptions.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
     <script src="{{ url_for('static', path='/subscriptions.js') }}" defer></script>
   </head>
   <body class="research-app">
-    <a class="skip-link" href="#main-content">Skip to subscriptions</a>
+    <a class="skip-link" href="#main-content" data-i18n="subscriptions.skip">跳到研究订阅</a>
     <header class="research-topbar">
-      <a class="research-brand" href="/" aria-label="LitWatch search home">
+      <a class="research-brand" href="/" aria-label="LitWatch 文献检索首页" data-i18n-aria-label="brand.home" translate="no">
         <span>LW</span><strong>LitWatch</strong>
       </a>
-      <p>Research Subscriptions</p>
-      <nav aria-label="Primary navigation">
-        <a href="/">Search</a>
-        <a href="/dashboard">Dashboard</a>
-        <a class="active" href="/subscriptions">Subscriptions</a>
-        <a href="/weekly-digests">Weekly Digests</a>
-        <a href="/provider-settings">Provider Settings</a>
-        <a href="http://localhost" target="_blank" rel="noopener noreferrer">Dify</a>
+      <p data-i18n="subscriptions.topbar">研究订阅</p>
+      <nav aria-label="主导航" data-i18n-aria-label="nav.primary">
+        <a href="/" data-i18n="nav.search">文献检索</a>
+        <a href="/dashboard" data-i18n="nav.history">运行历史</a>
+        <a class="active" href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a>
+        <a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a>
+        <a href="/provider-settings" data-i18n="nav.settings">数据源设置</a>
+        <a href="http://localhost" target="_blank" rel="noopener noreferrer" translate="no">Dify</a>
       </nav>
+      <div class="locale-switch" role="group" aria-label="界面语言" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span aria-hidden="true">|</span><button type="button" data-locale="en">EN</button></div>
     </header>
 
     <main id="main-content" class="research-shell subscription-shell">
       <section class="subscription-hero">
         <div>
-          <p class="research-kicker">Saved weekly research</p>
-          <h1>Research Subscriptions</h1>
-          <p>Save a topic once, run it on demand, and keep a per-topic history of new papers.</p>
+          <p class="research-kicker" data-i18n="subscriptions.kicker">已保存的每周研究主题</p>
+          <h1 data-i18n="subscriptions.title">研究订阅</h1>
+          <p data-i18n="subscriptions.intro">保存一次研究主题，按需运行，并持续记录每个主题的新论文。</p>
         </div>
-        <button class="research-primary" type="button" data-new-subscription>New subscription</button>
+        <button class="research-primary" type="button" data-new-subscription data-i18n="subscriptions.create">新建订阅</button>
       </section>
 
       <section class="subscription-state" data-subscription-state aria-live="polite">
-        <strong>Loading subscriptions...</strong>
-        <span>Reading local, non-secret subscription settings.</span>
+        <strong data-i18n="subscriptions.loading">正在加载研究订阅...</strong>
+        <span data-i18n="subscriptions.loadingBody">正在读取本地非敏感订阅设置。</span>
       </section>
 
       <section class="subscription-editor" data-subscription-editor hidden>
         <div class="subscription-heading">
-          <div><p class="research-kicker">Configuration</p><h2 data-editor-title>New subscription</h2></div>
-          <button class="research-secondary" type="button" data-cancel-edit>Cancel</button>
+          <div><p class="research-kicker" data-i18n="subscriptions.configuration">订阅配置</p><h2 data-editor-title data-i18n="subscriptions.new">新建订阅</h2></div>
+          <button class="research-secondary" type="button" data-cancel-edit data-i18n="common.cancel">取消</button>
         </div>
         <form data-subscription-form novalidate>
           <input type="hidden" name="subscription_id">
-          <label>Name<input name="name" required maxlength="120"></label>
-          <label class="wide">Topic<textarea name="topic" required maxlength="500" rows="3"></textarea></label>
-          <label class="wide">Keywords <span>(comma separated)</span><input name="keywords"></label>
+          <label><span data-i18n="subscriptions.name">订阅名称</span><input name="name" required maxlength="120"></label>
+          <label class="wide"><span data-i18n="subscriptions.topic">研究主题</span><textarea name="topic" required maxlength="500" rows="3"></textarea></label>
+          <label class="wide"><span data-i18n="subscriptions.keywords">关键词</span> <span data-i18n="subscriptions.commaSeparated">（逗号分隔）</span><input name="keywords"></label>
           <fieldset class="wide" data-subscription-providers disabled>
-            <legend>Providers</legend><div class="subscription-provider-grid" data-subscription-provider-options></div>
+            <legend data-i18n="subscriptions.providers">文献数据源</legend><div class="subscription-provider-grid" data-subscription-provider-options></div>
           </fieldset>
-          <label>Search limit<input name="search_limit" type="number" min="1" max="50" value="20" required></label>
-          <label>Recommend top N<input name="recommendation_limit" type="number" min="1" max="50" value="5" required></label>
-          <label>Weekday<select name="weekday"><option value="0">Monday</option><option value="1">Tuesday</option><option value="2">Wednesday</option><option value="3">Thursday</option><option value="4">Friday</option><option value="5">Saturday</option><option value="6" selected>Sunday</option></select></label>
-          <label>Local time<input name="local_time" type="time" value="08:00" required></label>
-          <label>Timezone<input name="timezone" value="Asia/Shanghai" required></label>
-          <label class="subscription-toggle"><input name="enabled" type="checkbox" checked> Enabled</label>
+          <label><span data-i18n="subscriptions.searchLimit">候选文献数量</span><input name="search_limit" type="number" min="1" max="50" value="20" required></label>
+          <label><span data-i18n="subscriptions.recommendLimit">每次最多推荐</span><input name="recommendation_limit" type="number" min="1" max="50" value="5" required></label>
+          <label><span data-i18n="subscriptions.frequency">更新频率</span><select name="frequency" disabled><option value="weekly" selected data-i18n="subscriptions.weekly">每周</option></select></label>
+          <label><span data-i18n="subscriptions.weekday">星期</span><select name="weekday"><option value="0" data-i18n="weekday.0">星期一</option><option value="1" data-i18n="weekday.1">星期二</option><option value="2" data-i18n="weekday.2">星期三</option><option value="3" data-i18n="weekday.3">星期四</option><option value="4" data-i18n="weekday.4">星期五</option><option value="5" data-i18n="weekday.5">星期六</option><option value="6" selected data-i18n="weekday.6">星期日</option></select></label>
+          <label><span data-i18n="subscriptions.time">时间</span><input name="local_time" type="time" value="08:00" required></label>
+          <label><span data-i18n="subscriptions.timezone">时区</span><input name="timezone" value="Asia/Shanghai" required></label>
+          <label class="subscription-toggle"><input name="enabled" type="checkbox" checked> <span data-i18n="subscriptions.enabled">已启用</span></label>
           <div class="subscription-form-actions wide">
-            <button class="research-primary" type="submit" data-save-subscription>Save subscription</button>
+            <button class="research-primary" type="submit" data-save-subscription data-i18n="subscriptions.save">保存订阅</button>
           </div>
         </form>
       </section>
 
-      <section class="subscription-list" data-subscription-list aria-label="Saved subscriptions"></section>
+      <section class="subscription-list" data-subscription-list aria-label="已保存的研究订阅" data-i18n-aria-label="subscriptions.listAria"></section>
       <section class="subscription-detail" data-subscription-detail hidden aria-live="polite"></section>
     </main>
   </body>

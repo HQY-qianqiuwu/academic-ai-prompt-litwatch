@@ -1,48 +1,49 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>LitWatch Provider Settings</title>
+    <title data-i18n="settings.pageTitle">LitWatch 数据源设置</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/provider-settings.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
     <script src="{{ url_for('static', path='/provider-settings.js') }}" defer></script>
   </head>
   <body class="research-app">
-    <a class="skip-link" href="#main-content">Skip to Provider settings</a>
+    <a class="skip-link" href="#main-content" data-i18n="settings.skip">跳到数据源设置</a>
     <header class="research-topbar">
-      <a class="research-brand" href="/" aria-label="LitWatch search home">
+      <a class="research-brand" href="/" aria-label="LitWatch 文献检索首页" data-i18n-aria-label="brand.home" translate="no">
         <span>LW</span>
         <strong>LitWatch</strong>
       </a>
-      <p>Provider Configuration</p>
-      <nav aria-label="Primary navigation">
-        <a href="/">Search</a>
-        <a href="/dashboard">Dashboard</a>
-        <a href="/subscriptions">Subscriptions</a>
-        <a href="/weekly-digests">Weekly Digests</a>
-        <a class="active" href="/provider-settings">Provider Settings</a>
-        <a href="http://localhost" target="_blank" rel="noopener noreferrer">Dify</a>
+      <p data-i18n="settings.topbar">数据源配置</p>
+      <nav aria-label="主导航" data-i18n-aria-label="nav.primary">
+        <a href="/" data-i18n="nav.search">文献检索</a>
+        <a href="/dashboard" data-i18n="nav.history">运行历史</a>
+        <a href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a>
+        <a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a>
+        <a class="active" href="/provider-settings" data-i18n="nav.settings">数据源设置</a>
+        <a href="http://localhost" target="_blank" rel="noopener noreferrer" translate="no">Dify</a>
       </nav>
+      <div class="locale-switch" role="group" aria-label="界面语言" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span aria-hidden="true">|</span><button type="button" data-locale="en">EN</button></div>
     </header>
 
     <main id="main-content" class="research-shell settings-shell">
       <section class="research-intro" aria-labelledby="settings-title">
-        <p class="research-kicker">Local configuration</p>
-        <h1 id="settings-title">Provider Settings</h1>
-        <p>Choose which sources participate in searches and manage optional credentials.
-          Saved secrets are write-only and are never returned to this page.</p>
+        <p class="research-kicker" data-i18n="settings.kicker">本地配置</p>
+        <h1 id="settings-title" data-i18n="settings.title">数据源设置</h1>
+        <p data-i18n="settings.intro">选择参与检索的数据源并管理可选凭据。已保存的密钥只写不可读，绝不会返回到本页面。</p>
       </section>
 
-      <section class="settings-notice" aria-label="Credential safety notice">
-        <strong>Secret-safe configuration</strong>
-        <span>Leave an API key blank to preserve it. Clearing a configured key requires confirmation.</span>
+      <section class="settings-notice" aria-label="密钥安全配置">
+        <strong data-i18n="settings.noticeTitle">密钥安全配置</strong>
+        <span data-i18n="settings.noticeBody">API 密钥留空会保留现有密钥；清除已配置密钥需要再次确认。</span>
       </section>
 
       <section class="settings-state" data-settings-state aria-live="polite">
-        <strong>Loading Provider profiles...</strong>
-        <span>Reading non-secret configuration from LitWatch.</span>
+        <strong data-i18n="settings.loading">正在加载数据源配置...</strong>
+        <span data-i18n="settings.loadingBody">正在从 LitWatch 读取非敏感配置。</span>
       </section>
       <section class="provider-settings-list" data-provider-settings></section>
     </main>

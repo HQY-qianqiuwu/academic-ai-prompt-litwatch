@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  const i18n = window.LitWatchI18n;
+  const t = (key, params = {}) => i18n.t(key, params);
   const form = document.querySelector("[data-search-form]");
   if (!form) return;
 
@@ -41,8 +43,9 @@
     const text = document.createElement("span");
     const name = document.createElement("strong");
     name.textContent = provider.display_name;
+    name.setAttribute("translate", "no");
     const status = document.createElement("small");
-    status.textContent = provider.runnable ? "Available" : "Coming later";
+    status.textContent = provider.runnable ? t("common.available") : t("common.comingLater");
     text.append(name, status);
     label.append(input, text);
     return label;
@@ -55,12 +58,12 @@
       const providers = await response.json();
       if (!Array.isArray(providers)) throw new Error("invalid Provider response");
       providerOptions.replaceChildren(...providers.map(providerLabel));
-      providerHelp.textContent = "Choose the sources LitWatch should search.";
+      providerHelp.textContent = t("search.providersHelp");
       providerPicker.disabled = false;
       submitButton.disabled = false;
     } catch (_error) {
-      providerHelp.textContent = "Provider capabilities could not be loaded.";
-      setState("error", "LitWatch service unavailable", "Reload the page and try again.");
+      providerHelp.textContent = t("search.providersUnavailable");
+      setState("error", t("search.unavailable"), t("search.unavailableBody"));
       retryButton.hidden = false;
     }
   };
@@ -86,7 +89,7 @@
   };
 
   const formatScore = (value) =>
-    Number.isFinite(Number(value)) ? Number(value).toFixed(3) : "Not available";
+    Number.isFinite(Number(value)) ? Number(value).toFixed(3) : t("paper.scoreUnavailable");
 
   const renderScore = (label, value, title = "") => {
     const score = document.createElement("span");
@@ -107,12 +110,12 @@
     const scores = document.createElement("div");
     scores.className = "paper-scores";
     scores.append(
-      renderScore("Rank", ranking?.rank_score),
-      renderScore("Relevance", ranking?.relevance_score),
+      renderScore(t("paper.rank"), ranking?.rank_score),
+      renderScore(t("paper.relevance"), ranking?.relevance_score),
       renderScore(
-        "Quality",
+        t("paper.quality"),
         ranking?.quality_score,
-        "Metadata completeness and multi-source evidence; not journal prestige",
+        t("paper.qualityHelp"),
       ),
     );
     header.append(scores);
@@ -132,27 +135,34 @@
       title.textContent = paper.title;
     }
 
-    const metadata = document.createElement("p");
+    const metadata = document.createElement("div");
     metadata.className = "paper-metadata";
-    const metadataParts = [];
-    metadataParts.push(
-      paper.authors?.length ? paper.authors.join(", ") : "Authors unavailable",
+    const metadataItem = (label, value) => {
+      const item = document.createElement("span");
+      item.append(textElement("strong", "", `${label}: `), document.createTextNode(value));
+      return item;
+    };
+    metadata.append(
+      metadataItem(
+        t("paper.authors"),
+        paper.authors?.length ? paper.authors.join(", ") : t("paper.authorsUnavailable"),
+      ),
+      metadataItem(t("paper.year"), paper.year ? String(paper.year) : t("paper.yearUnavailable")),
+      metadataItem(t("paper.venue"), paper.venue || t("paper.venueUnavailable")),
     );
-    if (paper.year) metadataParts.push(String(paper.year));
-    if (paper.venue) metadataParts.push(paper.venue);
-    metadata.textContent = metadataParts.join(" · ");
 
     const abstract = document.createElement("div");
     abstract.className = "paper-abstract";
-    const abstractText = paper.abstract || "Abstract unavailable.";
+    const abstractText = paper.abstract || t("paper.abstractUnavailable");
+    abstract.append(textElement("strong", "paper-field-label", t("paper.abstract")));
     abstract.append(textElement("p", "", abstractText));
     if (abstractText.length > 360) {
       abstract.classList.add("collapsed");
-      const toggle = textElement("button", "abstract-toggle", "Show more");
+      const toggle = textElement("button", "abstract-toggle", t("paper.showMore"));
       toggle.type = "button";
       toggle.addEventListener("click", () => {
         const collapsed = abstract.classList.toggle("collapsed");
-        toggle.textContent = collapsed ? "Show more" : "Show less";
+        toggle.textContent = collapsed ? t("paper.showMore") : t("paper.showLess");
       });
       abstract.append(toggle);
     }
@@ -160,8 +170,11 @@
     const footer = document.createElement("footer");
     const sourceList = document.createElement("div");
     sourceList.className = "paper-sources";
+    sourceList.append(textElement("strong", "paper-field-label", `${t("paper.sources")}:`));
     (paper.sources || []).forEach((source) => {
-      sourceList.append(textElement("span", "source-badge", source));
+      const badge = textElement("span", "source-badge", source);
+      badge.setAttribute("translate", "no");
+      sourceList.append(badge);
     });
     footer.append(sourceList);
     if (paperUrl) {
@@ -169,7 +182,7 @@
       external.href = paperUrl;
       external.target = "_blank";
       external.rel = "noopener noreferrer";
-      external.textContent = paper.doi ? "Open DOI" : "Open source record";
+      external.textContent = paper.doi ? t("paper.openDoi") : t("paper.openRecord");
       footer.append(external);
     }
 
@@ -185,8 +198,8 @@
       const empty = document.createElement("div");
       empty.className = "research-empty-state";
       empty.append(
-        textElement("strong", "", "No papers found"),
-        textElement("span", "", "Try a broader topic or select another available Provider."),
+        textElement("strong", "", t("search.noPapers")),
+        textElement("span", "", t("search.noPapersHint")),
       );
       results.replaceChildren(empty);
       return;
@@ -196,15 +209,7 @@
     );
   };
 
-  const providerStatusLabels = {
-    success: "Success",
-    empty: "No results",
-    rate_limited: "Rate limited",
-    auth_error: "Authentication required",
-    timeout: "Timed out",
-    upstream_error: "Provider unavailable",
-    parse_error: "Invalid provider response",
-  };
+  const providerStatusLabels = (status) => t(`providerStatus.${status}`);
 
   const renderDiagnostics = (payload) => {
     const diagnostics = payload.diagnostics || {};
@@ -216,16 +221,16 @@
     const headline = document.createElement("div");
     headline.className = "diagnostic-headline";
     headline.append(
-      textElement("strong", "", `${payload.paper_count} papers shown`),
-      textElement("span", "", `Query: ${payload.query}`),
+      textElement("strong", "", t("diagnostics.shown", { count: payload.paper_count })),
+      textElement("span", "", t("diagnostics.query", { query: payload.query })),
     );
 
     const metrics = document.createElement("div");
     metrics.className = "diagnostic-metrics";
     [
-      ["Candidates", diagnostics.raw_count],
-      ["Unique", diagnostics.dedup_count],
-      ["Duplicates removed", diagnostics.duplicates_removed],
+      [t("diagnostics.candidates"), diagnostics.raw_count],
+      [t("diagnostics.unique"), diagnostics.dedup_count],
+      [t("diagnostics.merged"), diagnostics.duplicates_removed],
     ].forEach(([label, value]) => {
       const metric = document.createElement("span");
       metric.append(textElement("small", "", label), textElement("strong", "", String(value ?? 0)));
@@ -237,13 +242,13 @@
       container.append(textElement(
         "p",
         "partial-warning",
-        `${failedStatuses.length} Provider request(s) had issues; successful results remain available.`,
+        t("diagnostics.partial", { count: failedStatuses.length }),
       ));
     }
 
     const details = document.createElement("details");
     details.className = "provider-diagnostics";
-    const detailsSummary = textElement("summary", "", "Provider diagnostics");
+    const detailsSummary = textElement("summary", "", t("diagnostics.details"));
     const statusList = document.createElement("div");
     statusList.className = "provider-status-list";
     statuses.forEach((item) => {
@@ -252,13 +257,17 @@
       row.dataset.providerStatus = item.provider;
       row.append(
         textElement("strong", "", item.provider),
-        textElement("span", "status-label", providerStatusLabels[item.status] || "Unavailable"),
+        textElement("span", "status-label", providerStatusLabels(item.status)),
         textElement(
           "small",
           "",
-          `${item.returned_count ?? 0} returned · ${item.elapsed_ms ?? 0} ms`,
+          t("diagnostics.returned", {
+            count: item.returned_count ?? 0,
+            elapsed: item.elapsed_ms ?? 0,
+          }),
         ),
       );
+      row.querySelector("strong").setAttribute("translate", "no");
       statusList.append(row);
     });
     details.append(detailsSummary, statusList);
@@ -268,19 +277,19 @@
 
   const errorMessageFor = (error) => {
     if (error.kind === "invalid_response") {
-      return ["Invalid response from LitWatch", "Retry the search or restart the local service."];
+      return [t("search.invalidResponse"), t("search.invalidResponseBody")];
     }
     if (!error.status) {
-      return ["LitWatch service unavailable", "Confirm the local service is running, then retry."];
+      return [t("search.unavailable"), t("search.unavailableBody")];
     }
     const messages = {
-      400: ["Search request needs attention", "Check the topic and Provider selection."],
-      422: ["Search request needs attention", "Check the topic and Provider selection."],
-      429: ["Search is temporarily rate limited", "Wait briefly, then retry the request."],
-      502: ["Literature Providers are unavailable", "The selected Providers could not complete the search."],
-      504: ["Literature search timed out", "The selected Providers took too long to respond."],
+      400: [t("search.invalidConfig"), t("search.invalidConfigBody")],
+      422: [t("search.invalidConfig"), t("search.invalidConfigBody")],
+      429: [t("search.rateLimited"), t("search.rateLimitedBody")],
+      502: [t("search.providersFailed"), t("search.providersFailedBody")],
+      504: [t("search.timedOut"), t("search.timedOutBody")],
     };
-    return messages[error.status] || ["Search failed", "LitWatch could not complete this request."];
+    return messages[error.status] || [t("search.failed"), t("search.failedBody")];
   };
 
   const search = async () => {
@@ -288,23 +297,23 @@
     const topic = topicInput.value.trim();
     const providers = selectedProviders();
     if (!topic) {
-      topicInput.setCustomValidity("Enter a research topic.");
+      topicInput.setCustomValidity(t("search.enterTopic"));
       topicInput.reportValidity();
       return;
     }
     topicInput.setCustomValidity("");
     if (!providers.length) {
-      setState("error", "Select at least one Provider", "Choose an available source to search.");
+      setState("error", t("search.selectProviderTitle"), t("search.selectProviderBody"));
       return;
     }
 
     searching = true;
     submitButton.disabled = true;
-    submitButton.textContent = "Searching literature...";
+    submitButton.textContent = t("search.searching");
     retryButton.hidden = true;
     summary.hidden = true;
     results.replaceChildren();
-    setState("loading", "Searching literature...", "LitWatch is querying the selected Providers.");
+    setState("loading", t("search.searching"), t("search.loadingBody"));
 
     try {
       const response = await fetch("/api/v1/literature/search", {
@@ -336,12 +345,12 @@
         (item) => !["success", "empty"].includes(item.status),
       );
       if (!payload.paper_count) {
-        setState("empty", "No papers found", "The Providers completed the search without matching papers.");
+        setState("empty", t("search.noPapers"), t("search.noPapersBody"));
       } else if (partial) {
-        setState("warning", "Search complete with Provider issues", "Available papers are shown below.");
+        setState("warning", t("search.partialTitle"), t("search.partialBody"));
         retryButton.hidden = false;
       } else {
-        setState("success", "Search complete", `LitWatch returned ${payload.paper_count} papers.`);
+        setState("success", t("search.complete"), t("search.completeCount", { count: payload.paper_count }));
       }
       document.dispatchEvent(new CustomEvent("litwatch:search-results", { detail: payload }));
     } catch (error) {
@@ -351,7 +360,7 @@
     } finally {
       searching = false;
       submitButton.disabled = false;
-      submitButton.textContent = "Search Literature";
+      submitButton.textContent = t("search.submit");
     }
   };
 

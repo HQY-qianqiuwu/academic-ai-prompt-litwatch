@@ -16,10 +16,13 @@
 - RC scope: subscription persistence, per-subscription novelty, unified run
   engine, ranking-preserving recommendations, weekly scheduling, catch-up,
   concurrency leases, stale recovery, responsive Subscription UI, and
-  idempotent Dashboard Weekly Digests.
-- Validation: 239 tests passed; Ruff and `git diff --check` passed; real TDOA,
+  idempotent Dashboard Weekly Digests. The UI now defaults to Simplified
+  Chinese (`zh-CN`) and supports an English (`en`) switch stored only as the
+  non-sensitive `litwatch.locale` browser preference.
+- Validation: 245 tests passed; Ruff and `git diff --check` passed; real TDOA,
   OFDM, repeat-run suppression, partial failure, restart persistence, Manual
-  Search, Provider Settings, Dify, and lifecycle checks passed.
+  Search, Provider Settings, Dify, lifecycle, Chinese-default, English-switch,
+  brand-preservation, metadata-preservation, and secret-redaction checks passed.
 - Stable DSL protection: v1.0 and v1.1 files unchanged.
 - Deferred: optional email delivery.
 - Next action: perform manual v1.6 acceptance. Only after it passes may release

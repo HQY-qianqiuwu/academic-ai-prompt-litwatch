@@ -25,12 +25,13 @@ def test_subscription_page_and_assets_are_served(tmp_path):
         styles = client.get("/static/subscriptions.css")
 
     assert page.status_code == script.status_code == styles.status_code == 200
-    assert "Research Subscriptions" in page.text
-    assert "New subscription" in page.text
-    assert "Run Now" in script.text
+    assert "研究订阅" in page.text
+    assert "新建订阅" in page.text
+    assert "/static/i18n.js" in page.text
+    assert 't("subscriptions.runNow")' in script.text
     assert "/api/v1/providers" in script.text
     assert "/api/v1/subscriptions" in script.text
-    assert 'button.textContent = "Running..."' in script.text
+    assert 'button.textContent = t("subscriptions.running")' in script.text
     assert "historical_duplicates_removed" in script.text
     assert "@media (max-width:900px)" in styles.text
     assert "@media (max-width:620px)" in styles.text
@@ -53,9 +54,9 @@ def test_subscription_script_uses_safe_errors_and_prevents_duplicate_submit():
     script = Path("src/litwatch/static/subscriptions.js").read_text(encoding="utf-8")
 
     assert "raw traceback" not in script.lower()
-    assert "Subscription unavailable" in script
-    assert "Provider partial failure" in script
-    assert "Run failed" in script
-    assert "Invalid schedule" in script
+    assert 't("subscriptions.unavailable")' in script
+    assert 't("subscriptions.partial")' in script
+    assert 't("subscriptions.runFailed")' in script
+    assert 't("subscriptions.invalidSchedule")' in script
     assert "button.disabled = true" in script
     assert "button.disabled = false" in script

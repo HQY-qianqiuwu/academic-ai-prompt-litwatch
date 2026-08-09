@@ -1,25 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>LitWatch Weekly Digests</title>
+    <title data-i18n="digest.pageTitle">LitWatch 每周文献推荐</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/weekly-digests.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
     <script src="{{ url_for('static', path='/weekly-digests.js') }}" defer></script>
   </head>
   <body class="research-app">
-    <a class="skip-link" href="#main-content">Skip to weekly digests</a>
+    <a class="skip-link" href="#main-content" data-i18n="digest.skip">跳到每周文献推荐</a>
     <header class="research-topbar">
-      <a class="research-brand" href="/" aria-label="LitWatch search home"><span>LW</span><strong>LitWatch</strong></a>
-      <p>Weekly Recommendation Dashboard</p>
-      <nav aria-label="Primary navigation"><a href="/">Search</a><a href="/dashboard">Dashboard</a><a href="/subscriptions">Subscriptions</a><a class="active" href="/weekly-digests">Weekly Digests</a><a href="/provider-settings">Provider Settings</a><a href="http://localhost" target="_blank" rel="noopener noreferrer">Dify</a></nav>
+      <a class="research-brand" href="/" aria-label="LitWatch 文献检索首页" data-i18n-aria-label="brand.home" translate="no"><span>LW</span><strong>LitWatch</strong></a>
+      <p data-i18n="digest.topbar">每周文献推荐</p>
+      <nav aria-label="主导航" data-i18n-aria-label="nav.primary"><a href="/" data-i18n="nav.search">文献检索</a><a href="/dashboard" data-i18n="nav.history">运行历史</a><a href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a><a class="active" href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a><a href="/provider-settings" data-i18n="nav.settings">数据源设置</a><a href="http://localhost" target="_blank" rel="noopener noreferrer" translate="no">Dify</a></nav>
+      <div class="locale-switch" role="group" aria-label="界面语言" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span aria-hidden="true">|</span><button type="button" data-locale="en">EN</button></div>
     </header>
     <main id="main-content" class="research-shell digest-shell">
-      <section class="digest-hero"><p class="research-kicker">Persisted recommendations</p><h1>Weekly Digests</h1><p>Review immutable dashboard snapshots from current and historical subscription runs.</p></section>
-      <section class="digest-state" data-digest-state aria-live="polite"><strong>Loading digests...</strong></section>
-      <div class="digest-layout"><aside data-digest-list aria-label="Digest history"></aside><section data-digest-detail aria-label="Selected digest"></section></div>
+      <section class="digest-hero"><p class="research-kicker" data-i18n="digest.kicker">已保存的推荐结果</p><h1 data-i18n="digest.title">每周文献推荐</h1><p data-i18n="digest.intro">查看当前及历史订阅运行生成的不可变推荐快照。</p></section>
+      <section class="digest-state" data-digest-state aria-live="polite"><strong data-i18n="digest.loading">正在加载每周文献推荐...</strong></section>
+      <div class="digest-layout"><aside data-digest-list aria-label="推荐历史" data-i18n-aria-label="digest.historyAria"></aside><section data-digest-detail aria-label="已选择的推荐" data-i18n-aria-label="digest.detailAria"></section></div>
     </main>
   </body>
 </html>

@@ -24,10 +24,11 @@ def test_provider_settings_page_uses_existing_profile_api(tmp_path):
         response = client.get("/provider-settings")
 
     assert response.status_code == 200
-    assert "Provider Settings" in response.text
+    assert "数据源设置" in response.text
     assert "data-provider-settings" in response.text
     assert "/static/provider-settings.js" in response.text
     assert "/static/provider-settings.css" in response.text
+    assert "/static/i18n.js" in response.text
     assert 'href="/"' in response.text
 
 
@@ -45,6 +46,7 @@ def test_provider_settings_javascript_preserves_and_clears_secrets_safely(tmp_pa
     assert "window.confirm" in script
     assert "innerHTML" not in script
     assert "response.text()" not in script
+    assert 't("settings.saving")' in script
 
 
 def test_fake_secret_round_trip_is_write_only_and_can_be_cleared(tmp_path):

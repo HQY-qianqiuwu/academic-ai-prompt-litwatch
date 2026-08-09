@@ -35,6 +35,55 @@
   text-decoration: none;
 }
 
+.locale-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 5px;
+  border: 1px solid rgba(23, 50, 58, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+
+.locale-switch button {
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.locale-switch button[aria-pressed="true"] {
+  background: #173d43;
+  color: #fff;
+}
+
+.research-topbar {
+  grid-template-columns: auto 1fr auto auto;
+}
+
+@media (max-width: 900px) {
+  .research-topbar {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .research-topbar nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .locale-switch {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
 @media (max-width: 620px) {
   .research-topbar nav a,
   .dashboard-links a {
@@ -44,6 +93,10 @@
   .dashboard-links {
     width: 100%;
     margin: 8px 0 0;
+  }
+
+  .locale-switch {
+    margin-left: auto;
   }
 }
 
