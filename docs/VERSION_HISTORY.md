@@ -119,3 +119,59 @@ Validation state:
 Architecture record: `docs/V1_2_PROVIDER_CONFIGURATION.md`
 
 Validation record: `docs/V1_2_E2E_RESULTS.md`
+
+## Stack v1.3
+
+Status: Stable
+
+Architecture:
+
+```text
+Dify
+    -> LitWatch API
+    -> LiteratureSearchService
+    -> Provider Registry
+       |-- OpenAlex
+       |-- Semantic Scholar
+       |-- arXiv
+       `-- Crossref
+    -> Deterministic round-robin aggregation
+    -> Provider status diagnostics
+```
+
+Backend additions:
+
+- Runnable OpenAlex, Semantic Scholar, arXiv, and Crossref adapters
+- Explicit multi-provider search selection
+- Per-provider success, empty, timeout, rate-limit, authentication, upstream,
+  and parse diagnostics
+- Failure isolation and successful partial-result responses
+- Deterministic round-robin aggregation with duplicates intentionally preserved
+- Secure known-provider base URL overrides
+- Environment and process-memory Provider Profile BYOK
+- Profile secret over environment secret over anonymous precedence
+- HTTPS, DNS/IP, redirect, and credential-redaction protections
+
+Dify Workflow:
+
+`dify/workflows/literature-search-v1.1.yml` (compatible reuse)
+
+Validation state:
+
+- OpenAlex, arXiv, and Crossref real E2E: pass
+- Semantic Scholar anonymous access: upstream rate limited HTTP 429
+- Semantic Scholar rate-limit isolation: pass
+- Semantic Scholar environment and profile BYOK paths: pass by tests
+- Semantic Scholar authenticated real success: **not verified**
+- Four-provider HTTP 200 and partial failure handling: pass
+- Dynamic-topic API and Dify UI runs: pass
+- Dify Topic A and Topic B: workflow success, non-empty results, clearly
+  different paper sets
+- Tests: 143 passed; Ruff and `git diff --check`: pass
+- Stable v1.0 and v1.1 DSL protection: pass
+- `literature-search-v1.3.yml`: intentionally absent
+- Stable tag: `dify-v1.3`
+
+BYOK record: `docs/V1_3_PROVIDER_BYOK.md`
+
+Validation record: `docs/V1_3_E2E_RESULTS.md`

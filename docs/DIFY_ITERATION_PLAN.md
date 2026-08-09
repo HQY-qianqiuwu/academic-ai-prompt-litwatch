@@ -72,7 +72,7 @@ also passed. The complete record is `docs/V1_2_E2E_RESULTS.md`.
 
 ## Stack v1.3 — Multi-Source Literature Retrieval
 
-Status: In development; Stage 1 architecture planning complete
+Status: Stable
 
 First runnable provider set:
 
@@ -83,7 +83,7 @@ First runnable provider set:
 
 IEEE Xplore, Scopus, and Web of Science remain non-runnable in v1.3.
 
-Target architecture:
+Released architecture:
 
 ```text
 User Query
@@ -113,6 +113,12 @@ Semantic Scholar and any future keyed provider must reuse the v1.2 profile and
 credential-reference layer. Anonymous mode may be supported where the provider
 permits it. Keys remain excluded from source, DSL, Git, and ordinary logs.
 
+The released BYOK extension supports known-provider-compatible HTTPS endpoints,
+write-only runtime Profile secrets, environment fallback, partial update secret
+preservation, DNS/IP validation, and redirect blocking. Semantic Scholar
+authenticated real success remains **not verified**. Anonymous access returned
+an upstream HTTP 429, and rate-limit isolation passed.
+
 ### v1.3 Workflow Decision Gate
 
 Continue reusing `literature-search-v1.1.yml` if the default multi-source search
@@ -120,11 +126,31 @@ remains compatible with `topic + limit`. Create `literature-search-v1.3.yml`
 only if Dify adds a real user-facing provider selection input or another workflow
 contract change.
 
+The release decision is to reuse `literature-search-v1.1.yml`. Dify continues
+to send `topic + limit` without `providers`, preserving OpenAlex-only default
+behavior, while explicit multi-source API requests can select all four providers.
+
 After Stack v1.2 is tagged, create v1.3 from that tag:
 
 ```powershell
 git switch -c feat/v1.3-multisource dify-v1.2
 ```
+
+### v1.3 Completion Evidence
+
+- OpenAlex, arXiv, and Crossref real E2E: pass
+- Semantic Scholar anonymous: upstream rate limited HTTP 429
+- Semantic Scholar rate-limit isolation and BYOK paths: pass
+- Semantic Scholar authenticated real success: not verified
+- Four-provider HTTP 200, aggregation, and partial failure handling: pass
+- Dynamic-topic API and Dify UI runs: pass
+- Dify Topic A and Topic B: workflow success with non-empty results
+- Provider Registry, BYOK, SSRF-safe base URLs, and secret redaction: pass
+- Tests: 143 passed; Ruff and `git diff --check`: pass
+- v1.0 and v1.1 stable DSL files: unchanged
+- Stable tag: `dify-v1.3`
+
+The complete release evidence is `docs/V1_3_E2E_RESULTS.md`.
 
 ## Stack v1.4 — Deduplication, Relevance, and Quality Ranking
 

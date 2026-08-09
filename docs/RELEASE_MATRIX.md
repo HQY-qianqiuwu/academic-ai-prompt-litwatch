@@ -21,11 +21,11 @@ solely to make version numbers align.
 | v1.0 | Stable | Direct OpenAlex | `literature-search-v1.0.yml` | OpenAlex | `dify-v1.0` |
 | v1.1 | Stable | LitWatch Search API + `LiteratureSearchService` | `literature-search-v1.1.yml` | OpenAlex | `dify-v1.1` |
 | v1.2 | Stable | Provider Configuration + Provider Registry + BYOK boundary | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex | `dify-v1.2` |
-| v1.3 | In development | Multi-source retrieval, deterministic aggregation, provider failure diagnostics; duplicates intentionally preserved | Reuse v1.1 unless provider selection becomes a real Dify input | OpenAlex + Semantic Scholar + arXiv + Crossref | TBD |
+| v1.3 | Stable | Multi-source retrieval, deterministic aggregation, failure isolation, secure Provider BYOK; duplicates intentionally preserved | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.3` |
 
 ## Provider Capability Matrix
 
-| Provider | Stack v1.2 | Stack v1.3 Target |
+| Provider | Stack v1.2 | Stack v1.3 |
 |---|---|---|
 | OpenAlex | Runnable | Runnable |
 | Semantic Scholar | Declared, non-runnable | Runnable |
@@ -52,6 +52,11 @@ multi-source retrieval for the existing `topic + limit` input. Create
 `literature-search-v1.3.yml` only if users select providers in Dify or another
 workflow capability changes.
 
+Stack v1.3 reuses v1.1. The compatible workflow omits `providers` and therefore
+retains the default OpenAlex-only behavior. Multi-source retrieval is available
+through explicit provider selection in the LitWatch API without changing the
+Dify workflow contract.
+
 ## Stack v1.2 Release Evidence
 
 The compatible `literature-search-v1.1.yml` was imported as a new Dify
@@ -65,6 +70,20 @@ paper `sources`, and returned clearly different results. Provider, profile,
 redaction, Docker, SSRF, lifecycle, tests, Ruff, and stable DSL checks also
 passed. See `docs/V1_2_E2E_RESULTS.md`. The absence of
 `literature-search-v1.2.yml` is expected because no workflow contract changed.
+
+## Stack v1.3 Release Evidence
+
+OpenAlex, arXiv, and Crossref passed real retrieval. The explicit four-provider
+request returned HTTP 200 with 12 papers while Semantic Scholar anonymous access
+was correctly isolated as `rate_limited/upstream_429`. Semantic Scholar
+environment and profile BYOK paths passed tests; authenticated real success was
+not verified.
+
+Both Dify UI topics succeeded, returned `paper_count > 0` and non-empty
+`papers_json`, and produced clearly different results. The compatible workflow
+retained `sources=openalex`. BYOK, endpoint SSRF protection, secret redaction,
+Provider Registry, partial failure, dynamic topics, 143 tests, Ruff, diff checks,
+and both stable DSL checks passed. See `docs/V1_3_E2E_RESULTS.md`.
 
 ## Recovery Rule
 
