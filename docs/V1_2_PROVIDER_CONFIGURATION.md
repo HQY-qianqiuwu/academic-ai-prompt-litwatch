@@ -2,9 +2,10 @@
 
 ## 1. Status and Scope
 
-v1.2 establishes the provider-configuration boundary for LitWatch. The code and
-offline tests are complete, but local end-to-end validation is still pending.
-Therefore v1.2 is not yet Stable and no `dify-v1.2` tag exists.
+Stack v1.2 establishes the provider-configuration boundary for the LitWatch
+Backend. Backend, Provider Registry, real OpenAlex, profile, redaction, and
+Docker-to-host checks are complete. Dify backward-compatibility, dynamic-topic,
+SSRF, lifecycle, and release gates have passed, so Stack v1.2 is Stable.
 
 OpenAlex is the only runnable literature provider in v1.2. Semantic Scholar,
 arXiv, Crossref, IEEE Xplore, Scopus, and Web of Science are capability records
@@ -12,7 +13,12 @@ only. Selecting one of those providers returns a configuration error instead of
 fabricated papers or an empty success response.
 
 This release does not add RSS, Zotero, LLM analysis, PDF/full-text processing,
-research-gap analysis, SQLite provider persistence, or a new Dify DSL.
+research-gap analysis, SQLite provider persistence, or a new Dify DSL. Stack
+v1.2 intentionally reuses `dify/workflows/literature-search-v1.1.yml` because
+the `POST /api/v1/literature/search` contract remains backward compatible.
+
+Stack, Backend, and Workflow version semantics are defined in
+`docs/RELEASE_MATRIX.md`.
 
 ## 2. Architecture
 
@@ -127,7 +133,7 @@ Current predefined references are:
 These references prepare future adapters; they do not make those providers
 runnable in v1.2.
 
-## 7. Validation and Release Boundary
+## 7. Validation and Release Evidence
 
 Checkpoint validation requires:
 
@@ -143,5 +149,13 @@ git diff dify-v1.0 -- dify/workflows/literature-search-v1.0.yml
 git diff dify-v1.1 -- dify/workflows/literature-search-v1.1.yml
 ```
 
-Before v1.2 can become Stable, perform local host API, Docker networking, and Dify
-runtime tests. Do not create `dify-v1.2` until those manual checks pass.
+The existing `dify/workflows/literature-search-v1.1.yml` was imported as a new
+Dify application and both approved topics passed through the full Dify ->
+LitWatch v1.2 -> Provider Registry -> OpenAlex chain with different real-paper
+results. No same-numbered workflow file was created because the workflow
+contract remained compatible. Provider configuration, profile APIs, secret
+redaction, in-memory credential clearing on restart, narrow SSRF access, local
+lifecycle management, tests, Ruff, and both stable DSL comparisons also passed.
+
+See `docs/V1_2_E2E_RESULTS.md` for the complete release evidence. The Stable
+Stack tag is `dify-v1.2` and the compatible workflow remains v1.1.
