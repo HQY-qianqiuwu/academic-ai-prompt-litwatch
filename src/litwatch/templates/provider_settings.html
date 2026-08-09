@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LitWatch Provider Settings</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/provider-settings.css') }}">
+    <script src="{{ url_for('static', path='/provider-settings.js') }}" defer></script>
+  </head>
+  <body class="research-app">
+    <header class="research-topbar">
+      <a class="research-brand" href="/" aria-label="LitWatch search home">
+        <span>LW</span>
+        <strong>LitWatch</strong>
+      </a>
+      <p>Provider Configuration</p>
+      <nav aria-label="Primary navigation">
+        <a href="/">Search</a>
+        <a href="/dashboard">Dashboard</a>
+        <a class="active" href="/provider-settings">Provider Settings</a>
+        <a href="http://localhost" target="_blank" rel="noopener noreferrer">Dify</a>
+      </nav>
+    </header>
+
+    <main class="research-shell settings-shell">
+      <section class="research-intro" aria-labelledby="settings-title">
+        <p class="research-kicker">Local configuration</p>
+        <h1 id="settings-title">Provider Settings</h1>
+        <p>Choose which sources participate in searches and manage optional credentials.
+          Saved secrets are write-only and are never returned to this page.</p>
+      </section>
+
+      <section class="settings-notice" aria-label="Credential safety notice">
+        <strong>Secret-safe configuration</strong>
+        <span>Leave an API key blank to preserve it. Clearing a configured key requires confirmation.</span>
+      </section>
+
+      <section class="settings-state" data-settings-state aria-live="polite">
+        <strong>Loading Provider profiles...</strong>
+        <span>Reading non-secret configuration from LitWatch.</span>
+      </section>
+      <section class="provider-settings-list" data-provider-settings></section>
+    </main>
+  </body>
+</html>

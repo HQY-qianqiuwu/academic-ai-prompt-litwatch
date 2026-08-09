@@ -135,6 +135,14 @@ def create_app(
             context={"static_mode": False},
         )
 
+    @app.get("/provider-settings", response_class=HTMLResponse)
+    async def provider_settings(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="provider_settings.html",
+            context={},
+        )
+
     @app.get("/dashboard", response_class=HTMLResponse)
     async def dashboard(request: Request, topic: str = ""):
         configured_topics = settings.load_topics()
