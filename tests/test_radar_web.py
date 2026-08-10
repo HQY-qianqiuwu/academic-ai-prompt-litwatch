@@ -69,8 +69,12 @@ def test_radar_pages_are_bilingual_registry_driven_and_dashboard_compatible(tmp_
     assert 'request("/api/v1/providers")' in script.text
     assert "api.openalex.org" not in script.text
     assert "analysis.annual_counts" in detail_script.text
+    assert "item.count" in detail_script.text
+    assert "item.paper_count" not in detail_script.text
     assert "analysis.timeline" in detail_script.text
     assert "analysis.trends" in detail_script.text
+    assert "trend.growth_percent" in detail_script.text
+    assert "trend.growth_rate" not in detail_script.text
     assert legacy.status_code == 307
     assert legacy.headers["location"] == "/radars"
 
