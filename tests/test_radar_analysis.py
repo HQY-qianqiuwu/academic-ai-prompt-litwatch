@@ -93,8 +93,8 @@ def test_stopwords_and_domain_neutral_terms_do_not_dominate():
     source = paper(
         "generic",
         2025,
-        "A paper based on underwater acoustic study method",
-        "This analysis method reports results using an acoustic system.",
+        "A paper based on the underwater acoustic study method",
+        "This analysis method and results are for an acoustic system.",
     )
     keywords = RadarAnalysisService().extract_keywords(
         [source], radar=radar(), limit=30
@@ -111,6 +111,10 @@ def test_stopwords_and_domain_neutral_terms_do_not_dominate():
         "results",
         "using",
         "system",
+        "and",
+        "are",
+        "for",
+        "the",
     }.isdisjoint(item.phrase for item in keywords)
 
 
