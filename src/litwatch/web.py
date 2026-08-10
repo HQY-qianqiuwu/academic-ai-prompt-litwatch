@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,6 +20,8 @@ from litwatch.api_models import (
     ProviderCapabilityResponse,
     ProviderProfileResponse,
     ProviderProfileWrite,
+    RadarCreateRequest,
+    RadarUpdateRequest,
     SubscriptionCreateRequest,
     SubscriptionResponse,
     SubscriptionRunResponse,
@@ -33,6 +35,8 @@ from litwatch.historical_paper_repository import HistoricalPaperRepository
 from litwatch.pipeline import Pipeline
 from litwatch.provider_config import ProviderProfileStore, default_provider_profile
 from litwatch.provider_security import ProviderBaseUrlError, validate_provider_base_url
+from litwatch.radar_repository import RadarRepository
+from litwatch.radars import ResearchRadar
 from litwatch.services import (
     AllProvidersFailedError,
     LiteratureSearchService,
@@ -41,6 +45,14 @@ from litwatch.services import (
     SubscriptionService,
 )
 from litwatch.services.delivery import DeliveryService
+from litwatch.services.radars import (
+    RadarNotFoundError,
+    RadarProviderError,
+    RadarScanAlreadyActiveError,
+    RadarScanUnavailableError,
+    RadarYearRangeError,
+    ResearchRadarService,
+)
 from litwatch.services.scheduler import SchedulerService
 from litwatch.services.subscription_runs import (
     RunAlreadyActiveError,
@@ -54,7 +66,6 @@ from litwatch.sources.registry import (
 )
 from litwatch.subscription_repository import SubscriptionRepository
 from litwatch.subscription_run_repository import SubscriptionRunRepository
-from litwatch.weekly_report import apply_current_topic_rules, build_weekly_report, enrich_papers
 
 PACKAGE_DIR = Path(__file__).parent
 
@@ -69,6 +80,7 @@ def create_app(
     subscription_service: SubscriptionService | None = None,
     subscription_run_service: SubscriptionRunService | None = None,
     scheduler_service: SchedulerService | None = None,
+    research_radar_service: ResearchRadarService | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_runtime_files()
@@ -118,12 +130,24 @@ def create_app(
         poll_seconds=settings.scheduler_poll_seconds,
         lease_seconds=settings.scheduler_lease_seconds,
     )
+    radar_repository = (
+        research_radar_service.repository
+        if research_radar_service is not None
+        else RadarRepository(database)
+    )
+    research_radar_service = research_radar_service or ResearchRadarService(
+        radar_repository,
+        provider_registry,
+        provider_profile_store,
+        search_service=search_service,
+    )
     scan_lock = threading.Lock()
     state_lock = threading.Lock()
     scan_state: dict[str, object] = {"scanning": False, "last_error": ""}
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        research_radar_service.recover_stale_scans()
         scheduler_service.start()
         try:
             yield
@@ -143,6 +167,7 @@ def create_app(
     app.state.subscription_run_repository = run_repository
     app.state.delivery_repository = delivery_repository
     app.state.scheduler_service = scheduler_service
+    app.state.research_radar_service = research_radar_service
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
@@ -230,38 +255,31 @@ def create_app(
             context={},
         )
 
-    @app.get("/dashboard", response_class=HTMLResponse)
-    async def dashboard(request: Request, topic: str = ""):
-        configured_topics = settings.load_topics()
-        known_ids = {item.id for item in configured_topics}
-        topics = configured_topics + [
-            item for item in database.list_topics() if item["id"] not in known_ids
-        ]
-        latest_run = database.latest_run()
-        latest_run_id = latest_run["id"] if latest_run else None
-        weekly_papers = apply_current_topic_rules(
-            database.list_papers(topic_id=topic, run_id=latest_run_id, limit=500),
-            configured_topics,
-        )
-        visible_papers = apply_current_topic_rules(
-            database.list_papers(topic_id=topic, limit=500), configured_topics
-        )
+    @app.get("/radars", response_class=HTMLResponse)
+    @app.get("/radars/new", response_class=HTMLResponse)
+    async def radars_page(request: Request):
         return templates.TemplateResponse(
             request=request,
-            name="index.html",
-            context={
-                "papers": enrich_papers(visible_papers[:200]),
-                "topics": topics,
-                "active_topic": topic,
-                "latest_run": latest_run,
-                "weekly_report": build_weekly_report(
-                    weekly_papers, configured_topics, latest_run
-                ),
-                "analysis_modes": settings.load_analysis_modes(),
-                "static_mode": False,
-                "scan_state": state_snapshot(),
-            },
+            name="radars.html",
+            context={},
         )
+
+    @app.get("/radars/{radar_id}", response_class=HTMLResponse)
+    @app.get("/radars/{radar_id}/scans", response_class=HTMLResponse)
+    async def radar_detail_page(request: Request, radar_id: str):
+        try:
+            radar = research_radar_service.get(radar_id)
+        except RadarNotFoundError:
+            raise HTTPException(status_code=404, detail="Research Radar not found") from None
+        return templates.TemplateResponse(
+            request=request,
+            name="radar_detail.html",
+            context={"radar": radar},
+        )
+
+    @app.get("/dashboard")
+    async def dashboard_compatibility_redirect():
+        return RedirectResponse(url="/radars", status_code=307)
 
     @app.post("/run")
     async def run_now(days: int = Form(default=settings.lookback_days)):
@@ -421,6 +439,120 @@ def create_app(
         except SubscriptionRunError:
             raise HTTPException(status_code=502, detail="Subscription run failed") from None
         return SubscriptionRunResponse.from_result(result)
+
+    def radar_summary(radar: ResearchRadar) -> dict[str, object]:
+        radar_id = radar.id
+        latest = radar_repository.latest_successful_scan(radar_id)
+        relations = radar_repository.list_paper_relations(radar_id)
+        trends = latest.analysis.get("trends", []) if latest else []
+        return {
+            **radar.model_dump(mode="json"),
+            "paper_count": len(relations),
+            "hot_trend_count": sum(
+                item.get("classification") in {"hot", "emerging"}
+                for item in trends
+                if isinstance(item, dict)
+            ),
+            "latest_scan_status": latest.status.value if latest else None,
+        }
+
+    @app.get("/api/v1/radars")
+    def radars() -> list[dict[str, object]]:
+        return [radar_summary(radar) for radar in research_radar_service.list()]
+
+    @app.post("/api/v1/radars", status_code=201)
+    def create_radar(payload: RadarCreateRequest) -> dict[str, object]:
+        try:
+            radar = research_radar_service.create(payload)
+        except (RadarProviderError, RadarYearRangeError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+        return radar_summary(radar)
+
+    @app.get("/api/v1/radars/{radar_id}")
+    def get_radar(radar_id: str) -> dict[str, object]:
+        try:
+            radar = research_radar_service.get(radar_id)
+        except RadarNotFoundError:
+            raise HTTPException(status_code=404, detail="Research Radar not found") from None
+        latest = radar_repository.latest_successful_scan(radar_id)
+        return {
+            **radar_summary(radar),
+            "analysis": latest.analysis if latest else {},
+        }
+
+    @app.patch("/api/v1/radars/{radar_id}")
+    def update_radar(
+        radar_id: str, payload: RadarUpdateRequest
+    ) -> dict[str, object]:
+        try:
+            radar = research_radar_service.update(
+                radar_id, payload.model_dump(exclude_unset=True)
+            )
+        except RadarNotFoundError:
+            raise HTTPException(status_code=404, detail="Research Radar not found") from None
+        except (RadarProviderError, RadarYearRangeError, ValidationError, ValueError):
+            raise HTTPException(status_code=422, detail="Invalid Research Radar configuration") from None
+        return radar_summary(radar)
+
+    def run_radar_scan(radar_id: str) -> None:
+        try:
+            research_radar_service.scan(radar_id)
+        except (RadarScanAlreadyActiveError, RadarScanUnavailableError, RadarNotFoundError):
+            return
+
+    @app.post("/api/v1/radars/{radar_id}/scan", status_code=202)
+    def scan_radar(
+        radar_id: str, background_tasks: BackgroundTasks
+    ) -> dict[str, str]:
+        try:
+            radar = research_radar_service.get(radar_id)
+        except RadarNotFoundError:
+            raise HTTPException(status_code=404, detail="Research Radar not found") from None
+        if not radar.enabled:
+            raise HTTPException(status_code=409, detail="Research Radar is disabled")
+        background_tasks.add_task(run_radar_scan, radar_id)
+        return {"status": "accepted"}
+
+    @app.get("/api/v1/radars/{radar_id}/scans")
+    def radar_scans(radar_id: str) -> list[dict[str, object]]:
+        if radar_repository.get(radar_id) is None:
+            raise HTTPException(status_code=404, detail="Research Radar not found")
+        return [scan.model_dump(mode="json") for scan in radar_repository.list_scans(radar_id)]
+
+    @app.get("/api/v1/radars/{radar_id}/papers")
+    def radar_papers(radar_id: str) -> list[dict[str, object]]:
+        if radar_repository.get(radar_id) is None:
+            raise HTTPException(status_code=404, detail="Research Radar not found")
+        relations = {
+            relation.canonical_id: relation
+            for relation in radar_repository.list_paper_relations(radar_id)
+        }
+        return [
+            {
+                **paper.model_dump(mode="json"),
+                "publication_year": relations[paper.canonical_id].publication_year,
+                "relevance_score": relations[paper.canonical_id].relevance_score,
+                "representative_score": relations[
+                    paper.canonical_id
+                ].representative_score,
+            }
+            for paper in radar_repository.list_papers(radar_id)
+        ]
+
+    def latest_analysis(radar_id: str, field: str) -> list[object]:
+        if radar_repository.get(radar_id) is None:
+            raise HTTPException(status_code=404, detail="Research Radar not found")
+        latest = radar_repository.latest_successful_scan(radar_id)
+        value = latest.analysis.get(field, []) if latest else []
+        return value if isinstance(value, list) else []
+
+    @app.get("/api/v1/radars/{radar_id}/timeline")
+    def radar_timeline(radar_id: str) -> list[object]:
+        return latest_analysis(radar_id, "timeline")
+
+    @app.get("/api/v1/radars/{radar_id}/trends")
+    def radar_trends(radar_id: str) -> list[object]:
+        return latest_analysis(radar_id, "trends")
 
     @app.get("/api/v1/deliveries")
     def deliveries(subscription_id: str | None = None) -> list[dict[str, object]]:

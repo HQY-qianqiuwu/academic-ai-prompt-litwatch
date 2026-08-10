@@ -22,15 +22,15 @@ def test_dynamic_pages_have_consistent_navigation_and_skip_links(tmp_path):
     with TestClient(create_app(settings_for(tmp_path))) as client:
         search = client.get("/")
         settings = client.get("/provider-settings")
-        dashboard = client.get("/dashboard")
+        radar = client.get("/radars")
 
-    for response in (search, settings, dashboard):
+    for response in (search, settings, radar):
         assert response.status_code == 200
         assert "/static/local-ui.css" in response.text
         assert 'class="skip-link"' in response.text
         assert 'id="main-content"' in response.text
-    assert 'href="/provider-settings"' in dashboard.text
-    assert '<a href="/">Search</a>' in dashboard.text
+    assert 'href="/provider-settings"' in radar.text
+    assert 'href="/" data-i18n="nav.search"' in radar.text
 
 
 def test_local_launcher_opens_new_root_search_page():

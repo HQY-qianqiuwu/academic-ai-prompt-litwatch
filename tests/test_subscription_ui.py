@@ -133,13 +133,13 @@ def test_run_history_page_uses_existing_run_api_and_safe_fields():
     assert "traceback" not in script.lower()
 
 
-def test_legacy_research_radar_remains_available_but_is_not_run_history(tmp_path):
+def test_legacy_dashboard_redirects_to_radars_and_is_not_run_history(tmp_path):
     with TestClient(create_app(settings_for(tmp_path))) as client:
-        legacy = client.get("/dashboard")
+        legacy = client.get("/dashboard", follow_redirects=False)
         subscriptions = client.get("/subscriptions")
 
-    assert legacy.status_code == subscriptions.status_code == 200
-    assert "把新论文变成" in legacy.text
-    assert 'action="/quick-search"' in legacy.text
-    assert 'href="/dashboard" data-i18n="nav.radar"' in subscriptions.text
+    assert legacy.status_code == 307
+    assert legacy.headers["location"] == "/radars"
+    assert subscriptions.status_code == 200
+    assert 'href="/radars" data-i18n="nav.radar"' in subscriptions.text
     assert 'href="/dashboard" data-i18n="nav.history"' not in subscriptions.text

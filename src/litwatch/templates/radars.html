@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title data-i18n="radar.pageTitle">LitWatch 科研雷达</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/radars.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
+    <script src="{{ url_for('static', path='/radars.js') }}" defer></script>
+  </head>
+  <body class="research-app">
+    <a class="skip-link" href="#main-content" data-i18n="radar.skip">跳到科研雷达</a>
+    <header class="research-topbar">
+      <a class="research-brand" href="/" data-i18n-aria-label="brand.home" translate="no"><span>LW</span><strong>LitWatch</strong></a>
+      <p data-i18n="radar.topbar">科研雷达</p>
+      <nav data-i18n-aria-label="nav.primary">
+        <a href="/" data-i18n="nav.search">文献检索</a>
+        <a class="active" href="/radars" data-i18n="nav.radar">科研雷达</a>
+        <a href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a>
+        <a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a>
+        <a href="/provider-settings" data-i18n="nav.settings">数据源设置</a>
+        <a href="http://localhost" target="_blank" rel="noopener noreferrer" translate="no">Dify</a>
+      </nav>
+      <div class="locale-switch" role="group" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span>|</span><button type="button" data-locale="en">EN</button></div>
+    </header>
+    <main id="main-content" class="research-shell radar-shell">
+      <section class="radar-hero">
+        <div><p class="research-kicker" data-i18n="radar.kicker">真实论文驱动的历史趋势</p><h1 data-i18n="radar.title">我的科研雷达</h1><p data-i18n="radar.intro">回溯研究方向的年度变化、关键词演进和可验证趋势。</p></div>
+        <button class="research-primary" type="button" data-new-radar data-i18n="radar.create">新建科研雷达</button>
+      </section>
+      <section class="radar-state" data-radar-state aria-live="polite"><strong data-i18n="radar.loading">正在加载科研雷达...</strong></section>
+      <section class="radar-editor" data-radar-editor hidden>
+        <div class="radar-heading"><div><p class="research-kicker" data-i18n="radar.configuration">历史回溯配置</p><h2 data-editor-title data-i18n="radar.new">新建科研雷达</h2></div><button class="research-secondary" type="button" data-cancel-edit data-i18n="common.cancel">取消</button></div>
+        <form data-radar-form novalidate>
+          <input type="hidden" name="radar_id">
+          <label><span data-i18n="radar.name">名称</span><input name="name" maxlength="120" required></label>
+          <label class="wide"><span data-i18n="radar.topic">研究主题</span><textarea name="topic" maxlength="500" rows="3" required></textarea></label>
+          <label class="wide"><span data-i18n="radar.keywords">重点关键词（逗号分隔）</span><input name="keywords"></label>
+          <label class="wide"><span data-i18n="radar.excludeKeywords">排除关键词（逗号分隔）</span><input name="exclude_keywords"></label>
+          <label><span data-i18n="radar.startYear">开始年份</span><input name="start_year" type="number" min="1900" required></label>
+          <label><span data-i18n="radar.endYear">结束年份</span><input name="end_year" type="number" min="1900" required></label>
+          <label><span data-i18n="radar.recentWindow">近期趋势窗口（年）</span><input name="recent_window_years" type="number" min="1" max="5" value="2" required></label>
+          <label><span data-i18n="radar.limit">每时间段候选数</span><input name="search_limit_per_period" type="number" min="1" max="50" value="30" required></label>
+          <fieldset class="wide" data-radar-providers disabled><legend data-i18n="radar.providers">数据源</legend><div class="radar-provider-grid" data-radar-provider-options></div></fieldset>
+          <label class="radar-toggle"><input name="enabled" type="checkbox" checked><span data-i18n="radar.enabled">已启用</span></label>
+          <label class="radar-toggle"><input name="scan_after_create" type="checkbox" checked><span data-i18n="radar.scanAfterCreate">创建并扫描</span></label>
+          <div class="radar-actions wide"><button class="research-primary" type="submit" data-save-radar data-i18n="radar.save">保存科研雷达</button></div>
+        </form>
+      </section>
+      <section class="radar-list" data-radar-list aria-live="polite"></section>
+    </main>
+  </body>
+</html>

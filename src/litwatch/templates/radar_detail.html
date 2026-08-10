@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LitWatch · {{ radar.name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/radars.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
+    <script src="{{ url_for('static', path='/radar-detail.js') }}" defer></script>
+  </head>
+  <body class="research-app" data-radar-id="{{ radar.id }}">
+    <a class="skip-link" href="#main-content" data-i18n="radar.skipDetail">跳到雷达详情</a>
+    <header class="research-topbar">
+      <a class="research-brand" href="/" data-i18n-aria-label="brand.home" translate="no"><span>LW</span><strong>LitWatch</strong></a><p data-i18n="radar.topbar">科研雷达</p>
+      <nav data-i18n-aria-label="nav.primary"><a href="/" data-i18n="nav.search">文献检索</a><a class="active" href="/radars" data-i18n="nav.radar">科研雷达</a><a href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a><a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a><a href="/provider-settings" data-i18n="nav.settings">数据源设置</a><a href="http://localhost" target="_blank" rel="noopener noreferrer" translate="no">Dify</a></nav>
+      <div class="locale-switch" role="group" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span>|</span><button type="button" data-locale="en">EN</button></div>
+    </header>
+    <main id="main-content" class="research-shell radar-shell">
+      <section class="radar-hero"><div><p class="research-kicker" data-i18n="radar.overview">研究概览</p><h1>{{ radar.name }}</h1><p>{{ radar.topic }}</p></div><div class="radar-actions"><button class="research-primary" data-scan-radar data-i18n="radar.rescan">重新扫描</button><a class="research-secondary" data-track-direction href="/subscriptions" data-i18n="radar.track">持续跟踪此方向</a><a class="research-secondary" href="/radars" data-i18n="radar.back">返回雷达列表</a></div></section>
+      <section class="radar-state" data-radar-detail-state aria-live="polite"><strong data-i18n="radar.loadingAnalysis">正在加载持久化分析...</strong></section>
+      <section class="radar-metrics" data-radar-metrics></section>
+      <section class="radar-panel"><h2 data-i18n="radar.annualTrend">年度论文趋势</h2><p data-partial-year-note hidden data-i18n="radar.partialYear">当前年份尚未结束，趋势计算已校正部分年份偏差。</p><div data-annual-chart></div></section>
+      <section class="radar-panel"><h2 data-i18n="radar.timeline">研究发展时间线</h2><div class="radar-timeline" data-timeline></div></section>
+      <section class="radar-panel"><h2 data-i18n="radar.currentTrends">当前热门趋势</h2><div class="radar-trends" data-trends></div></section>
+      <section class="radar-panel"><h2 data-i18n="radar.keywordEvolution">关键词演进</h2><div data-keyword-evolution></div></section>
+      <section class="radar-panel"><h2 data-i18n="radar.representativePapers">代表论文</h2><div class="radar-paper-list" data-representative-papers></div></section>
+      <section class="radar-panel"><h2 data-i18n="radar.scanHistory">扫描历史</h2><div class="radar-scan-list" data-scan-history></div></section>
+    </main>
+  </body>
+</html>

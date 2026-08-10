@@ -23,6 +23,7 @@ from litwatch.provider_config import (
     ProviderProfile,
     ProviderType,
 )
+from litwatch.radars import RadarSpec
 from litwatch.services import (
     LiteratureSearchDiagnostics,
     LiteratureSearchResult,
@@ -62,6 +63,27 @@ class LiteratureSearchRequest(BaseModel):
         if len(normalized) != len(set(normalized)):
             raise ValueError("provider identifiers must be unique")
         return normalized
+
+
+class RadarCreateRequest(RadarSpec):
+    """Validated, secret-free Research Radar configuration."""
+
+
+class RadarUpdateRequest(BaseModel):
+    """Partial Radar update; the domain service validates the merged spec."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    topic: str | None = None
+    keywords: list[str] | None = None
+    exclude_keywords: list[str] | None = None
+    providers: list[str] | None = None
+    start_year: int | None = None
+    end_year: int | None = None
+    recent_window_years: int | None = None
+    search_limit_per_period: int | None = None
+    enabled: bool | None = None
 
 
 class LiteraturePaperResponse(BaseModel):

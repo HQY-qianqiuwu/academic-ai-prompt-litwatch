@@ -33,13 +33,12 @@ def test_research_search_page_reuses_fastapi_static_stack(tmp_path):
     assert 'To Year' not in response.text
 
 
-def test_legacy_dashboard_remains_available(tmp_path):
+def test_legacy_dashboard_redirects_to_research_radars(tmp_path):
     with TestClient(create_app(settings_for(tmp_path))) as client:
-        response = client.get("/dashboard")
+        response = client.get("/dashboard", follow_redirects=False)
 
-    assert response.status_code == 200
-    assert 'action="/quick-search"' in response.text
-    assert 'data-search-form' not in response.text
+    assert response.status_code == 307
+    assert response.headers["location"] == "/radars"
 
 
 def test_research_search_javascript_uses_only_litwatch_apis(tmp_path):
@@ -67,7 +66,7 @@ def test_search_page_contains_accessible_labels_and_navigation(tmp_path):
     assert 'for="research-limit"' in html
     assert 'aria-live="polite"' in html
     assert 'href="/provider-settings"' in html
-    assert 'href="/dashboard"' in html
+    assert 'href="/radars"' in html
 
 
 def test_result_cards_preserve_backend_ranking_and_metadata(tmp_path):
