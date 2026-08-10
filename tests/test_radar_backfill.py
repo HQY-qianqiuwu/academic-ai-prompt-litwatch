@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from litwatch.config import Settings
 from litwatch.db import Database
 from litwatch.models import Paper
@@ -17,7 +19,7 @@ from litwatch.services.literature_search import (
     ProviderExecutionStatus,
     ProviderSearchStatus,
 )
-from litwatch.services.radars import ResearchRadarService
+from litwatch.services.radars import RadarScanAlreadyActiveError, ResearchRadarService
 from litwatch.sources.registry import ProviderRegistry
 
 NOW = datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
@@ -166,6 +168,27 @@ def test_radar_rescan_counts_only_new_canonical_ids(tmp_path):
     assert database.connection.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 5
     assert database.connection.execute("SELECT COUNT(*) FROM radar_papers").fetchone()[0] == 5
     assert database.connection.execute("SELECT COUNT(*) FROM subscription_papers").fetchone()[0] == 0
+    database.connection.close()
+
+
+def test_radar_scan_is_reserved_before_execution_and_rejects_a_duplicate(tmp_path):
+    settings = settings_for(tmp_path)
+    database = Database(settings.database_path)
+    search = FakeHistoricalSearch([result([paper("A", 2020)])])
+    service = radar_service(database, settings, search, ["radar", "scan", "scan-duplicate"])
+    radar = service.create(spec())
+
+    reserved = service.start_scan(radar.id)
+
+    assert reserved.status is RadarScanStatus.RUNNING
+    assert RadarRepository(database).get_scan(reserved.id) == reserved
+    with pytest.raises(RadarScanAlreadyActiveError):
+        service.start_scan(radar.id)
+
+    completed = service.execute_scan(reserved.id)
+
+    assert completed.scan.status is RadarScanStatus.SUCCESS
+    assert completed.scan.new_count == 1
     database.connection.close()
 
 

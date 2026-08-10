@@ -126,6 +126,15 @@ class RadarRepository:
             ).fetchall()
         return [self._scan_from_row(row) for row in rows]
 
+    def latest_scan(self, radar_id: str) -> RadarScan | None:
+        with self._lock:
+            row = self.database.connection.execute(
+                """SELECT * FROM radar_scans WHERE radar_id=?
+                   ORDER BY started_at DESC,id DESC LIMIT 1""",
+                (radar_id,),
+            ).fetchone()
+        return self._scan_from_row(row) if row is not None else None
+
     def latest_successful_scan(self, radar_id: str) -> RadarScan | None:
         with self._lock:
             row = self.database.connection.execute(

@@ -442,9 +442,10 @@ def create_app(
 
     def radar_summary(radar: ResearchRadar) -> dict[str, object]:
         radar_id = radar.id
-        latest = radar_repository.latest_successful_scan(radar_id)
+        latest_successful = radar_repository.latest_successful_scan(radar_id)
+        latest = radar_repository.latest_scan(radar_id)
         relations = radar_repository.list_paper_relations(radar_id)
-        trends = latest.analysis.get("trends", []) if latest else []
+        trends = latest_successful.analysis.get("trends", []) if latest_successful else []
         return {
             **radar.model_dump(mode="json"),
             "paper_count": len(relations),
@@ -494,10 +495,10 @@ def create_app(
             raise HTTPException(status_code=422, detail="Invalid Research Radar configuration") from None
         return radar_summary(radar)
 
-    def run_radar_scan(radar_id: str) -> None:
+    def run_radar_scan(scan_id: str) -> None:
         try:
-            research_radar_service.scan(radar_id)
-        except (RadarScanAlreadyActiveError, RadarScanUnavailableError, RadarNotFoundError):
+            research_radar_service.execute_scan(scan_id)
+        except (RadarScanUnavailableError, RadarNotFoundError):
             return
 
     @app.post("/api/v1/radars/{radar_id}/scan", status_code=202)
@@ -505,13 +506,17 @@ def create_app(
         radar_id: str, background_tasks: BackgroundTasks
     ) -> dict[str, str]:
         try:
-            radar = research_radar_service.get(radar_id)
+            scan = research_radar_service.start_scan(radar_id)
         except RadarNotFoundError:
             raise HTTPException(status_code=404, detail="Research Radar not found") from None
-        if not radar.enabled:
-            raise HTTPException(status_code=409, detail="Research Radar is disabled")
-        background_tasks.add_task(run_radar_scan, radar_id)
-        return {"status": "accepted"}
+        except RadarScanAlreadyActiveError:
+            raise HTTPException(
+                status_code=409, detail="Research Radar scan already active"
+            ) from None
+        except RadarScanUnavailableError:
+            raise HTTPException(status_code=409, detail="Research Radar is unavailable") from None
+        background_tasks.add_task(run_radar_scan, scan.id)
+        return {"status": "accepted", "scan_id": scan.id}
 
     @app.get("/api/v1/radars/{radar_id}/scans")
     def radar_scans(radar_id: str) -> list[dict[str, object]]:

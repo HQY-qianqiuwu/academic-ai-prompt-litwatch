@@ -125,6 +125,10 @@ class ResearchRadarService:
         return self.repository.update(ResearchRadar.model_validate(updated))
 
     def scan(self, radar_id: str) -> RadarScanResult:
+        scan = self.start_scan(radar_id)
+        return self.execute_scan(scan.id)
+
+    def start_scan(self, radar_id: str) -> RadarScan:
         radar = self.get(radar_id)
         if not radar.enabled:
             raise RadarScanUnavailableError("Radar is disabled")
@@ -144,6 +148,15 @@ class ResearchRadarService:
             self.repository.create_scan(scan)
         except sqlite3.IntegrityError as error:
             raise RadarScanAlreadyActiveError(radar.id) from error
+        return scan
+
+    def execute_scan(self, scan_id: str) -> RadarScanResult:
+        scan = self.repository.get_scan(scan_id)
+        if scan is None or scan.status is not RadarScanStatus.RUNNING:
+            raise RadarScanUnavailableError("Radar scan is unavailable")
+        radar = self.get(scan.radar_id)
+        if self.search_service is None:
+            raise RadarScanUnavailableError("Literature search service is unavailable")
 
         candidates = []
         safe_statuses: list[dict[str, object]] = []

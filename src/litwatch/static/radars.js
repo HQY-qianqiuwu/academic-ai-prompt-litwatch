@@ -10,10 +10,11 @@
   const providerFieldset = document.querySelector("[data-radar-providers]");
   let radars = [];
   let providers = [];
+  let pollTimer = null;
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
   const dateText = (value) => value ? new Date(value).toLocaleString(i18n.locale()) : t("common.notYet");
   const request = async (url, options = {}) => {
-    const response = await fetch(url, {headers:{"Content-Type":"application/json"}, ...options});
+    const response = await fetch(url, {cache:"no-store", headers:{"Content-Type":"application/json"}, ...options});
     if (!response.ok) throw new Error(response.status === 422 ? t("radar.invalid") : response.status === 409 ? t("radar.scanConflict") : t("radar.unavailable"));
     return response.json();
   };
@@ -24,7 +25,7 @@
   };
   const render = () => {
     if (!radars.length) { list.innerHTML = `<article class="radar-card"><h2>${escapeHtml(t("radar.empty"))}</h2><p>${escapeHtml(t("radar.emptyBody"))}</p></article>`; return; }
-    list.innerHTML = radars.map((item) => `<article class="radar-card"><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.topic)}</p><div class="radar-meta"><span>${item.start_year}–${item.end_year}</span><span>${escapeHtml(t("radar.included", {count:item.paper_count}))}</span><span>${escapeHtml(t("radar.lastScan", {date:dateText(item.last_scan_at)}))}</span><span>${escapeHtml(t("radar.hotCount", {count:item.hot_trend_count}))}</span></div><div class="radar-actions"><a class="research-primary" href="/radars/${encodeURIComponent(item.id)}">${escapeHtml(t("radar.view"))}</a><button class="research-secondary" data-action="scan" data-id="${item.id}">${escapeHtml(t("radar.rescan"))}</button><button class="research-secondary" data-action="edit" data-id="${item.id}">${escapeHtml(t("radar.edit"))}</button><button class="research-secondary" data-action="toggle" data-id="${item.id}">${escapeHtml(item.enabled ? t("radar.disable") : t("radar.enable"))}</button></div></article>`).join("");
+    list.innerHTML = radars.map((item) => { const scanning = item.latest_scan_status === "running"; return `<article class="radar-card"><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.topic)}</p><div class="radar-meta"><span>${item.start_year}–${item.end_year}</span><span>${escapeHtml(t("radar.included", {count:item.paper_count}))}</span><span>${escapeHtml(t("radar.lastScan", {date:dateText(item.last_scan_at)}))}</span><span>${escapeHtml(t("radar.hotCount", {count:item.hot_trend_count}))}</span></div><div class="radar-actions"><a class="research-primary" href="/radars/${encodeURIComponent(item.id)}">${escapeHtml(t("radar.view"))}</a><button class="research-secondary" data-action="scan" data-id="${item.id}" ${scanning ? "disabled" : ""}>${escapeHtml(scanning ? t("radar.scanning") : t("radar.rescan"))}</button><button class="research-secondary" data-action="edit" data-id="${item.id}">${escapeHtml(t("radar.edit"))}</button><button class="research-secondary" data-action="toggle" data-id="${item.id}">${escapeHtml(item.enabled ? t("radar.disable") : t("radar.enable"))}</button></div></article>`; }).join("");
   };
   const openEditor = (item = null) => {
     form.reset(); form.elements.radar_id.value = item?.id || "";
@@ -36,8 +37,10 @@
     editor.hidden = false; editor.scrollIntoView({behavior:"smooth", block:"start"});
   };
   const load = async () => {
-    try { [providers, radars] = await Promise.all([request("/api/v1/providers"), request("/api/v1/radars")]); render(); setState(t("radar.ready", {count:radars.length})); if (location.pathname.endsWith("/new")) openEditor(); }
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    try { [providers, radars] = await Promise.all([request("/api/v1/providers"), request("/api/v1/radars")]); render(); setState(radars.some((item) => item.latest_scan_status === "running") ? t("radar.scanning") : t("radar.ready", {count:radars.length})); if (location.pathname.endsWith("/new")) openEditor(); }
     catch (error) { setState(error.message, true); }
+    finally { if (radars.some((item) => item.latest_scan_status === "running")) pollTimer = setTimeout(load, 2000); }
   };
   form.addEventListener("submit", async (event) => {
     event.preventDefault(); const data = new FormData(form); const id = data.get("radar_id");

@@ -97,6 +97,22 @@ def test_radar_openapi_exposes_complete_read_and_scan_contract(tmp_path):
     assert "/api/v1/radars/{radar_id}/trends" in paths
 
 
+def test_radar_api_exposes_active_scan_and_rejects_duplicate_rescan(tmp_path):
+    app = create_app(settings_for(tmp_path))
+    with TestClient(app) as client:
+        radar_id = client.post("/api/v1/radars", json=valid_payload()).json()["id"]
+        reserved = app.state.research_radar_service.start_scan(radar_id)
+
+        listed = client.get("/api/v1/radars")
+        duplicate = client.post(f"/api/v1/radars/{radar_id}/scan")
+
+    assert reserved.status.value == "running"
+    assert listed.status_code == 200
+    assert listed.json()[0]["latest_scan_status"] == "running"
+    assert duplicate.status_code == 409
+    assert duplicate.json() == {"detail": "Research Radar scan already active"}
+
+
 def test_radar_detail_links_prefill_subscription_without_creating_it(tmp_path):
     with TestClient(create_app(settings_for(tmp_path))) as client:
         created = client.post("/api/v1/radars", json=valid_payload()).json()
