@@ -100,6 +100,24 @@ def test_result_cards_show_backend_scores_without_recomputing_them(tmp_path):
     assert 't("paper.qualityHelp")' in script
 
 
+def test_result_score_cards_use_consistent_sans_serif_typography(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        response = client.get("/static/research-results.css")
+
+    assert response.status_code == 200
+    stylesheet = response.text
+    assert "grid-template-columns: repeat(3, minmax(142px, 1fr));" in stylesheet
+    assert "height: 76px;" in stylesheet
+    assert "padding: 10px 12px;" in stylesheet
+    assert "font-family: inherit;" in stylesheet
+    assert "font-size: 14px;" in stylesheet
+    assert "font-weight: 500;" in stylesheet
+    assert "font-size: 20px;" in stylesheet
+    assert "font-weight: 600;" in stylesheet
+    assert "font-variant-numeric: tabular-nums;" in stylesheet
+    assert "font: 14px Georgia, serif;" not in stylesheet
+
+
 def test_result_rendering_uses_safe_dom_and_external_links(tmp_path):
     with TestClient(create_app(settings_for(tmp_path))) as client:
         response = client.get("/static/research-search.js")

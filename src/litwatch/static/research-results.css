@@ -25,31 +25,40 @@
 }
 
 .paper-scores {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(142px, 1fr));
   gap: 7px;
 }
 
 .paper-score {
   display: grid;
-  gap: 1px;
-  min-width: 76px;
-  padding: 6px 9px;
+  align-content: center;
+  gap: 6px;
+  height: 76px;
+  min-width: 0;
+  padding: 10px 12px;
   border: 1px solid #d9e2df;
   border-radius: 8px;
   background: #f7f9f6;
+  font-family: inherit;
 }
 
 .paper-score small {
   color: #77878a;
-  font-size: 9px;
-  text-transform: uppercase;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .paper-score strong {
   color: #254950;
-  font: 14px Georgia, serif;
+  font-family: inherit;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1.1;
 }
 
 .research-paper-card h2 {
@@ -144,8 +153,8 @@
   }
 
   .paper-scores {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr;
+    max-width: 210px;
     width: 100%;
   }
 

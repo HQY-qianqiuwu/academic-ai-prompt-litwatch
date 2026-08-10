@@ -61,6 +61,9 @@ def test_i18n_layer_defaults_safely_and_persists_only_locale(tmp_path):
     ):
         assert f'"{key}"' in script
 
+    assert '"paper.rank": "Overall Score"' in script
+    assert '"paper.quality": "Metadata Quality"' in script
+
 
 def test_provider_brands_are_preserved_and_opt_out_of_auto_translation(tmp_path):
     with TestClient(create_app(settings_for(tmp_path))) as client:
