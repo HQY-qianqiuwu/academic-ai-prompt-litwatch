@@ -86,3 +86,20 @@ def test_radar_openapi_exposes_complete_read_and_scan_contract(tmp_path):
     assert "/api/v1/radars/{radar_id}/papers" in paths
     assert "/api/v1/radars/{radar_id}/timeline" in paths
     assert "/api/v1/radars/{radar_id}/trends" in paths
+
+
+def test_radar_detail_links_prefill_subscription_without_creating_it(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        created = client.post("/api/v1/radars", json=valid_payload()).json()
+        detail = client.get(f"/radars/{created['id']}")
+        detail_script = client.get("/static/radar-detail.js").text
+        subscription_script = client.get("/static/subscriptions.js").text
+        subscriptions = client.get("/api/v1/subscriptions").json()
+
+    assert detail.status_code == 200
+    assert "data-track-direction" in detail.text
+    assert 'href="/subscriptions?' in detail_script
+    assert "new URLSearchParams(window.location.search)" in subscription_script
+    assert "form.elements.topic.value = topic" in subscription_script
+    assert 'request("/api/v1/subscriptions"' not in detail_script
+    assert subscriptions == []

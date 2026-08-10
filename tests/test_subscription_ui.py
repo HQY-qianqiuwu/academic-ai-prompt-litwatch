@@ -78,6 +78,16 @@ def test_subscription_script_uses_safe_errors_and_prevents_duplicate_submit():
     assert "button.disabled = false" in script
 
 
+def test_subscription_form_accepts_radar_prefill_but_requires_manual_submit():
+    script = Path("src/litwatch/static/subscriptions.js").read_text(encoding="utf-8")
+
+    assert "prefillFromRadar" in script
+    assert "new URLSearchParams(window.location.search)" in script
+    assert "form.elements.topic.value = topic" in script
+    assert "prefillFromRadar();" in script
+    assert 'form.addEventListener("submit"' in script
+
+
 def test_subscription_run_history_route_is_not_legacy_dashboard(tmp_path):
     app = create_app(settings_for(tmp_path))
     with TestClient(app) as client:

@@ -56,10 +56,24 @@
     editor.scrollIntoView({behavior:"smooth", block:"start"});
   };
 
+  const prefillFromRadar = () => {
+    const params = new URLSearchParams(window.location.search);
+    const topic = params.get("topic")?.trim();
+    if (!topic) return;
+    openEditor();
+    form.elements.name.value = params.get("name")?.trim() || topic;
+    form.elements.topic.value = topic;
+    form.elements.keywords.value = params.get("keywords") || "";
+    const requested = (params.get("providers") || "").split(",").map((value) => value.trim()).filter(Boolean);
+    const runnable = new Set(providers.filter((item) => item.runnable).map((item) => item.name));
+    const selected = requested.filter((provider) => runnable.has(provider));
+    if (selected.length) renderProviders(selected);
+  };
+
   const load = async () => {
     try {
       [providers, subscriptions] = await Promise.all([request("/api/v1/providers"), request("/api/v1/subscriptions")]);
-      renderProviders(); render(); setState(t("subscriptions.ready"), t("subscriptions.readyBody", {count:subscriptions.length}));
+      renderProviders(); render(); setState(t("subscriptions.ready"), t("subscriptions.readyBody", {count:subscriptions.length})); prefillFromRadar();
     } catch (error) { setState(t("subscriptions.unavailable"), error.message, true); }
   };
 
