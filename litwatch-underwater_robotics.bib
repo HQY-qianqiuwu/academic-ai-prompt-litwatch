@@ -1,3 +1,21 @@
+@article{Frland2026,
+  title = {A Vision-based Control Framework for Real-time Autonomous UUV Operations},
+  author = {Erik Tjærand Frøland and Marco Job and Md Ether Deowan and Eleni Kelasidi},
+  year = {2026},
+  journal = {arXiv},
+  url = {http://arxiv.org/abs/2608.04723v1},
+  abstract = {This paper presents a fully integrated vision-based framework for real-time and robust localization, autonomous navigation, and mapping for unmanned underwater vehicles (UUVs) in dynamic, visually challenging environments. The proposed pipeline enables both net-relative and global localization while generating continuous 3D maps of the surroundings in real-time. The framework was validated on synthetic datasets with ground truth and tested onboard an UUV during autonomous net-relative navigation experiments. Results demonstrate real-time performance and enhanced robustness, supporting vision-driven autonomous navigation and enabling the field deployment of marine robots for critical inspection and mapping tasks in complex underwater environments.}
+}
+
+@article{Deowan2026,
+  title = {Unified Planning-Learning Framework for Robust UUV Navigation Under Partial Observability},
+  author = {Md Ether Deowan and Eleni Kelasidi},
+  year = {2026},
+  journal = {arXiv},
+  url = {http://arxiv.org/abs/2608.05365v1},
+  abstract = {This paper presents an observation-only autonomy framework for Unmanned Underwater Vehicles (UUVs) navigation in dynamic underwater environments that integrates persistent occupancy mapping, global clearance-aware planning, and risk-aware local control. The proposed pipeline constructs occupancy maps solely from onboard sonar and depth image observations, adapts a clearance-constrained global planner (GP) to provide long-horizon structure, and integrates a reinforcement learning (RL) policy to handle short-range tracking and reactive avoidance. To further support decision-making under partial observability, the system learns a compact latent state representation from onboard sensor data, encoding environmental structure, obstacle dynamics, and uncertainty. Behavior tree (BT) distillation with staged supervision is introduced to improve safety and training stability, while an uncertainty-calibrated distillation mechanism reweights teacher guidance using online latent-model uncertainty, emphasizing uncertain regimes during learning, with time-to-collision (TTC) and clearance cues remaining explicit in planning and local policy features. To demonstrate the efficacy of the framework, a reproducible multi-seed evaluation protocol is established in high-fidelity GPU-accelerated simulation using NVIDIA Isaac Sim, and performance is benchmarked against BT-only and standard RL baselines. The results obtained demonstrate improved robustness and safety under dynamic conditions, thus providing a general pipeline with a unified hybrid planning learning architecture and a reproducible methodology for robust UUV autonomy under partial observability.}
+}
+
 @article{Gazzaev2026,
   title = {AquaJEPA: Action-Conditioned Multimodal Predictive Representations for Underwater Robot Dynamics},
   author = {Alan-Barsag Gazzaev and Alexey Gavrilov and Sergey Muravyov},
@@ -42,14 +60,4 @@
   journal = {arXiv},
   url = {http://arxiv.org/abs/2608.00237v1},
   abstract = {Vision-language models (VLMs) have recently emerged as a promising paradigm for end-to-end autonomous driving, enabling agents to map multimodal inputs and high-level navigation instructions directly to executable trajectories. However, in practice, these models exhibit a persistent command-following gap: predicted trajectories often show weak sensitivity to navigation commands, resulting in incorrect behavior at critical decision points. We identify this issue as a form of conditional policy collapse, where regression-based training under multimodal trajectory distributions encourages the model to rely on dominant visual priors while marginalizing the language-conditioned signal. To address this issue, we introduce a principled formulation of classifier-free guidance (CFG) for regression-based vision-language driving. We show that CFG can be interpreted as isolating the instruction-induced residual in the action space by contrasting conditional and unconditional predictions, thereby explicitly amplifying the effect of the navigation command at inference time. However, a standard two-pass CFG introduces prohibitive latency for real-time control and produces noisy instance-level guidance directions. Building on a mean-shift interpretation of CFG, we propose Latent-Centroid Steering (LCS), a single-pass guidance mechanism that replaces instance-level residuals with class-level latent shifts. By projecting conditional representations toward precomputed command-specific centroids, LCS performs class-level latent steering based on cluster geometry that is both more stable and computationally efficient. We demonstrate that LCS reduces inference latency by approximately 50% while achieving stronger command adherence and improved driving performance on both closed-loop (Bench2Drive) and open-loop (nuScenes) benchmarks. Code will be released.}
-}
-
-@article{Wang2026,
-  title = {Digital Twins for Marine Robotic Platforms: Architectures, Applications, and Challenges Across AUVs, ROVs, USVs, Underwater Gliders, and Emerging Platforms},
-  author = {Xuehao Wang and L.R. Chen and Dongyang Xue and Cheng Chen and Peng Wang},
-  year = {2026},
-  journal = {Journal of Marine Science and Engineering},
-  doi = {10.3390/jmse14151393},
-  url = {https://doi.org/10.3390/jmse14151393},
-  abstract = {Digital twin (DT) research spans autonomous underwater vehicles (AUVs), remotely operated vehicles (ROVs), unmanned surface vessels (USVs), underwater gliders, and emerging marine robotic platforms; however, reported systems differ widely in terms of their physical–virtual coupling and validation maturity. A structured Web of Science search retrieved 116 records, of which 107 were retained for analysis. This review synthesizes architectures, enabling technologies, applications, coupling modes, validation settings, and deployment barriers across the perception–decision–control chain. The reported workflows address model construction, multiphysics simulation, virtual testing, monitoring, control validation, and decision support. Within the purposively selected 11-case full-text audit, two cases were classified as DT-enabling methods or components, five as digital models or virtual prototypes, three as digital shadows, and one as a bidirectional DT prototype; none documented sustained operational deployment. Four constraints recurred across platforms: the trade-off between model fidelity and computation; uncertain marine environments; communication and synchronization limitations; and fragmented interfaces and standards. Physics-informed learning, multi-fidelity modeling, edge computing, and interoperable reference architectures provide candidate development paths, but the evidence suggests that the central gap lies less in producing sophisticated virtual models than in establishing sustained, interoperable, and bidirectional physical–virtual operation.}
 }

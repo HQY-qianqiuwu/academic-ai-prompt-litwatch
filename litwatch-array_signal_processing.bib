@@ -1,3 +1,23 @@
+@article{Gu2026,
+  title = {Circuit breaker sound source localization method based on cross-channel attention fusion},
+  author = {Guangmin Gu and Wei Zhang and Fei Wan and Like Zhao},
+  year = {2026},
+  journal = {Journal of Vibroengineering},
+  doi = {10.21595/jve.2026.26265},
+  url = {https://doi.org/10.21595/jve.2026.26265},
+  abstract = {Identifying the active circuit breaker in densely packed distribution cabinets is challenging, as acoustic signatures from neighboring breakers often overlap. At the same time, microphone-array-based localization remains expensive to deploy. To address these limitations, we propose a stereo-enhanced cross-channel attention framework that localizes the source using only a fixed dual-microphone recorder. The input is represented as a six-channel time-frequency feature map that combines left and right log-Mel spectrograms, interaural level difference (ILD), interaural phase difference (IPD) encoded as cosine and sine components, and a GCC-PHAT peak map, enabling a clear separation between content and spatial cues. On top of this representation, we introduce Stereo-Enhanced Cross-Channel Attention (SECCA), in which the content branch provides Query features while the spatial branch provides Key and Value features for cross-channel guidance. The module injects directional information into content modeling through lightweight global pooling and gating. The resulting features are fed into a ConvNeXt-T backbone with hierarchical dual-head supervision for coarse region classification and fine breaker classification, with only the fine head retained during inference. File-level predictions are obtained by averaging clip-level posteriors within each recording. On a 10-kV switchgear dataset comprising 900 recordings across nine breaker positions, two operation types, and five load-current levels, ConvNeXt-T + SECCA achieves a file-level Macro-F1 of 84.79 %±2.26 % (+4.10 points) and a file-level localization accuracy of 84.90 %, with a peak of 88.00 %. Attention visualization and LR-swap consistency analysis further show that SECCA learns frequency-selective and spatially informative responses, rather than acting as a simple parameter increase. These results indicate that the proposed method provides a non-contact, low-cost solution for on-site cabinet inspection and online maintenance. The reported performance should be interpreted under a controlled fixed-recorder geometry.}
+}
+
+@article{LopezOlvera2026,
+  title = {Multichannel Acoustic Beamforming for Speaker Localization and DOA-Based Tracking},
+  author = {Jose Antonio Lopez-Olvera and Hector Perez‐Meana and Elizabeth García-Rios and Enrique Escamilla-Hernández and Jose Manuel Carrichi-Chavez and Jesus Betancourt-Martinez},
+  year = {2026},
+  journal = {Electronics},
+  doi = {10.3390/electronics15153410},
+  url = {https://doi.org/10.3390/electronics15153410},
+  abstract = {Real-time speaker localization and speech enhancement remain challenging for embedded acoustic systems operating in noisy and reverberant environments. This paper presents a multichannel beamforming framework based on Generalized Cross-Correlation with Phase Transform (GCC-PHAT) for Direction of Arrival (DOA) estimation and Delay-and-Sum (DAS) beamforming using a compact four-element circular MEMS microphone array. The proposed approach incorporates DOA smoothing and verification to improve localization stability before beamforming. Experimental evaluation in a controlled indoor environment demonstrated localization errors below 1°, while the beamforming stage achieved Signal-to-Noise Ratio (SNR) values predominantly between 25 dB and 40 dB, with peaks approaching 45 dB, and Root Mean Square Error (RMSE) values below 0.05 for most processing windows with an average processing time per frame of 3.473 ms and a memory consumption of 67.11 KB. Comparative results show that the proposed system provides competitive localization accuracy with a computationally simple processing pipeline, making it suitable for real-time embedded applications such as intelligent voice interfaces, videoconferencing systems, and service robotics.}
+}
+
 @article{Namballa2026,
   title = {Spacing Out: On the Reliability of Binaural Music Source Separation Metrics},
   author = {Richa Namballa and Magdalena Fuentes},
@@ -5,4 +25,14 @@
   journal = {arXiv},
   url = {http://arxiv.org/abs/2607.25919v1},
   abstract = {Despite the rising popularity of immersive audio, binaural music remains underexplored in music information retrieval (MIR), particularly regarding the task of music source separation (MSS). While existing stereo MSS models can process binaural audio, they often degrade the spatial quality of the separated stems and undermine listener immersion. Through a perceptual study comparing binaural and stereo MSS outputs, we evaluate how well objective spatial distortion metrics correlate with human perception. Our findings reveal varied agreement between these metrics and human judgment, highlighting a lack of reliability when used to evaluate binaural music tasks. Specifically, we find that Interaural Time Difference (ITD) estimation is highly sensitive to noise and separation artifacts. In evaluating two alternative ITD estimation methods, we uncover a critical trade-off between robustness and accuracy, particularly for narrow-band instruments like bass. These results underscore the need for accurate, interpretable spatial metrics designed for binaural music to develop models that preserve source localization and listener immersion.}
+}
+
+@article{Yue2026,
+  title = {An Interpolation-Free Near-Field Frequency-Domain Beamforming Algorithm for Uniform Linear Array Sonar},
+  author = {Zhibin Yue and Jinsong Tang and Heping Zhong and Haoran Wu and Han Li and Meng Zhao},
+  year = {2026},
+  journal = {Journal of Marine Science and Engineering},
+  doi = {10.3390/jmse14161454},
+  url = {https://doi.org/10.3390/jmse14161454},
+  abstract = {To address the issue of phase mismatch, mainlobe broadening, image defocusing, and high computational complexity caused by spherical wavefront propagation in near-field imaging of uniform linear array (ULA) imaging sonar, this paper proposes an interpolation-free near-field frequency-domain beamforming algorithm for uniform linear arrays. Under the considered operating conditions, the exact range history is approximated as the sum of a range-dependent quadratic term and a range-independent linear term with respect to the element position. The quadratic term produces negligible envelope migration; therefore, only its phase needs to be compensated. By contrast, the linear term produces more significant range migration, which is corrected together with its associated phase through range-domain and azimuth-domain FFT processing. Under the adopted range-history approximation and discrete sampling conditions, this implementation avoids the explicit point-by-point fractional-delay interpolation required by the backprojection (BP) algorithm. The proposed method substantially reduces the computational cost while maintaining near-field focusing performance comparable to that of the BP algorithm. For the simulated data, the runtime is reduced from 58.23 s to 0.41 s, with only a 0.1% broadening of the azimuth impulse-response width and a 0.11 dB degradation in the peak sidelobe ratio. For the measured lake-trial data, the runtime is reduced from 50.18 s to 0.29 s.}
 }
