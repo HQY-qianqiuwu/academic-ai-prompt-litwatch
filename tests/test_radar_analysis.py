@@ -212,3 +212,45 @@ def test_partial_current_year_exposure_avoids_false_decline():
     assert snapshot.partial_current_year is True
     assert receiver_geometry.classification.value != "declining"
     assert receiver_geometry.recent_annual_rate > receiver_geometry.baseline_annual_rate
+
+
+def test_representative_paper_selection_is_deterministic_and_not_newest_only():
+    older = paper("older", 2022, "TDOA receiver geometry GCC-PHAT")
+    older.score = 0.95
+    older.score_detail = {"relevance_score": 0.95, "quality_score": 0.95}
+    newer = paper("newer", 2026, "TDOA localization")
+    newer.score = 0.2
+    newer.score_detail = {"relevance_score": 0.2, "quality_score": 0.4}
+    service = RadarAnalysisService(current_date=lambda: date(2026, 8, 10))
+
+    first = service.analyze(radar(), [newer, older])
+    second = service.analyze(radar(), [older, newer])
+
+    assert first.representative_papers == second.representative_papers
+    assert first.representative_papers[0].canonical_id == older.canonical_id
+    assert first.representative_papers[0].representative_score > (
+        first.representative_papers[1].representative_score
+    )
+
+
+def test_timeline_uses_period_keywords_and_representative_evidence():
+    papers = [
+        paper("early", 2019, "GCC-PHAT cross correlation TDOA"),
+        paper("recent", 2026, "Neural network synchronization-free TDOA"),
+    ]
+    snapshot = RadarAnalysisService(
+        current_date=lambda: date(2026, 8, 10)
+    ).analyze(radar(), papers)
+
+    assert snapshot.timeline[0].keywords
+    assert snapshot.timeline[0].representative_canonical_ids == [
+        "doi:10.1000/early"
+    ]
+    assert snapshot.timeline[-1].representative_canonical_ids == [
+        "doi:10.1000/recent"
+    ]
+    all_ids = {paper.canonical_id for paper in papers}
+    assert all(
+        set(period.representative_canonical_ids) <= all_ids
+        for period in snapshot.timeline
+    )

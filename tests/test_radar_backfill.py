@@ -298,3 +298,20 @@ def test_exclude_keywords_filter_papers_before_radar_history(tmp_path):
     assert completed.scan.new_count == 1
     assert completed.new_canonical_ids == ["doi:10.1000/a"]
     database.connection.close()
+
+
+def test_scan_persists_representative_scores_on_radar_relations(tmp_path):
+    settings = settings_for(tmp_path)
+    database = Database(settings.database_path)
+    representative = paper("A", 2020, title="GCC-PHAT TDOA receiver geometry")
+    search = FakeHistoricalSearch([result([representative])])
+    service = radar_service(database, settings, search, ["radar", "scan"])
+    radar = service.create(spec())
+
+    completed = service.scan(radar.id)
+    relations = RadarRepository(database).list_paper_relations(radar.id)
+
+    assert completed.scan.analysis["representative_papers"]
+    assert len(relations) == 1
+    assert relations[0].representative_score > 0
+    database.connection.close()

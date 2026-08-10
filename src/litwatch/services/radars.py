@@ -206,9 +206,17 @@ class ResearchRadarService:
         scan.dedup_count = deduplicated.dedup_count
         scan.new_count = len(observation.new_papers)
         scan.provider_status = safe_statuses
-        scan.analysis = self.analysis_service.analyze(
+        analysis = self.analysis_service.analyze(
             radar, self.repository.list_papers(radar.id)
-        ).model_dump(mode="json")
+        )
+        scan.analysis = analysis.model_dump(mode="json")
+        self.repository.update_representative_scores(
+            radar.id,
+            {
+                paper.canonical_id: paper.representative_score
+                for paper in analysis.representative_papers
+            },
+        )
         self.repository.update_scan(scan)
         self.repository.record_scan_attempt(
             radar.id, scan_at=finished_at, successful=True

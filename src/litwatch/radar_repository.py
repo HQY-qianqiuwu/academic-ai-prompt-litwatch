@@ -248,6 +248,21 @@ class RadarRepository:
         if cursor.rowcount != 1:
             raise KeyError(radar_id)
 
+    def update_representative_scores(
+        self, radar_id: str, scores: Mapping[str, float]
+    ) -> None:
+        with self._lock, self.database.connection:
+            self.database.connection.execute(
+                "UPDATE radar_papers SET representative_score=0 WHERE radar_id=?",
+                (radar_id,),
+            )
+            for canonical_id, score in sorted(scores.items()):
+                self.database.connection.execute(
+                    """UPDATE radar_papers SET representative_score=?
+                       WHERE radar_id=? AND canonical_id=?""",
+                    (min(1.0, max(0.0, float(score))), radar_id, canonical_id),
+                )
+
     def recover_stale_scans(
         self, *, stale_before: datetime, recovered_at: datetime
     ) -> int:

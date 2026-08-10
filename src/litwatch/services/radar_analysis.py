@@ -115,14 +115,32 @@ class TrendStatistic(BaseModel):
     canonical_ids: list[str] = Field(min_length=1)
 
 
+class RepresentativePaper(BaseModel):
+    canonical_id: str
+    title: str
+    publication_year: int | None = None
+    venue: str = ""
+    doi: str = ""
+    url: str = ""
+    sources: list[str] = Field(default_factory=list)
+    representative_score: float = Field(ge=0.0, le=1.0)
+
+
+class TimelinePeriod(BaseModel):
+    start_year: int
+    end_year: int
+    keywords: list[str] = Field(default_factory=list)
+    representative_canonical_ids: list[str] = Field(default_factory=list)
+
+
 class RadarAnalysisSnapshot(BaseModel):
     annual_counts: list[AnnualStatistic] = Field(default_factory=list)
     partial_current_year: bool = False
     keywords: list[KeywordStatistic] = Field(default_factory=list)
     periods: list[KeywordPeriod] = Field(default_factory=list)
     trends: list[TrendStatistic] = Field(default_factory=list)
-    timeline: list[dict[str, object]] = Field(default_factory=list)
-    representative_papers: list[dict[str, object]] = Field(default_factory=list)
+    timeline: list[TimelinePeriod] = Field(default_factory=list)
+    representative_papers: list[RepresentativePaper] = Field(default_factory=list)
 
 
 class RadarAnalysisService:
@@ -161,12 +179,17 @@ class RadarAnalysisService:
             )
         ]
         all_keywords = self.extract_keywords(relevant, radar=radar, limit=100)
+        representative = self.select_representative_papers(
+            radar, relevant, all_keywords, limit=8
+        )
         return RadarAnalysisSnapshot(
             annual_counts=annual,
             partial_current_year=radar.end_year == self.current_date().year,
             keywords=all_keywords[:20],
             periods=periods,
             trends=self._trends(radar, relevant, all_keywords),
+            timeline=self._timeline(radar, relevant, periods),
+            representative_papers=representative,
         )
 
     def extract_keywords(
@@ -402,6 +425,107 @@ class RadarAnalysisService:
         elapsed = (today - year_start).days + 1
         progress = elapsed / (next_year - year_start).days
         return max(0.25, exposure - 1.0 + progress)
+
+    def select_representative_papers(
+        self,
+        radar: ResearchRadar,
+        papers: Iterable[Paper],
+        keywords: list[KeywordStatistic],
+        *,
+        limit: int,
+    ) -> list[RepresentativePaper]:
+        top_keywords = keywords[:10]
+        keyword_evidence = {
+            keyword.phrase: set(keyword.canonical_ids) for keyword in top_keywords
+        }
+        scored: list[RepresentativePaper] = []
+        for paper in papers:
+            relevance = self._paper_score(paper, "relevance_score", paper.score)
+            metadata_quality = self._paper_score(
+                paper, "quality_score", self._metadata_quality(paper)
+            )
+            represented = sum(
+                paper.canonical_id in evidence
+                for evidence in keyword_evidence.values()
+            )
+            phrase_representativeness = represented / max(1, len(keyword_evidence))
+            source_diversity = len(set(paper.sources)) / max(1, len(radar.providers))
+            score = round(
+                0.45 * relevance
+                + 0.25 * metadata_quality
+                + 0.20 * phrase_representativeness
+                + 0.10 * min(1.0, source_diversity),
+                6,
+            )
+            scored.append(
+                RepresentativePaper(
+                    canonical_id=paper.canonical_id,
+                    title=paper.title,
+                    publication_year=(
+                        paper.publication_date.year if paper.publication_date else None
+                    ),
+                    venue=paper.venue,
+                    doi=paper.doi,
+                    url=paper.url,
+                    sources=sorted(set(paper.sources), key=str.casefold),
+                    representative_score=score,
+                )
+            )
+        return sorted(
+            scored,
+            key=lambda item: (
+                -item.representative_score,
+                -(item.publication_year or 0),
+                item.canonical_id.casefold(),
+            ),
+        )[:limit]
+
+    def _timeline(
+        self,
+        radar: ResearchRadar,
+        papers: list[Paper],
+        periods: list[KeywordPeriod],
+    ) -> list[TimelinePeriod]:
+        timeline: list[TimelinePeriod] = []
+        for period in periods:
+            period_papers = [
+                paper
+                for paper in papers
+                if paper.publication_date
+                and period.start_year <= paper.publication_date.year <= period.end_year
+            ]
+            representative = self.select_representative_papers(
+                radar, period_papers, period.keywords, limit=3
+            )
+            timeline.append(
+                TimelinePeriod(
+                    start_year=period.start_year,
+                    end_year=period.end_year,
+                    keywords=[keyword.phrase for keyword in period.keywords[:5]],
+                    representative_canonical_ids=[
+                        paper.canonical_id for paper in representative
+                    ],
+                )
+            )
+        return timeline
+
+    @staticmethod
+    def _paper_score(paper: Paper, name: str, fallback: float) -> float:
+        value = paper.score_detail.get(name)
+        score = float(value) if isinstance(value, int | float) else float(fallback)
+        return min(1.0, max(0.0, score))
+
+    @staticmethod
+    def _metadata_quality(paper: Paper) -> float:
+        signals = (
+            bool(paper.title),
+            bool(paper.abstract),
+            bool(paper.authors),
+            paper.publication_date is not None,
+            bool(paper.venue),
+            bool(paper.doi or paper.url),
+        )
+        return sum(signals) / len(signals)
 
     @staticmethod
     def _period_ranges(start_year: int, end_year: int) -> list[tuple[int, int]]:
