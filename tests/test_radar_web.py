@@ -75,6 +75,8 @@ def test_radar_pages_are_bilingual_registry_driven_and_dashboard_compatible(tmp_
     assert "analysis.trends" in detail_script.text
     assert "trend.growth_percent" in detail_script.text
     assert "trend.growth_rate" not in detail_script.text
+    assert "keyword.count" in detail_script.text
+    assert "keyword.paper_count" not in detail_script.text
     assert legacy.status_code == 307
     assert legacy.headers["location"] == "/radars"
 
