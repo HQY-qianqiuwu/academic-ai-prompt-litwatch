@@ -17,6 +17,7 @@ from litwatch.services.literature_search import (
     ProviderExecutionStatus,
     ProviderSearchStatus,
 )
+from litwatch.services.radar_analysis import RadarAnalysisService
 from litwatch.sources.registry import ProviderRegistry
 
 
@@ -71,6 +72,7 @@ class ResearchRadarService:
         provider_profile_store: ProviderProfileStore,
         *,
         search_service: LiteratureSearchService | None = None,
+        analysis_service: RadarAnalysisService | None = None,
         profile_id: str = "default",
         clock: Callable[[], datetime] | None = None,
         id_factory: Callable[[], str] | None = None,
@@ -79,6 +81,9 @@ class ResearchRadarService:
         self.provider_registry = provider_registry
         self.provider_profile_store = provider_profile_store
         self.search_service = search_service
+        self.analysis_service = analysis_service or RadarAnalysisService(
+            current_year=lambda: self._now().year
+        )
         self.profile_id = profile_id
         self.clock = clock or (lambda: datetime.now(UTC))
         self.id_factory = id_factory or (lambda: uuid4().hex)
@@ -177,7 +182,12 @@ class ResearchRadarService:
         if not any_period_succeeded:
             return self._finish_failed(scan, safe_statuses, "all_providers_failed")
 
-        deduplicated = deduplicate_papers(candidates)
+        filtered_candidates = [
+            paper
+            for paper in candidates
+            if not self._contains_excluded_phrase(paper, radar.exclude_keywords)
+        ]
+        deduplicated = deduplicate_papers(filtered_candidates)
         finished_at = self._now()
         observation = self.repository.observe_papers(
             radar.id,
@@ -196,6 +206,9 @@ class ResearchRadarService:
         scan.dedup_count = deduplicated.dedup_count
         scan.new_count = len(observation.new_papers)
         scan.provider_status = safe_statuses
+        scan.analysis = self.analysis_service.analyze(
+            radar, self.repository.list_papers(radar.id)
+        ).model_dump(mode="json")
         self.repository.update_scan(scan)
         self.repository.record_scan_attempt(
             radar.id, scan_at=finished_at, successful=True
@@ -257,6 +270,15 @@ class ResearchRadarService:
             }
             for status in statuses
         ]
+
+    @staticmethod
+    def _contains_excluded_phrase(paper: object, phrases: list[str]) -> bool:
+        if not phrases:
+            return False
+        title = str(getattr(paper, "title", ""))
+        abstract = str(getattr(paper, "abstract", ""))
+        text = f"{title}\n{abstract}".casefold()
+        return any(phrase.casefold() in text for phrase in phrases)
 
     def _validate_providers(self, provider_ids: list[str]) -> None:
         capabilities = {

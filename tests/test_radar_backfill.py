@@ -253,3 +253,48 @@ def test_stale_running_scan_is_recovered_once(tmp_path):
     assert recovered.status is RadarScanStatus.INTERRUPTED
     assert recovered.safe_error == "interrupted"
     database.connection.close()
+
+
+def test_successful_scan_persists_annual_and_keyword_analysis(tmp_path):
+    settings = settings_for(tmp_path)
+    database = Database(settings.database_path)
+    search = FakeHistoricalSearch(
+        [result([paper("A", 2020, title="GCC-PHAT TDOA localization")])]
+    )
+    service = radar_service(database, settings, search, ["radar", "scan"])
+    radar = service.create(spec())
+
+    completed = service.scan(radar.id)
+    persisted = RadarRepository(database).get_scan(completed.scan.id)
+
+    assert persisted is not None
+    assert persisted.analysis["annual_counts"] == [{"year": 2020, "count": 1}]
+    assert {item["phrase"] for item in persisted.analysis["keywords"]} >= {
+        "GCC-PHAT",
+        "TDOA",
+    }
+    database.connection.close()
+
+
+def test_exclude_keywords_filter_papers_before_radar_history(tmp_path):
+    settings = settings_for(tmp_path)
+    database = Database(settings.database_path)
+    search = FakeHistoricalSearch(
+        [
+            result(
+                [
+                    paper("A", 2020, title="Underwater TDOA localization"),
+                    paper("B", 2020, title="Terrestrial TDOA localization"),
+                ]
+            )
+        ]
+    )
+    service = radar_service(database, settings, search, ["radar", "scan"])
+    radar = service.create(spec(exclude_keywords=["terrestrial"]))
+
+    completed = service.scan(radar.id)
+
+    assert completed.scan.dedup_count == 1
+    assert completed.scan.new_count == 1
+    assert completed.new_canonical_ids == ["doi:10.1000/a"]
+    database.connection.close()
