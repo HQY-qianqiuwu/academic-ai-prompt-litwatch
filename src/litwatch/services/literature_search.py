@@ -190,6 +190,8 @@ class LiteratureSearchService:
         topic: str,
         limit: int,
         providers: list[str] | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> LiteratureSearchResult:
         normalized_topic = topic.strip()
         if not normalized_topic:
@@ -197,9 +199,10 @@ class LiteratureSearchService:
         if isinstance(limit, bool) or limit < 1:
             raise ValueError("limit must be a positive integer")
 
-        end_date = self.current_date()
-        if self.historical_start_date > end_date:
-            raise ValueError("historical_start_date must not be after the current date")
+        effective_end_date = end_date or self.current_date()
+        effective_start_date = start_date or self.historical_start_date
+        if effective_start_date > effective_end_date:
+            raise ValueError("start_date must not be after end_date")
 
         provider_topic = Topic(
             id="literature_search",
@@ -215,8 +218,8 @@ class LiteratureSearchService:
             try:
                 fetched = source.search(
                     provider_topic,
-                    self.historical_start_date,
-                    end_date,
+                    effective_start_date,
+                    effective_end_date,
                     candidate_limit,
                 )
                 if not isinstance(fetched, list) or any(

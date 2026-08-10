@@ -8,12 +8,6 @@ from .literature_search import (
     ProviderExecutionStatus,
     ProviderSearchStatus,
 )
-from .radars import (
-    RadarNotFoundError,
-    RadarProviderError,
-    RadarYearRangeError,
-    ResearchRadarService,
-)
 from .subscriptions import (
     SubscriptionNotFoundError,
     SubscriptionProviderError,
@@ -29,10 +23,6 @@ __all__ = [
     "ProviderErrorCode",
     "ProviderExecutionStatus",
     "ProviderSearchStatus",
-    "RadarNotFoundError",
-    "RadarProviderError",
-    "RadarYearRangeError",
-    "ResearchRadarService",
     "SubscriptionNotFoundError",
     "SubscriptionProviderError",
     "SubscriptionService",

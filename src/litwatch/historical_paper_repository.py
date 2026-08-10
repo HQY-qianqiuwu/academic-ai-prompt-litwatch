@@ -97,6 +97,36 @@ class HistoricalPaperRepository:
             updated_papers=sorted(updated_papers, key=key),
         )
 
+    def upsert_global_papers(
+        self, papers: Iterable[Paper], observed_at: datetime
+    ) -> list[Paper]:
+        """Reuse global identity and enrichment without changing feature history."""
+        observed_at = self._aware_utc(observed_at)
+        incoming_papers = sorted(
+            (paper.model_copy(deep=True) for paper in papers),
+            key=lambda paper: paper.canonical_id.casefold(),
+        )
+        resolved_papers: list[Paper] = []
+        with self._lock, self.database.connection:
+            stored_papers = self._load_all_papers()
+            for incoming in incoming_papers:
+                stored = self._find_match(incoming, stored_papers)
+                if stored is None:
+                    resolved = self._normalize_new_paper(incoming)
+                    first_seen_at = observed_at
+                else:
+                    resolved = self._merge_preserving_history_identity(stored, incoming)
+                    first_seen_at = self._paper_first_seen(stored.canonical_id)
+                self._upsert_paper(resolved, first_seen_at, observed_at)
+                stored_papers = [
+                    paper
+                    for paper in stored_papers
+                    if paper.canonical_id != resolved.canonical_id
+                ]
+                stored_papers.append(resolved.model_copy(deep=True))
+                resolved_papers.append(resolved)
+        return resolved_papers
+
     def get_paper(self, canonical_id: str) -> Paper | None:
         with self._lock:
             row = self.database.connection.execute(

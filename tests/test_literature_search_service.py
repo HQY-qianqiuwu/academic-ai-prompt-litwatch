@@ -115,6 +115,41 @@ def test_search_supports_an_injected_historical_start_date():
     assert end_date == date(2026, 8, 8)
 
 
+def test_search_accepts_an_explicit_internal_date_range_without_changing_defaults():
+    source = FakeSource([paper("one")])
+    service = LiteratureSearchService(
+        source,
+        historical_start_date=date(1950, 1, 1),
+        current_date=lambda: date(2026, 8, 8),
+    )
+
+    service.search(
+        topic="underwater acoustics",
+        limit=10,
+        start_date=date(2018, 1, 1),
+        end_date=date(2019, 12, 31),
+    )
+
+    _, start_date, end_date, _ = source.calls[0]
+    assert start_date == date(2018, 1, 1)
+    assert end_date == date(2019, 12, 31)
+
+
+def test_search_rejects_an_inverted_explicit_date_range_before_provider_call():
+    source = FakeSource()
+    service = LiteratureSearchService(source)
+
+    with pytest.raises(ValueError, match="start_date must not be after end_date"):
+        service.search(
+            topic="underwater acoustics",
+            limit=10,
+            start_date=date(2020, 1, 1),
+            end_date=date(2019, 12, 31),
+        )
+
+    assert source.calls == []
+
+
 def test_single_provider_runtime_failure_becomes_safe_aggregate_error():
     error = RuntimeError("upstream unavailable")
     service = LiteratureSearchService(FakeSource(error=error))

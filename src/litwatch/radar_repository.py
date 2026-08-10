@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Mapping
-from datetime import datetime
+from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime
 from threading import RLock
 
 from litwatch.db import Database
-from litwatch.radars import RadarScan, ResearchRadar
+from litwatch.historical_paper_repository import HistoricalPaperRepository
+from litwatch.models import Paper
+from litwatch.radars import RadarObservationResult, RadarPaper, RadarScan, ResearchRadar
 
 
 class RadarRepository:
@@ -134,6 +136,137 @@ class RadarRepository:
             ).fetchone()
         return self._scan_from_row(row) if row is not None else None
 
+    def observe_papers(
+        self,
+        radar_id: str,
+        scan_id: str,
+        papers: Iterable[Paper],
+        observed_at: datetime,
+    ) -> RadarObservationResult:
+        observed_at = self._aware_utc(observed_at)
+        resolved_papers = HistoricalPaperRepository(
+            self.database
+        ).upsert_global_papers(papers, observed_at)
+        new_papers: list[Paper] = []
+        seen_papers: list[Paper] = []
+        updated_papers: list[Paper] = []
+        with self._lock, self.database.connection:
+            if not self.exists(radar_id):
+                raise KeyError(radar_id)
+            if self.get_scan(scan_id) is None:
+                raise KeyError(scan_id)
+            for paper in resolved_papers:
+                relation = self.database.connection.execute(
+                    """SELECT * FROM radar_papers
+                       WHERE radar_id=? AND canonical_id=?""",
+                    (radar_id, paper.canonical_id),
+                ).fetchone()
+                relevance = self._score(paper, "relevance_score", paper.score)
+                publication_year = (
+                    paper.publication_date.year if paper.publication_date else None
+                )
+                if relation is None:
+                    self.database.connection.execute(
+                        """INSERT INTO radar_papers(
+                               radar_id,canonical_id,first_seen_at,last_seen_at,
+                               first_scan_id,last_scan_id,publication_year,relevance_score,
+                               representative_score
+                           ) VALUES (?,?,?,?,?,?,?,?,0)""",
+                        (
+                            radar_id,
+                            paper.canonical_id,
+                            observed_at.isoformat(),
+                            observed_at.isoformat(),
+                            scan_id,
+                            scan_id,
+                            publication_year,
+                            relevance,
+                        ),
+                    )
+                    new_papers.append(paper)
+                    continue
+                old_signature = (
+                    relation["publication_year"],
+                    float(relation["relevance_score"]),
+                )
+                new_signature = (publication_year, relevance)
+                self.database.connection.execute(
+                    """UPDATE radar_papers SET
+                           last_seen_at=?,last_scan_id=?,publication_year=?,relevance_score=?
+                       WHERE radar_id=? AND canonical_id=?""",
+                    (
+                        observed_at.isoformat(),
+                        scan_id,
+                        publication_year,
+                        relevance,
+                        radar_id,
+                        paper.canonical_id,
+                    ),
+                )
+                seen_papers.append(paper)
+                if old_signature != new_signature:
+                    updated_papers.append(paper)
+        key = lambda paper: paper.canonical_id.casefold()
+        return RadarObservationResult(
+            new_papers=sorted(new_papers, key=key),
+            seen_papers=sorted(seen_papers, key=key),
+            updated_papers=sorted(updated_papers, key=key),
+        )
+
+    def list_papers(self, radar_id: str) -> list[Paper]:
+        with self._lock:
+            rows = self.database.connection.execute(
+                """SELECT p.* FROM radar_papers rp
+                   JOIN papers p USING(canonical_id)
+                   WHERE rp.radar_id=?
+                   ORDER BY rp.publication_year ASC,p.canonical_id ASC""",
+                (radar_id,),
+            ).fetchall()
+        return [HistoricalPaperRepository._paper_from_row(row) for row in rows]
+
+    def list_paper_relations(self, radar_id: str) -> list[RadarPaper]:
+        with self._lock:
+            rows = self.database.connection.execute(
+                """SELECT * FROM radar_papers WHERE radar_id=?
+                   ORDER BY publication_year ASC,canonical_id ASC""",
+                (radar_id,),
+            ).fetchall()
+        return [RadarPaper.model_validate(dict(row)) for row in rows]
+
+    def record_scan_attempt(
+        self, radar_id: str, *, scan_at: datetime, successful: bool
+    ) -> None:
+        scan_at = self._aware_utc(scan_at)
+        with self._lock, self.database.connection:
+            cursor = self.database.connection.execute(
+                """UPDATE research_radars SET
+                       last_scan_at=?,
+                       last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END
+                   WHERE id=?""",
+                (scan_at.isoformat(), int(successful), scan_at.isoformat(), radar_id),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(radar_id)
+
+    def recover_stale_scans(
+        self, *, stale_before: datetime, recovered_at: datetime
+    ) -> int:
+        stale_before = self._aware_utc(stale_before)
+        recovered_at = self._aware_utc(recovered_at)
+        with self._lock, self.database.connection:
+            cursor = self.database.connection.execute(
+                """UPDATE radar_scans SET
+                       status='interrupted',finished_at=?,heartbeat_at=?,
+                       safe_error='interrupted'
+                   WHERE status='running' AND heartbeat_at < ?""",
+                (
+                    recovered_at.isoformat(),
+                    recovered_at.isoformat(),
+                    stale_before.isoformat(),
+                ),
+            )
+        return cursor.rowcount
+
     @staticmethod
     def _radar_values(radar: ResearchRadar) -> Mapping[str, object]:
         return {
@@ -223,3 +356,15 @@ class RadarRepository:
     @staticmethod
     def _serialize_datetime(value: datetime | None) -> str | None:
         return value.isoformat() if value is not None else None
+
+    @staticmethod
+    def _score(paper: Paper, name: str, fallback: float) -> float:
+        value = paper.score_detail.get(name)
+        score = float(value) if isinstance(value, int | float) else float(fallback)
+        return min(1.0, max(0.0, score))
+
+    @staticmethod
+    def _aware_utc(value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Radar timestamps must be timezone-aware")
+        return value.astimezone(UTC)

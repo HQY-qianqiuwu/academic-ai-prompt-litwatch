@@ -14,6 +14,8 @@ from pydantic import (
     model_validator,
 )
 
+from litwatch.models import Paper
+
 MIN_RADAR_YEAR = 1900
 MAX_RADAR_YEAR = 2100
 MAX_RADAR_RANGE_YEARS = 20
@@ -154,3 +156,9 @@ class RadarPaper(BaseModel):
     publication_year: int | None = None
     relevance_score: float = Field(default=0.0, ge=0.0, le=1.0)
     representative_score: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class RadarObservationResult(BaseModel):
+    new_papers: list[Paper] = Field(default_factory=list)
+    seen_papers: list[Paper] = Field(default_factory=list)
+    updated_papers: list[Paper] = Field(default_factory=list)
