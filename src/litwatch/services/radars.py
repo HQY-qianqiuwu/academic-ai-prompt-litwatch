@@ -82,7 +82,7 @@ class ResearchRadarService:
         self.provider_profile_store = provider_profile_store
         self.search_service = search_service
         self.analysis_service = analysis_service or RadarAnalysisService(
-            current_year=lambda: self._now().year
+            current_date=lambda: self._now().date()
         )
         self.profile_id = profile_id
         self.clock = clock or (lambda: datetime.now(UTC))

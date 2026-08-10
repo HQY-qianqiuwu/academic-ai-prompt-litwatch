@@ -4,7 +4,8 @@ import math
 import re
 from collections import defaultdict
 from collections.abc import Callable, Iterable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
@@ -93,12 +94,33 @@ class KeywordPeriod(BaseModel):
     keywords: list[KeywordStatistic] = Field(default_factory=list)
 
 
+class TrendClassification(StrEnum):
+    EMERGING = "emerging"
+    HOT = "hot"
+    SUSTAINED = "sustained"
+    DECLINING = "declining"
+
+
+class TrendStatistic(BaseModel):
+    phrase: str
+    classification: TrendClassification
+    hotness_score: float = Field(ge=0.0, le=1.0)
+    components: dict[str, float]
+    recent_count: int = Field(ge=0)
+    historical_count: int = Field(ge=0)
+    recent_annual_rate: float = Field(ge=0.0)
+    baseline_annual_rate: float = Field(ge=0.0)
+    growth_percent: float | None = None
+    sources: list[str] = Field(default_factory=list)
+    canonical_ids: list[str] = Field(min_length=1)
+
+
 class RadarAnalysisSnapshot(BaseModel):
     annual_counts: list[AnnualStatistic] = Field(default_factory=list)
     partial_current_year: bool = False
     keywords: list[KeywordStatistic] = Field(default_factory=list)
     periods: list[KeywordPeriod] = Field(default_factory=list)
-    trends: list[dict[str, object]] = Field(default_factory=list)
+    trends: list[TrendStatistic] = Field(default_factory=list)
     timeline: list[dict[str, object]] = Field(default_factory=list)
     representative_papers: list[dict[str, object]] = Field(default_factory=list)
 
@@ -106,8 +128,8 @@ class RadarAnalysisSnapshot(BaseModel):
 class RadarAnalysisService:
     """Evidence-only annual and keyword aggregation without LLM inference."""
 
-    def __init__(self, *, current_year: Callable[[], int] | None = None) -> None:
-        self.current_year = current_year or (lambda: datetime.now(UTC).year)
+    def __init__(self, *, current_date: Callable[[], date] | None = None) -> None:
+        self.current_date = current_date or (lambda: datetime.now(UTC).date())
 
     def analyze(
         self, radar: ResearchRadar, papers: Iterable[Paper]
@@ -138,11 +160,13 @@ class RadarAnalysisService:
                 radar.start_year, radar.end_year
             )
         ]
+        all_keywords = self.extract_keywords(relevant, radar=radar, limit=100)
         return RadarAnalysisSnapshot(
             annual_counts=annual,
-            partial_current_year=radar.end_year == self.current_year(),
-            keywords=self.extract_keywords(relevant, radar=radar, limit=20),
+            partial_current_year=radar.end_year == self.current_date().year,
+            keywords=all_keywords[:20],
             periods=periods,
+            trends=self._trends(radar, relevant, all_keywords),
         )
 
     def extract_keywords(
@@ -216,6 +240,168 @@ class RadarAnalysisService:
             paper_count=len(period_papers),
             keywords=self.extract_keywords(period_papers, radar=radar, limit=8),
         )
+
+    def _trends(
+        self,
+        radar: ResearchRadar,
+        papers: list[Paper],
+        keywords: list[KeywordStatistic],
+    ) -> list[TrendStatistic]:
+        recent_start = radar.end_year - radar.recent_window_years + 1
+        recent_year_exposure = self._recent_year_exposure(radar)
+        baseline_years = max(0, recent_start - radar.start_year)
+        paper_by_id = {paper.canonical_id: paper for paper in papers}
+        raw_counts: dict[str, tuple[int, int]] = {}
+        for keyword in keywords:
+            evidence = [paper_by_id[item] for item in keyword.canonical_ids if item in paper_by_id]
+            recent_count = sum(
+                paper.publication_date is not None
+                and paper.publication_date.year >= recent_start
+                for paper in evidence
+            )
+            raw_counts[keyword.phrase] = (
+                recent_count,
+                len(evidence) - recent_count,
+            )
+        max_recent = max((counts[0] for counts in raw_counts.values()), default=0)
+        trends: list[TrendStatistic] = []
+        for keyword in keywords:
+            recent_count, historical_count = raw_counts[keyword.phrase]
+            if recent_count + historical_count < 2:
+                continue
+            evidence = [paper_by_id[item] for item in keyword.canonical_ids if item in paper_by_id]
+            recent_rate = recent_count / max(recent_year_exposure, 0.25)
+            baseline_rate = (
+                historical_count / baseline_years if baseline_years else 0.0
+            )
+            ratio = (
+                recent_rate / baseline_rate
+                if baseline_rate > 0
+                else (float("inf") if recent_rate > 0 else 0.0)
+            )
+            classification = self._classification(
+                recent_count=recent_count,
+                historical_count=historical_count,
+                recent_rate=recent_rate,
+                baseline_rate=baseline_rate,
+                ratio=ratio,
+                partial_current_year=radar.end_year == self.current_date().year,
+            )
+            components = self._hotness_components(
+                radar=radar,
+                evidence=evidence,
+                recent_count=recent_count,
+                max_recent=max_recent,
+                ratio=ratio,
+                configured_provider_count=len(radar.providers),
+            )
+            score = round(
+                0.35 * components["recent_volume"]
+                + 0.30 * components["growth"]
+                + 0.20 * components["recency"]
+                + 0.15 * components["source_diversity"],
+                6,
+            )
+            if classification is None and recent_count >= 2 and score >= 0.65:
+                classification = TrendClassification.HOT
+            if classification is None:
+                continue
+            trends.append(
+                TrendStatistic(
+                    phrase=keyword.phrase,
+                    classification=classification,
+                    hotness_score=score,
+                    components=components,
+                    recent_count=recent_count,
+                    historical_count=historical_count,
+                    recent_annual_rate=round(recent_rate, 6),
+                    baseline_annual_rate=round(baseline_rate, 6),
+                    growth_percent=(
+                        None
+                        if baseline_rate == 0
+                        else round((ratio - 1.0) * 100.0, 2)
+                    ),
+                    sources=keyword.sources,
+                    canonical_ids=keyword.canonical_ids,
+                )
+            )
+        return sorted(
+            trends,
+            key=lambda item: (-item.hotness_score, item.phrase.casefold()),
+        )
+
+    @staticmethod
+    def _classification(
+        *,
+        recent_count: int,
+        historical_count: int,
+        recent_rate: float,
+        baseline_rate: float,
+        ratio: float,
+        partial_current_year: bool,
+    ) -> TrendClassification | None:
+        if historical_count <= 1 and recent_count >= 2 and recent_rate > baseline_rate:
+            return TrendClassification.EMERGING
+        minimum_recent = 1 if partial_current_year else 2
+        sustained_ratio = ratio >= 0.75 if partial_current_year else 0.75 <= ratio <= 1.5
+        if historical_count >= 2 and recent_count >= minimum_recent and sustained_ratio:
+            return TrendClassification.SUSTAINED
+        if historical_count >= 2 and ratio < 0.75:
+            return TrendClassification.DECLINING
+        if recent_count >= 2 and recent_rate > baseline_rate:
+            return TrendClassification.HOT
+        return None
+
+    def _hotness_components(
+        self,
+        *,
+        radar: ResearchRadar,
+        evidence: list[Paper],
+        recent_count: int,
+        max_recent: int,
+        ratio: float,
+        configured_provider_count: int,
+    ) -> dict[str, float]:
+        recent_volume = recent_count / max_recent if max_recent else 0.0
+        if math.isinf(ratio):
+            growth = 1.0
+        else:
+            growth_delta = min(3.0, max(-1.0, ratio - 1.0))
+            growth = (growth_delta + 1.0) / 4.0
+        range_width = max(1, radar.end_year - radar.start_year)
+        years = [
+            paper.publication_date.year
+            for paper in evidence
+            if paper.publication_date is not None
+        ]
+        recency = (
+            sum((year - radar.start_year) / range_width for year in years) / len(years)
+            if years
+            else 0.0
+        )
+        evidence_sources = {
+            source for paper in evidence for source in paper.sources
+        }
+        source_diversity = len(evidence_sources) / max(1, configured_provider_count)
+        return {
+            "recent_volume": round(min(1.0, max(0.0, recent_volume)), 6),
+            "growth": round(min(1.0, max(0.0, growth)), 6),
+            "recency": round(min(1.0, max(0.0, recency)), 6),
+            "source_diversity": round(
+                min(1.0, max(0.0, source_diversity)), 6
+            ),
+        }
+
+    def _recent_year_exposure(self, radar: ResearchRadar) -> float:
+        exposure = float(radar.recent_window_years)
+        today = self.current_date()
+        if radar.end_year != today.year:
+            return exposure
+        year_start = date(today.year, 1, 1)
+        next_year = date(today.year + 1, 1, 1)
+        elapsed = (today - year_start).days + 1
+        progress = elapsed / (next_year - year_start).days
+        return max(0.25, exposure - 1.0 + progress)
 
     @staticmethod
     def _period_ranges(start_year: int, end_year: int) -> list[tuple[int, int]]:

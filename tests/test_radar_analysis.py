@@ -45,7 +45,7 @@ def test_annual_statistics_include_zero_years_and_real_counts():
         paper("d", 2021, "TDOA D"),
         paper("e", 2021, "TDOA E"),
     ]
-    service = RadarAnalysisService(current_year=lambda: 2026)
+    service = RadarAnalysisService(current_date=lambda: date(2026, 8, 10))
 
     snapshot = service.analyze(radar(start_year=2019, end_year=2021), papers)
 
@@ -65,7 +65,7 @@ def test_technical_terms_and_multiword_phrases_are_preserved():
         "A CNN and LSTM neural network extends YOLO with deep learning, "
         "receiver geometry, synchronization-free time delay estimation.",
     )
-    keywords = RadarAnalysisService(current_year=lambda: 2026).extract_keywords(
+    keywords = RadarAnalysisService(current_date=lambda: date(2026, 8, 10)).extract_keywords(
         [source], radar=radar(), limit=30
     )
     phrases = {item.phrase for item in keywords}
@@ -121,7 +121,9 @@ def test_keyword_evolution_uses_chronological_evidence_windows():
         paper("new-a", 2025, "Deep learning neural network localization"),
         paper("new-b", 2026, "Synchronization-free neural network TDOA"),
     ]
-    snapshot = RadarAnalysisService(current_year=lambda: 2026).analyze(radar(), papers)
+    snapshot = RadarAnalysisService(current_date=lambda: date(2026, 8, 10)).analyze(
+        radar(), papers
+    )
 
     early = {item.phrase for item in snapshot.periods[0].keywords}
     recent = {item.phrase for item in snapshot.periods[-1].keywords}
@@ -135,9 +137,78 @@ def test_keyword_analysis_is_deterministic():
         paper("b", 2025, "Neural network TDOA"),
         paper("a", 2025, "Neural network TDOA"),
     ]
-    service = RadarAnalysisService(current_year=lambda: 2026)
+    service = RadarAnalysisService(current_date=lambda: date(2026, 8, 10))
 
     first = service.analyze(radar(), papers)
     second = service.analyze(radar(), reversed(papers))
 
     assert first == second
+
+
+def test_trend_classification_detects_emerging_sustained_and_declining_phrases():
+    papers = [
+        paper("old-gcc-1", 2019, "GCC-PHAT cross correlation TDOA"),
+        paper("old-gcc-2", 2020, "GCC-PHAT cross correlation TDOA"),
+        paper("old-gcc-3", 2021, "GCC-PHAT TDOA"),
+        paper("old-tdoa", 2022, "TDOA localization"),
+        paper("new-deep-1", 2025, "Deep learning neural network TDOA"),
+        paper("new-deep-2", 2026, "Deep learning neural network TDOA"),
+        paper("new-sync-1", 2025, "Synchronization-free TDOA"),
+        paper("new-sync-2", 2026, "Synchronization-free TDOA"),
+    ]
+    snapshot = RadarAnalysisService(
+        current_date=lambda: date(2026, 8, 10)
+    ).analyze(radar(), papers)
+    classes = {trend.phrase: trend.classification.value for trend in snapshot.trends}
+
+    assert classes["deep learning"] == "emerging"
+    assert classes["neural network"] == "emerging"
+    assert classes["synchronization-free"] == "emerging"
+    assert classes["TDOA"] in {"hot", "sustained"}
+    assert classes["GCC-PHAT"] == "declining"
+
+
+def test_hotness_is_normalized_explainable_and_has_evidence():
+    papers = [
+        paper("old", 2020, "TDOA receiver geometry"),
+        paper("new-1", 2025, "TDOA receiver geometry neural network"),
+        paper("new-2", 2026, "TDOA receiver geometry neural network"),
+    ]
+    snapshot = RadarAnalysisService(
+        current_date=lambda: date(2026, 8, 10)
+    ).analyze(radar(), papers)
+
+    for trend in snapshot.trends:
+        assert 0 <= trend.hotness_score <= 1
+        assert set(trend.components) == {
+            "recent_volume",
+            "growth",
+            "recency",
+            "source_diversity",
+        }
+        assert trend.canonical_ids
+
+
+def test_partial_current_year_exposure_avoids_false_decline():
+    partial_radar = radar(
+        start_year=2022,
+        end_year=2026,
+        recent_window_years=1,
+    )
+    papers = [
+        paper("old-1", 2022, "TDOA receiver geometry"),
+        paper("old-2", 2023, "TDOA receiver geometry"),
+        paper("old-3", 2024, "TDOA receiver geometry"),
+        paper("old-4", 2025, "TDOA receiver geometry"),
+        paper("current", 2026, "TDOA receiver geometry"),
+    ]
+    snapshot = RadarAnalysisService(
+        current_date=lambda: date(2026, 2, 1)
+    ).analyze(partial_radar, papers)
+    receiver_geometry = next(
+        trend for trend in snapshot.trends if trend.phrase == "receiver geometry"
+    )
+
+    assert snapshot.partial_current_year is True
+    assert receiver_geometry.classification.value != "declining"
+    assert receiver_geometry.recent_annual_rate > receiver_geometry.baseline_annual_rate
