@@ -267,10 +267,28 @@ acceptance passed for Manual Search, Subscriptions, Run Now, Run History,
 Weekly Digest, historical deduplication, and restart persistence. Stable tag:
 `dify-v1.6`.
 
-## Stack v1.7 — Zotero Integration
+## Stack v1.7 — Research Radar and Historical Trend Intelligence
+
+Status: **Release Candidate**
+
+Implemented on `feat/v1.7-research-radar`:
+
+- bounded historical backfill through `LiteratureSearchService`;
+- persistent Radar-specific scan and observation history using global Paper
+  identity;
+- deterministic annual statistics, keyword evolution, trend classification,
+  timeline, representative papers, and canonical-ID evidence;
+- bilingual Research Radar UI and legacy `/dashboard` redirect; and
+- explicit Radar-to-Subscription prefill without silent creation.
+
+The compatible workflow remains `literature-search-v1.1.yml`. Manual
+acceptance is required before creating `dify-v1.7`.
+
+## Future — Zotero Integration
 
 Support collection routing, tags, notes, Library ID, collection mapping, and
-secure Zotero credentials through the configuration layer.
+secure Zotero credentials through the configuration layer. Its Stack version
+will be scheduled after v1.7 acceptance.
 
 ## Stack v1.8 — LLM Abstract Analysis
 

@@ -25,18 +25,19 @@ solely to make version numbers align.
 | v1.4 | Stable | Deterministic deduplication, metadata merge, relevance/quality ranking, additive diagnostics | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.4` |
 | v1.5 | Stable | Local research Web UI, diagnostics, Provider Settings, secret-safe BYOK UX | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.5` |
 | v1.6 | Stable | Research subscriptions, historical novelty, weekly scheduling, Dashboard recommendations and digests | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.6` |
+| v1.7 | Release Candidate | Research Radar, historical backfill, deterministic trends, evidence timeline | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | Not created |
 
 ## Provider Capability Matrix
 
-| Provider | Stack v1.2 | Stack v1.3 | Stack v1.4 | Stack v1.5 | Stack v1.6 |
+| Provider | Stack v1.2 | Stack v1.3 | Stack v1.4 | Stack v1.5 | Stack v1.6 | Stack v1.7 |
 |---|---|---|---|---|---|
-| OpenAlex | Runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions |
-| Semantic Scholar | Declared, non-runnable | Runnable | Runnable | Runnable, optional BYOK | Runnable; anonymous 429 isolated |
-| arXiv | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions |
-| Crossref | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions |
-| IEEE Xplore | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later | Disabled, Coming later |
-| Scopus | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later | Disabled, Coming later |
-| Web of Science | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later | Disabled, Coming later |
+| OpenAlex | Runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions | Runnable in Radar |
+| Semantic Scholar | Declared, non-runnable | Runnable | Runnable | Runnable, optional BYOK | Runnable; anonymous 429 isolated | Runnable; failure isolated |
+| arXiv | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions | Runnable in Radar |
+| Crossref | Declared, non-runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions | Runnable in Radar |
+| IEEE Xplore | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later | Disabled, Coming later | Disabled, Coming later |
+| Scopus | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later | Disabled, Coming later | Disabled, Coming later |
+| Web of Science | Declared, non-runnable | Non-runnable | Non-runnable | Disabled, Coming later | Disabled, Coming later | Disabled, Coming later |
 
 ## Workflow Upgrade Policy
 
@@ -72,6 +73,10 @@ Stack v1.6 also reuses v1.1. Subscriptions, scheduling, historical novelty,
 recommendations, and Dashboard digests are LitWatch Web capabilities and do
 not change the Dify search contract. No `literature-search-v1.6.yml` is
 created.
+
+Stack v1.7 also reuses v1.1. Research Radar is an additional LitWatch Web/API
+capability and does not alter the Dify search request or response contract. No
+`literature-search-v1.7.yml` is created.
 
 ## Stack v1.2 Release Evidence
 
@@ -151,6 +156,16 @@ unchanged. Final manual acceptance passed for Manual Search, Research
 Subscriptions, Run Now, Run History, Weekly Digest, historical duplicate
 suppression, and restart persistence. See `docs/V1_6_E2E_RESULTS.md`. Stack
 v1.6 is Stable at `dify-v1.6`.
+
+## Stack v1.7 Release Candidate Evidence
+
+Real 2018-2026 TDOA and OFDM Radar scans completed through OpenAlex, arXiv, and
+Crossref, persisted distinct paper histories, rendered annual trends,
+paper-backed keyword evolution, deterministic trend classifications,
+representative papers, and scan history. Immediate rescans reported zero new
+papers. Browser checks passed in zh-CN and English. Automated tests reached 288
+passing tests with Ruff and diff checks passing. See
+`docs/V1_7_E2E_RESULTS.md`. Manual acceptance and a Stable tag remain pending.
 
 ## Recovery Rule
 

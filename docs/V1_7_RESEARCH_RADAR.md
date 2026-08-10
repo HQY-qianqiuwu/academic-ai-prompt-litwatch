@@ -1,6 +1,6 @@
 # Stack v1.7 Research Radar and Historical Trend Intelligence
 
-Status: **DESIGN BASELINE**
+Status: **RELEASE CANDIDATE**
 
 Base tag: `dify-v1.6`
 
@@ -48,6 +48,24 @@ Research Radar UI / API
 receives `LiteratureSearchService`, repositories, and clocks through dependency
 injection. Existing Provider failure isolation, SSRF validation, profile-backed
 BYOK, deduplication, ranking, and metadata truth rules remain authoritative.
+
+## Release Candidate implementation
+
+The release candidate implements validated Radar CRUD, restart-safe SQLite
+persistence, bounded two-year historical backfill, provider failure isolation,
+global `Paper` metadata reuse, Radar-specific observation history, stale scan
+recovery, deterministic annual and keyword statistics, trend classification,
+paper-evidenced timelines, and representative-paper selection.
+
+The FastAPI/Jinja2/vanilla JavaScript interface is available at `/radars`.
+`/dashboard` redirects to this canonical route. The page reads persisted
+analysis without contacting Providers and exposes explicit scan actions for
+external retrieval. Radar and trend actions may prefill `/subscriptions`, but
+the user must explicitly submit the Subscription form.
+
+Automated and real validation evidence is recorded in
+`docs/V1_7_E2E_RESULTS.md`. Stack v1.7 remains a Release Candidate until manual
+acceptance; no `dify-v1.7` tag exists.
 
 ## Existing components reused
 

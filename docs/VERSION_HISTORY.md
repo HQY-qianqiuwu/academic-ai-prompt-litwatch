@@ -325,3 +325,32 @@ Validation state:
 Architecture record: `docs/V1_6_WEEKLY_RECOMMENDATIONS.md`
 
 Validation record: `docs/V1_6_E2E_RESULTS.md`
+
+## Stack v1.7
+
+Status: **Release Candidate**
+
+Capability:
+
+- persistent Research Radar configurations, scan history, and per-Radar paper
+  observations using the existing global canonical paper identity;
+- bounded two-year historical backfill through `LiteratureSearchService` and
+  the Provider Registry;
+- deterministic annual statistics, technical keyword extraction, keyword
+  evolution, trend scoring/classification, and partial-current-year handling;
+- every trend backed by persisted canonical paper IDs;
+- evidence-based research timelines and deterministic representative papers;
+- bilingual Radar list/detail UI, background scans, and `/dashboard` bookmark
+  compatibility; and
+- explicit Radar-to-Subscription prefill without silent creation.
+
+Release Candidate validation reached 288 passing tests. Real 2018-2026 TDOA
+and OFDM Radars completed successfully with distinct paper sets and rendered
+analysis. Restart persistence, immediate rescan novelty suppression, browser
+rendering, lifecycle, Dify reachability, and stable DSL protection passed.
+
+Architecture record: `docs/V1_7_RESEARCH_RADAR.md`
+
+Validation record: `docs/V1_7_E2E_RESULTS.md`
+
+Manual acceptance remains required. No Stable tag has been created.
