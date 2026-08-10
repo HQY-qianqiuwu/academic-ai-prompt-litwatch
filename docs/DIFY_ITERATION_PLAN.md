@@ -246,7 +246,7 @@ source merging, partial-failure UX, and Provider Settings. Stable tag:
 
 ## Stack v1.6 — Research Subscriptions and Weekly Recommendations
 
-Status: **Release Candidate**
+Status: **Stable**
 
 Implemented on `feat/v1.6-weekly-recommendations`:
 
@@ -261,9 +261,11 @@ Implemented on `feat/v1.6-weekly-recommendations`:
   and stable v1.0/v1.1 DSL files.
 
 Real TDOA, OFDM, repeat-run suppression, partial-provider-failure, and restart
-E2E passed. The automated gate reached 239 passing tests. Dashboard delivery is
-complete; optional email delivery is deferred. Manual acceptance is required
-before a Stable tag may be created.
+E2E passed. The final automated gate reached 250 passing tests. Dashboard
+delivery is complete; optional email delivery is deferred. Final manual
+acceptance passed for Manual Search, Subscriptions, Run Now, Run History,
+Weekly Digest, historical deduplication, and restart persistence. Stable tag:
+`dify-v1.6`.
 
 ## Stack v1.7 — Zotero Integration
 

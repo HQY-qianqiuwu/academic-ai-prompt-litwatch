@@ -24,11 +24,11 @@ solely to make version numbers align.
 | v1.3 | Stable | Multi-source retrieval, deterministic aggregation, failure isolation, secure Provider BYOK; duplicates intentionally preserved | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.3` |
 | v1.4 | Stable | Deterministic deduplication, metadata merge, relevance/quality ranking, additive diagnostics | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.4` |
 | v1.5 | Stable | Local research Web UI, diagnostics, Provider Settings, secret-safe BYOK UX | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.5` |
-| v1.6 | Release Candidate | Research subscriptions, historical novelty, weekly scheduling, Dashboard recommendations and digests | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | Not created |
+| v1.6 | Stable | Research subscriptions, historical novelty, weekly scheduling, Dashboard recommendations and digests | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.6` |
 
 ## Provider Capability Matrix
 
-| Provider | Stack v1.2 | Stack v1.3 | Stack v1.4 | Stack v1.5 | Stack v1.6 RC |
+| Provider | Stack v1.2 | Stack v1.3 | Stack v1.4 | Stack v1.5 | Stack v1.6 |
 |---|---|---|---|---|---|
 | OpenAlex | Runnable | Runnable | Runnable | Runnable and selectable in UI | Runnable in subscriptions |
 | Semantic Scholar | Declared, non-runnable | Runnable | Runnable | Runnable, optional BYOK | Runnable; anonymous 429 isolated |
@@ -135,9 +135,9 @@ viewport. Stable v1.0 and v1.1 DSL files remain unchanged. See
 cards, ranking display, source merging, partial-failure UX, and Provider
 Settings. Stack v1.5 is Stable at `dify-v1.5`.
 
-## Stack v1.6 Release Candidate Evidence
+## Stack v1.6 Release Evidence
 
-The Release Candidate adds persistent research subscriptions, a unified run
+Stack v1.6 adds persistent research subscriptions, a unified run
 engine, per-subscription historical novelty, weekly scheduling, catch-up,
 concurrency leases, stale recovery, and idempotent Dashboard digests. Real
 TDOA and OFDM runs returned distinct recommendations. An immediate repeat run
@@ -145,10 +145,12 @@ recommended no previously seen papers, and a Semantic Scholar anonymous 429
 was isolated as a partial success while other Providers produced a digest.
 
 Restart persistence, Manual Search, Provider Settings, Dify, BYOK, SSRF, and
-lifecycle checks passed. The gate reached 239 passing tests with Ruff and diff
+lifecycle checks passed. The final gate reached 250 passing tests with Ruff and diff
 checks passing. Email delivery is deferred. Stable v1.0 and v1.1 DSL files are
-unchanged. See `docs/V1_6_E2E_RESULTS.md`. This version remains a Release
-Candidate and has no `dify-v1.6` tag pending manual acceptance.
+unchanged. Final manual acceptance passed for Manual Search, Research
+Subscriptions, Run Now, Run History, Weekly Digest, historical duplicate
+suppression, and restart persistence. See `docs/V1_6_E2E_RESULTS.md`. Stack
+v1.6 is Stable at `dify-v1.6`.
 
 ## Recovery Rule
 

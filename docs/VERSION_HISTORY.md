@@ -289,7 +289,7 @@ Validation record: `docs/V1_5_E2E_RESULTS.md`
 
 ## Stack v1.6
 
-Status: **Release Candidate**
+Status: **Stable**
 
 Capability:
 
@@ -307,7 +307,7 @@ Capability:
 
 Validation state:
 
-- 239 tests passed; Ruff and `git diff --check`: pass;
+- 250 tests passed; Ruff and `git diff --check`: pass;
 - real TDOA and OFDM subscriptions: pass with distinct recommendations;
 - immediate second-run duplicate suppression: pass;
 - partial Semantic Scholar HTTP 429 isolation with useful digest: pass;
@@ -316,8 +316,11 @@ Validation state:
   pass;
 - Stable v1.0 and v1.1 DSL protection: pass;
 - Dashboard delivery: complete;
+- Run History routing and bilingual score-card typography manual recheck: pass;
+- final manual acceptance for Search, Subscriptions, Run Now, Run History,
+  Weekly Digest, historical deduplication, and restart persistence: pass;
 - Email delivery: deferred; and
-- Stable tag: **not created pending manual acceptance**.
+- Stable tag: `dify-v1.6`.
 
 Architecture record: `docs/V1_6_WEEKLY_RECOMMENDATIONS.md`
 

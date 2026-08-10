@@ -1,13 +1,13 @@
 # Stack v1.6 E2E Results
 
-Status: **RELEASE CANDIDATE** (automated and real E2E gates passed; manual product acceptance still required).
+Status: **STABLE** (automated, real E2E, and final manual product acceptance passed).
 
-Date: 2026-08-09
+Date: 2026-08-10
 Branch: `feat/v1.6-weekly-recommendations`
 
 ## Automated gate
 
-- `python -m pytest -q`: 245 passed, one existing FastAPI/Starlette dependency warning;
+- `python -m pytest -q`: 250 passed, one existing FastAPI/Starlette dependency warning;
 - `ruff check src tests`: PASS;
 - `git diff --check`: PASS;
 - scheduler due/not-due, disabled, catch-up, concurrency lease, stale recovery,
@@ -92,11 +92,28 @@ by that environment repair.
 - backend Provider/run enum values and database contracts: unchanged; and
 - write-only Provider secret handling and redaction: unchanged.
 
-## Release Candidate decision
+## Final manual acceptance
+
+- Manual Search: PASS;
+- Research Subscription: PASS;
+- Run Now: PASS;
+- Run History: PASS;
+- Weekly Digest: PASS;
+- historical deduplication: PASS;
+- immediate duplicate suppression: PASS;
+- restart persistence: PASS; and
+- post-restart historical deduplication: PASS.
+
+The latest observed post-restart run completed with `success`: 150 raw
+candidates, 145 deduplicated candidates, 30 historically seen papers, 0 new
+papers, and 0 recommendations. This is the expected successful empty-digest
+outcome when the current result set contains no unseen papers.
+
+## Stable decision
 
 Stages 4 through 10 passed their independent implementation and validation
 gates. The Simplified Chinese UI polish gate also passed without changing core
 retrieval or recommendation semantics. Dashboard delivery is complete;
 optional email delivery is deferred.
-Stack v1.6 is a Release Candidate, not Stable. No `dify-v1.6` tag was created.
-Manual browser acceptance remains required before Stable finalization.
+Final manual browser acceptance passed on 2026-08-10. Stack v1.6 is Stable and
+is released through the annotated `dify-v1.6` tag.

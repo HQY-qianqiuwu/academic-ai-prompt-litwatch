@@ -1,14 +1,14 @@
 # Stack v1.6 Research Subscriptions and Weekly Recommendations
 
-Status: **Release Candidate**
+Status: **Stable**
 
 Base tag: `dify-v1.5`
 
 Base commit: `9539c56df31c1af34cfe5bb7f0ce5afb921719bb`
 
-This document records the approved Stack v1.6 architecture and its implemented
-Release Candidate. Stable promotion still requires final human acceptance; no
-`dify-v1.6` tag exists at this stage.
+This document records the approved and implemented Stack v1.6 architecture.
+Automated, real E2E, and final human acceptance passed; the Stable release is
+identified by the annotated `dify-v1.6` tag.
 
 ## Scope
 
@@ -589,7 +589,7 @@ embedded in HTML/DSL, or written to logs.
 - push the RC branch for manual acceptance; and
 - create no Stable tag until final human E2E approval.
 
-## Release Candidate implementation status
+## Stable implementation status
 
 Stages 0 through 10 are complete on
 `feat/v1.6-weekly-recommendations` as independent checkpoints:
@@ -614,11 +614,13 @@ preference. Localization is restricted to templates, static JavaScript, and
 CSS. Provider names and paper title/abstract/authors/venue/DOI remain original
 metadata, while Provider/run enums and database contracts remain unchanged.
 
-The localized Release Candidate gate has 245 passing tests, Ruff PASS, and
+The final Stable gate has 250 passing tests, Ruff PASS, and
 `git diff --check` PASS. Dashboard delivery is complete. Optional email
 delivery remains deferred because a safe product implementation requires
-write-only SMTP configuration and isolated retry/error handling. Manual
-product acceptance is still required before Stable finalization.
+write-only SMTP configuration and isolated retry/error handling. Final manual
+acceptance passed for Manual Search, Research Subscription, Run Now, Run
+History, Weekly Digest, historical deduplication, immediate duplicate
+suppression, restart persistence, and post-restart historical deduplication.
 
 ## Test strategy
 
