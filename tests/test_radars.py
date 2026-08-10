@@ -189,4 +189,3 @@ def test_radar_models_forbid_secret_fields(tmp_path):
     service.create(valid_spec(providers=["openalex"]))
     database.connection.close()
     assert marker.encode() not in settings.database_path.read_bytes()
-

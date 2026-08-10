@@ -154,4 +154,3 @@ class RadarPaper(BaseModel):
     publication_year: int | None = None
     relevance_score: float = Field(default=0.0, ge=0.0, le=1.0)
     representative_score: float = Field(default=0.0, ge=0.0, le=1.0)
-

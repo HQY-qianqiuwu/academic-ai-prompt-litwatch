@@ -108,4 +108,3 @@ class ResearchRadarService:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Radar clock must return a timezone-aware datetime")
         return value.astimezone(UTC)
-
