@@ -61,6 +61,7 @@ def test_radar_pages_are_bilingual_registry_driven_and_dashboard_compatible(tmp_
         legacy = client.get("/dashboard", follow_redirects=False)
         script = client.get("/static/radars.js")
         detail_script = client.get("/static/radar-detail.js")
+        i18n_script = client.get("/static/i18n.js")
 
     assert home.status_code == create.status_code == 200
     assert 'class="active" href="/radars"' in home.text
@@ -77,6 +78,8 @@ def test_radar_pages_are_bilingual_registry_driven_and_dashboard_compatible(tmp_
     assert "trend.growth_rate" not in detail_script.text
     assert "keyword.count" in detail_script.text
     assert "keyword.paper_count" not in detail_script.text
+    assert "技术主题演进" in i18n_script.text
+    assert "Technical Theme Evolution" in i18n_script.text
     assert legacy.status_code == 307
     assert legacy.headers["location"] == "/radars"
 
@@ -103,6 +106,7 @@ def test_radar_detail_links_prefill_subscription_without_creating_it(tmp_path):
         subscriptions = client.get("/api/v1/subscriptions").json()
 
     assert detail.status_code == 200
+    assert "技术主题演进" in detail.text
     assert "data-track-direction" in detail.text
     assert 'href="/subscriptions?' in detail_script
     assert "new URLSearchParams(window.location.search)" in subscription_script

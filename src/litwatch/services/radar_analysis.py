@@ -23,7 +23,10 @@ TECHNICAL_TERMS = {
     "yolo": "YOLO",
 }
 TECHNICAL_PATTERNS = {
-    "TDOA": re.compile(r"(?<![a-z0-9])tdoa(?![a-z0-9])", re.IGNORECASE),
+    "TDOA": re.compile(
+        r"(?<![a-z0-9])(?:tdoa|time[-\s]+difference[-\s]+of[-\s]+arrival)(?![a-z0-9])",
+        re.IGNORECASE,
+    ),
     "GCC-PHAT": re.compile(r"(?<![a-z0-9])gcc[-\s]phat(?![a-z0-9])", re.IGNORECASE),
     "OFDM": re.compile(r"(?<![a-z0-9])ofdm(?![a-z0-9])", re.IGNORECASE),
     "MIMO": re.compile(r"(?<![a-z0-9])mimo(?![a-z0-9])", re.IGNORECASE),
@@ -46,14 +49,26 @@ MULTIWORD_PHRASES = (
     "noise suppression",
     "sensor array",
     "synchronization-free",
+    "synchronization-free localization",
+    "robust localization",
+    "multipath environment",
+    "channel estimation",
+    "doppler compensation",
+    "adaptive modulation",
+    "hydrophone array",
+    "sensor network",
 )
-STOPWORDS = {
+ACADEMIC_STOPWORDS = {
     "about",
     "acoustic",
     "also",
     "analysis",
     "and",
     "approach",
+    "algorithm",
+    "algorithms",
+    "application",
+    "applications",
     "are",
     "based",
     "been",
@@ -61,38 +76,174 @@ STOPWORDS = {
     "can",
     "data",
     "different",
+    "demonstrate",
+    "demonstrates",
+    "demonstrated",
     "each",
+    "effective",
     "for",
     "from",
     "has",
     "have",
     "its",
     "into",
+    "high",
+    "however",
+    "improve",
+    "improved",
+    "improves",
+    "large",
+    "low",
     "method",
+    "methods",
     "model",
+    "models",
     "more",
+    "multiple",
+    "new",
+    "novel",
     "not",
+    "of",
     "paper",
     "proposed",
+    "propose",
+    "proposes",
+    "provide",
+    "provides",
+    "present",
+    "presents",
     "result",
     "results",
+    "scheme",
+    "schemes",
+    "several",
+    "show",
+    "shows",
+    "significant",
+    "solution",
+    "solutions",
     "such",
     "study",
+    "studies",
     "system",
+    "systems",
     "that",
     "the",
     "their",
     "these",
     "this",
     "through",
+    "technique",
+    "techniques",
+    "two",
     "underwater",
     "use",
+    "used",
     "using",
     "was",
     "were",
     "which",
     "with",
+    "better",
+    "framework",
+    "performance",
+    "problem",
+    "problems",
+    "various",
+    "work",
 }
+MORPHOLOGICAL_NORMALIZATION = {
+    "applications": "application",
+    "demonstrated": "demonstrate",
+    "demonstrates": "demonstrate",
+    "environments": "environment",
+    "methods": "method",
+    "models": "model",
+    "networks": "network",
+    "proposed": "propose",
+    "proposes": "propose",
+    "studies": "study",
+    "systems": "system",
+    "algorithms": "algorithm",
+    "measurements": "measurement",
+    "signals": "signal",
+    "schemes": "scheme",
+    "solutions": "solution",
+    "techniques": "technique",
+}
+TECHNICAL_HEADS = {
+    "array",
+    "beamforming",
+    "channel",
+    "classification",
+    "coding",
+    "communication",
+    "compensation",
+    "correlation",
+    "detection",
+    "environment",
+    "equalization",
+    "estimation",
+    "filtering",
+    "geometry",
+    "imaging",
+    "learning",
+    "localization",
+    "mitigation",
+    "modulation",
+    "measurement",
+    "multiplexing",
+    "navigation",
+    "network",
+    "optimization",
+    "positioning",
+    "prediction",
+    "ranging",
+    "recognition",
+    "reconstruction",
+    "robustness",
+    "synchronization",
+    "signal",
+    "tracking",
+}
+TECHNICAL_SIGNALS = TECHNICAL_HEADS | {
+    "adaptive",
+    "auv",
+    "cnn",
+    "cross",
+    "deep",
+    "delay",
+    "distributed",
+    "doppler",
+    "gcc-phat",
+    "hydrophone",
+    "lstm",
+    "mimo",
+    "multipath",
+    "multiplexing",
+    "neural",
+    "ofdm",
+    "receiver",
+    "robust",
+    "sensor",
+    "synchronization-free",
+    "tdoa",
+    "measurement",
+    "signal",
+    "transmitter",
+    "yolo",
+}
+STANDALONE_TECHNICAL_TERMS = {
+    "beamforming",
+    "channel",
+    "equalization",
+    "multipath",
+    "robustness",
+    "synchronization-free",
+} | set(TECHNICAL_TERMS)
+MIN_TREND_DOCUMENTS = 3
+MIN_TREND_COVERAGE = 0.02
+DOMAIN_BACKGROUND_TERMS = {"underwater", "acoustic"}
 TOKEN_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9-]{2,}")
 
 
@@ -224,29 +375,19 @@ class RadarAnalysisService:
         sources: dict[str, set[str]] = defaultdict(set)
         configured_phrases = tuple(
             dict.fromkeys(
-                item.casefold()
+                self._normalize_phrase(item)
                 for item in radar.keywords
-                if item and item.casefold() not in STOPWORDS
+                if item and self._normalize_phrase(item) not in ACADEMIC_STOPWORDS
             )
         )
-        excluded = {item.casefold() for item in radar.exclude_keywords}
+        excluded = {self._normalize_phrase(item) for item in radar.exclude_keywords}
 
         for paper in papers:
-            text = self._paper_text(paper)
-            normalized = self._normalize_text(text)
-            phrases: set[str] = set()
-            for display, pattern in TECHNICAL_PATTERNS.items():
-                if pattern.search(normalized):
-                    phrases.add(display)
-            for phrase in (*MULTIWORD_PHRASES, *configured_phrases):
-                if phrase in normalized and phrase not in excluded:
-                    phrases.add(TECHNICAL_TERMS.get(phrase, phrase))
-            for token in TOKEN_PATTERN.findall(normalized):
-                folded = token.casefold()
-                display = TECHNICAL_TERMS.get(folded, folded)
-                if folded in STOPWORDS or folded in excluded or display in phrases:
-                    continue
-                phrases.add(display)
+            phrases = self._extract_paper_concepts(
+                paper,
+                configured_phrases=configured_phrases,
+                excluded=excluded,
+            )
             for phrase in phrases:
                 evidence[phrase].add(paper.canonical_id)
                 sources[phrase].update(paper.sources)
@@ -297,6 +438,8 @@ class RadarAnalysisService:
         paper_by_id = {paper.canonical_id: paper for paper in papers}
         raw_counts: dict[str, tuple[int, int]] = {}
         for keyword in keywords:
+            if not self._is_trend_candidate(keyword.phrase, radar):
+                continue
             evidence = [paper_by_id[item] for item in keyword.canonical_ids if item in paper_by_id]
             recent_count = sum(
                 paper.publication_date is not None
@@ -307,12 +450,21 @@ class RadarAnalysisService:
                 recent_count,
                 len(evidence) - recent_count,
             )
+        minimum_coverage = max(
+            MIN_TREND_DOCUMENTS,
+            math.ceil(len(papers) * MIN_TREND_COVERAGE),
+        )
+        raw_counts = {
+            phrase: counts
+            for phrase, counts in raw_counts.items()
+            if sum(counts) >= minimum_coverage
+        }
         max_recent = max((counts[0] for counts in raw_counts.values()), default=0)
         trends: list[TrendStatistic] = []
         for keyword in keywords:
-            recent_count, historical_count = raw_counts[keyword.phrase]
-            if recent_count + historical_count < 2:
+            if keyword.phrase not in raw_counts:
                 continue
+            recent_count, historical_count = raw_counts[keyword.phrase]
             evidence = [paper_by_id[item] for item in keyword.canonical_ids if item in paper_by_id]
             recent_rate = recent_count / max(recent_year_exposure, 0.25)
             baseline_rate = (
@@ -331,6 +483,12 @@ class RadarAnalysisService:
                 ratio=ratio,
                 partial_current_year=radar.end_year == self.current_date().year,
             )
+            historical_signal = historical_count >= MIN_TREND_DOCUMENTS and classification in {
+                TrendClassification.SUSTAINED,
+                TrendClassification.DECLINING,
+            }
+            if recent_count < MIN_TREND_DOCUMENTS and not historical_signal:
+                continue
             components = self._hotness_components(
                 radar=radar,
                 evidence=evidence,
@@ -346,7 +504,11 @@ class RadarAnalysisService:
                 + 0.15 * components["source_diversity"],
                 6,
             )
-            if classification is None and recent_count >= 2 and score >= 0.65:
+            if (
+                classification is None
+                and recent_count >= MIN_TREND_DOCUMENTS
+                and score >= 0.65
+            ):
                 classification = TrendClassification.HOT
             if classification is None:
                 continue
@@ -384,17 +546,135 @@ class RadarAnalysisService:
         ratio: float,
         partial_current_year: bool,
     ) -> TrendClassification | None:
-        if historical_count <= 1 and recent_count >= 2 and recent_rate > baseline_rate:
+        if (
+            historical_count <= 1
+            and recent_count >= MIN_TREND_DOCUMENTS
+            and recent_rate > baseline_rate
+        ):
             return TrendClassification.EMERGING
         minimum_recent = 1 if partial_current_year else 2
         sustained_ratio = ratio >= 0.75 if partial_current_year else 0.75 <= ratio <= 1.5
-        if historical_count >= 2 and recent_count >= minimum_recent and sustained_ratio:
+        if (
+            historical_count >= MIN_TREND_DOCUMENTS
+            and recent_count >= minimum_recent
+            and sustained_ratio
+        ):
             return TrendClassification.SUSTAINED
-        if historical_count >= 2 and ratio < 0.75:
+        if historical_count >= MIN_TREND_DOCUMENTS and ratio < 0.75:
             return TrendClassification.DECLINING
-        if recent_count >= 2 and recent_rate > baseline_rate:
+        if recent_count >= MIN_TREND_DOCUMENTS and recent_rate > baseline_rate:
             return TrendClassification.HOT
         return None
+
+    def _extract_paper_concepts(
+        self,
+        paper: Paper,
+        *,
+        configured_phrases: tuple[str, ...],
+        excluded: set[str],
+    ) -> set[str]:
+        normalized = self._normalize_text(self._paper_text(paper))
+        concepts: set[str] = set()
+        for display, pattern in TECHNICAL_PATTERNS.items():
+            if pattern.search(normalized) and display.casefold() not in excluded:
+                concepts.add(display)
+
+        known_phrases = {
+            self._normalize_phrase(phrase)
+            for phrase in (*MULTIWORD_PHRASES, *configured_phrases)
+        }
+        for phrase in known_phrases:
+            if (
+                phrase not in excluded
+                and self._is_semantic_concept(phrase)
+                and self._contains_phrase(normalized, phrase)
+            ):
+                concepts.add(self._display_phrase(phrase))
+
+        for segment in re.split(r"[.!?;:\n]+", normalized):
+            tokens = [self._normalize_token(token) for token in TOKEN_PATTERN.findall(segment)]
+            tokens = [token for token in tokens if token]
+            tokens = [
+                token
+                for index, token in enumerate(tokens)
+                if index == 0 or token != tokens[index - 1]
+            ]
+            for size in (3, 2):
+                for index in range(len(tokens) - size + 1):
+                    phrase = " ".join(tokens[index : index + size])
+                    if phrase in excluded or not self._is_semantic_concept(phrase):
+                        continue
+                    concepts.add(self._display_phrase(phrase))
+            for token in tokens:
+                if (
+                    token not in excluded
+                    and token not in ACADEMIC_STOPWORDS
+                    and token in STANDALONE_TECHNICAL_TERMS
+                ):
+                    concepts.add(self._display_phrase(token))
+        return concepts
+
+    @staticmethod
+    def _contains_phrase(text: str, phrase: str) -> bool:
+        pattern = r"(?<![a-z0-9])" + r"\s+".join(
+            re.escape(token) for token in phrase.split()
+        ) + r"(?![a-z0-9])"
+        return re.search(pattern, text, re.IGNORECASE) is not None
+
+    @staticmethod
+    def _normalize_token(token: str) -> str:
+        folded = token.casefold().strip("-")
+        return MORPHOLOGICAL_NORMALIZATION.get(folded, folded)
+
+    @classmethod
+    def _normalize_phrase(cls, phrase: str) -> str:
+        tokens = [
+            token
+            for token in (cls._normalize_token(item) for item in TOKEN_PATTERN.findall(phrase))
+            if token
+        ]
+        return " ".join(
+            token
+            for index, token in enumerate(tokens)
+            if index == 0 or token != tokens[index - 1]
+        )
+
+    @staticmethod
+    def _display_phrase(phrase: str) -> str:
+        return " ".join(TECHNICAL_TERMS.get(token, token) for token in phrase.split())
+
+    @staticmethod
+    def _is_semantic_concept(phrase: str) -> bool:
+        tokens = phrase.split()
+        disallowed = ACADEMIC_STOPWORDS - DOMAIN_BACKGROUND_TERMS
+        if not tokens or any(token in disallowed for token in tokens):
+            return False
+        if len(tokens) == 1:
+            return tokens[0] in STANDALONE_TECHNICAL_TERMS
+        acronyms = [token for token in tokens if token in TECHNICAL_TERMS]
+        non_acronyms = [token for token in tokens if token not in TECHNICAL_TERMS]
+        return (
+            tokens[-1] in TECHNICAL_HEADS
+            and any(token in TECHNICAL_SIGNALS for token in tokens[:-1])
+        ) or (
+            bool(acronyms)
+            and (
+                len(acronyms) >= 2
+                or any(token in TECHNICAL_SIGNALS for token in non_acronyms)
+            )
+        )
+
+    @classmethod
+    def _is_trend_candidate(cls, phrase: str, radar: ResearchRadar) -> bool:
+        normalized = cls._normalize_phrase(phrase)
+        if not cls._is_semantic_concept(normalized):
+            return False
+        topic_tokens = {
+            cls._normalize_token(token)
+            for token in TOKEN_PATTERN.findall(radar.topic)
+            if cls._normalize_token(token)
+        }
+        return not set(normalized.split()).issubset(topic_tokens)
 
     def _hotness_components(
         self,
@@ -567,9 +847,14 @@ class RadarAnalysisService:
 
     @staticmethod
     def _normalize_text(text: str) -> str:
-        return (
+        normalized = (
             text.casefold()
             .replace("–", "-")
             .replace("—", "-")
             .replace("_", " ")
+        )
+        return re.sub(
+            r"(?<![a-z0-9])time[-\s]+difference[-\s]+of[-\s]+arrival(?![a-z0-9])",
+            "tdoa",
+            normalized,
         )

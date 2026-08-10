@@ -8,7 +8,7 @@ Base: `dify-v1.6` (`dec49ea2ecc466bfa2f8a71cf8f22b762e0e24c0`)
 
 ## Automated gate
 
-- `python -m pytest -q`: 288 passed with one existing TestClient deprecation warning
+- `python -m pytest -q`: 295 passed with one existing TestClient deprecation warning
 - `ruff check src tests`: pass
 - `git diff --check`: pass
 - v1.0 Workflow DSL: unchanged from `dify-v1.0`
@@ -22,14 +22,15 @@ Base: `dify-v1.6` (`dec49ea2ecc466bfa2f8a71cf8f22b762e0e24c0`)
 - Range: 2018-2026
 - Recent window: 2 years
 - Providers: OpenAlex, arXiv, Crossref
-- Scan: success
-- Raw candidates: 750
-- Deduplicated Radar papers: 148
+- Scan: partial success; an upstream rate limit was isolated
+- Raw candidates: 500
+- Deduplicated candidates: 150
+- Persisted Radar papers: 171
 - Annual points: 9
 - Timeline periods: 3
-- Persisted trends: 100
+- Persisted technical trends: 10
 - Representative papers: 8
-- Immediate post-restart rescan: success, new papers = 0
+- Semantic-quality rescan: partial success, new papers = 23
 
 ## Real OFDM Radar
 
@@ -38,28 +39,47 @@ Base: `dify-v1.6` (`dec49ea2ecc466bfa2f8a71cf8f22b762e0e24c0`)
 - Range: 2018-2026
 - Recent window: 2 years
 - Providers: OpenAlex, arXiv, Crossref
-- Scan: success
-- Raw candidates: 750
-- Deduplicated Radar papers: 147
+- Scan: partial success; an upstream rate limit was isolated
+- Raw candidates: 500
+- Deduplicated candidates: 150
+- Persisted Radar papers: 164
 - Annual points: 9
 - Timeline periods: 3
-- Persisted trends: 100
+- Persisted technical trends: 19
 - Representative papers: 8
-- Immediate rescan: success, new papers = 0
+- Semantic-quality rescan: partial success, new papers = 6
 
-The TDOA and OFDM Radar sets had zero overlapping persisted canonical IDs in
-this run. Their top terms were also distinct: TDOA emphasized localization,
-sensor networks, accuracy, and TDOA; OFDM emphasized OFDM, communication,
-channel, frequency, and multiplexing. Radar history remained isolated by
-Radar ID.
+The semantic-quality rescans produced clearly different technical themes.
+TDOA emphasized robustness, multipath, neural networks, sensor networks, AUV,
+TDOA measurement, and beamforming. OFDM emphasized channel behavior,
+multipath, OFDM multiplexing, MIMO, adaptive modulation, channel estimation,
+and deep learning. Radar history remained isolated by Radar ID.
+
+## Trend semantic-quality gate
+
+- Extraction is phrase-first: known technical phrases, validated two-/three-
+  token concepts, and preserved acronyms are evaluated before standalone terms.
+- Standalone vocabulary is restricted to maintained technical terms; academic
+  boilerplate such as `demonstrate`, `proposes`, `used`, `however`, `two`, and
+  `better` is not eligible.
+- Conservative morphology normalization merges safe variants without stemming
+  arbitrary domain vocabulary.
+- Query-only background concepts remain available in corpus summaries but do
+  not automatically become hot trends.
+- Candidate frequency and evidence use distinct canonical IDs. A trend requires
+  at least the greater of 3 documents or 2% corpus coverage; recent emerging/hot
+  candidates require 3 recent documents.
+- Real TDOA and OFDM trend-card checks found zero target generic-word leaks and
+  zero trends without evidence IDs.
 
 ## Browser and regression evidence
 
 - `/radars`, both Radar detail pages, Manual Search, Subscriptions, Weekly
   Digest, Provider Settings, API docs, and Dify returned HTTP 200.
-- The TDOA detail rendered 9 annual columns, 100 trend cards, 8 representative
-  paper cards, and 2 scan-history cards without console errors.
-- zh-CN and English both rendered annual trends, timeline, trends,
+- The TDOA detail rendered 9 annual columns, 10 trend cards, 8 representative
+  paper cards, and scan-history cards without console errors.
+- The OFDM detail rendered 19 trend cards after a real partial-success rescan.
+- zh-CN and English both rendered Technical Theme Evolution, annual trends, timeline, trends,
   representative papers, and scan history without `undefined` or `NaN`.
 - Trend evidence links resolve to persisted canonical IDs.
 - Radar to Subscription prefilled topic, keywords, and runnable Providers;

@@ -157,8 +157,10 @@ def test_trend_classification_detects_emerging_sustained_and_declining_phrases()
         paper("old-tdoa", 2022, "TDOA localization"),
         paper("new-deep-1", 2025, "Deep learning neural network TDOA"),
         paper("new-deep-2", 2026, "Deep learning neural network TDOA"),
+        paper("new-deep-3", 2026, "Deep learning neural network TDOA"),
         paper("new-sync-1", 2025, "Synchronization-free TDOA"),
         paper("new-sync-2", 2026, "Synchronization-free TDOA"),
+        paper("new-sync-3", 2026, "Synchronization-free TDOA"),
     ]
     snapshot = RadarAnalysisService(
         current_date=lambda: date(2026, 8, 10)
@@ -168,8 +170,188 @@ def test_trend_classification_detects_emerging_sustained_and_declining_phrases()
     assert classes["deep learning"] == "emerging"
     assert classes["neural network"] == "emerging"
     assert classes["synchronization-free"] == "emerging"
-    assert classes["TDOA"] in {"hot", "sustained"}
+    assert "TDOA" not in classes
     assert classes["GCC-PHAT"] == "declining"
+
+
+def test_academic_boilerplate_is_rejected_from_keywords_and_trends():
+    papers = [
+        paper(
+            f"generic-{index}",
+            2026,
+            "This paper proposes a better high performance method",
+            "We demonstrate multiple applications; however two results are used.",
+        )
+        for index in range(3)
+    ]
+    snapshot = RadarAnalysisService(
+        current_date=lambda: date(2026, 8, 10)
+    ).analyze(radar(), papers)
+    rejected = {
+        "demonstrate",
+        "propose",
+        "proposes",
+        "used",
+        "however",
+        "two",
+        "better",
+        "high",
+        "multiple",
+        "application",
+        "performance",
+    }
+
+    assert rejected.isdisjoint(item.phrase for item in snapshot.keywords)
+    assert rejected.isdisjoint(item.phrase for item in snapshot.trends)
+
+
+def test_phrase_first_extraction_keeps_research_concepts_and_acronyms():
+    source = paper(
+        "concepts",
+        2026,
+        "Robust multipath localization with receiver geometry optimization",
+        "Synchronization-free localization uses deep learning and neural network "
+        "time delay estimation for a hydrophone array and sensor networks. "
+        "GCC-PHAT TDOA supports OFDM MIMO AUV LSTM YOLO.",
+    )
+
+    phrases = {
+        item.phrase
+        for item in RadarAnalysisService().extract_keywords(
+            [source], radar=radar(), limit=100
+        )
+    }
+
+    assert {
+        "robust multipath localization",
+        "receiver geometry optimization",
+        "synchronization-free localization",
+        "deep learning",
+        "neural network",
+        "time delay estimation",
+        "hydrophone array",
+        "sensor network",
+        "GCC-PHAT",
+        "TDOA",
+        "OFDM",
+        "MIMO",
+        "AUV",
+        "LSTM",
+        "YOLO",
+    } <= phrases
+
+
+def test_tdoa_expansion_and_acronym_do_not_form_a_redundant_concept():
+    source = paper(
+        "tdoa-alias",
+        2026,
+        "Time-difference-of-arrival (TDOA) localization and TDOA measurement",
+    )
+
+    phrases = {
+        item.phrase
+        for item in RadarAnalysisService().extract_keywords(
+            [source], radar=radar(), limit=100
+        )
+    }
+
+    assert "TDOA" in phrases
+    assert "TDOA localization" in phrases
+    assert "TDOA measurement" in phrases
+    assert not any("TDOA TDOA" in phrase for phrase in phrases)
+    assert not any("time-difference-of-arrival" in phrase for phrase in phrases)
+
+
+def test_concept_count_is_distinct_document_frequency_not_occurrence_count():
+    repeated = paper(
+        "repeat",
+        2026,
+        "Neural network localization",
+        "Neural network neural network neural network localization.",
+    )
+    another = paper("another", 2026, "Neural networks for localization")
+
+    keywords = RadarAnalysisService().extract_keywords(
+        [repeated, another], radar=radar(), limit=100
+    )
+    neural_network = next(item for item in keywords if item.phrase == "neural network")
+
+    assert neural_network.count == 2
+    assert neural_network.canonical_ids == [
+        "doi:10.1000/another",
+        "doi:10.1000/repeat",
+    ]
+
+
+def test_safe_morphology_merges_network_and_environment_plural_forms():
+    papers = [
+        paper("singular", 2025, "Sensor network in a multipath environment"),
+        paper("plural", 2026, "Sensor networks in multipath environments"),
+    ]
+    keywords = RadarAnalysisService().extract_keywords(
+        papers, radar=radar(), limit=100
+    )
+    counts = {item.phrase: item.count for item in keywords}
+
+    assert counts["sensor network"] == 2
+    assert counts["multipath environment"] == 2
+
+
+def test_topic_background_terms_remain_summary_only_not_hot_trends():
+    papers = [
+        paper(f"background-{index}", 2026, "Underwater acoustic TDOA localization")
+        for index in range(3)
+    ]
+    snapshot = RadarAnalysisService(
+        current_date=lambda: date(2026, 8, 10)
+    ).analyze(radar(), papers)
+
+    assert "TDOA" in {item.phrase for item in snapshot.keywords}
+    assert "TDOA" not in {item.phrase for item in snapshot.trends}
+    assert "underwater localization" not in {
+        item.phrase for item in snapshot.trends
+    }
+
+
+def test_two_recent_documents_do_not_create_small_sample_trend():
+    papers = [
+        paper("small-1", 2025, "Synchronization-free localization"),
+        paper("small-2", 2026, "Synchronization-free localization"),
+    ]
+    snapshot = RadarAnalysisService(
+        current_date=lambda: date(2026, 8, 10)
+    ).analyze(radar(), papers)
+
+    assert "synchronization-free localization" not in {
+        item.phrase for item in snapshot.trends
+    }
+
+
+def test_trend_evidence_contains_only_distinct_supporting_papers():
+    papers = [
+        paper(
+            "support-1",
+            2025,
+            "Robust multipath localization",
+            "Robust multipath localization appears repeatedly: multipath multipath.",
+        ),
+        paper("support-2", 2026, "Robust multipath localization"),
+        paper("support-3", 2026, "Robust multipath localization"),
+        paper("unrelated", 2026, "Neural network time delay estimation"),
+    ]
+    snapshot = RadarAnalysisService(
+        current_date=lambda: date(2026, 8, 10)
+    ).analyze(radar(), papers)
+    trend = next(
+        item for item in snapshot.trends if item.phrase == "robust multipath localization"
+    )
+
+    assert trend.canonical_ids == [
+        "doi:10.1000/support-1",
+        "doi:10.1000/support-2",
+        "doi:10.1000/support-3",
+    ]
+    assert trend.recent_count == 3
 
 
 def test_hotness_is_normalized_explainable_and_has_evidence():

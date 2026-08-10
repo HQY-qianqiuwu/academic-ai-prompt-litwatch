@@ -196,14 +196,22 @@ abstract text. v1.7 does not require an LLM.
 1. Normalize Unicode punctuation and case while retaining display forms.
 2. Preserve allowlisted technical terms such as `TDOA`, `GCC-PHAT`, `OFDM`,
    `MIMO`, `AUV`, `CNN`, `LSTM`, and `YOLO`.
-3. Detect transparent multi-word phrases including `deep learning`, `neural
-   network`, `underwater localization`, `time delay estimation`, `receiver
-   geometry`, `cross correlation`, and `synchronization-free`.
-4. Count remaining informative unigrams/bigrams.
-5. Remove general stopwords and topic-neutral tokens, including `paper`,
-   `study`, `method`, `result`, `using`, `based`, `analysis`, `underwater`, and
-   `acoustic` when they carry no discriminatory value.
-6. Keep only phrases backed by persisted canonical IDs.
+3. Extract known phrases and validated two- or three-token technical phrases
+   before considering standalone terms. Phrase eligibility requires a technical
+   head or signal; arbitrary adjacent words are not accepted merely because an
+   acronym is present.
+4. Retain standalone terms only from the maintained domain-term set. General
+   academic verbs, adjectives, numeric words, and boilerplate are rejected.
+5. Apply conservative morphology mappings only where meaning is unchanged,
+   for example `networks` to `network`, `environments` to `environment`, and
+   `measurements` to `measurement`.
+6. Count document frequency by distinct persisted canonical ID. Repeating a
+   phrase many times inside one title or abstract still contributes one paper.
+7. Keep query terms available in corpus summaries, but exclude candidates made
+   only from the Radar query vocabulary from hot-trend cards. A surrounding
+   technical concept can remain eligible.
+8. Keep only phrases backed by persisted canonical IDs, and attach only those
+   supporting IDs to the phrase and its evidence view.
 
 Equal inputs always produce equal ordered output: descending count, then
 casefolded phrase.
@@ -212,8 +220,9 @@ casefolded phrase.
 
 The year range is divided into at most four chronological windows with stable,
 near-equal widths. Each period exposes its top phrases and evidence papers.
-Periods are data labels, not generated historical narratives. The UI uses
-“主要研究关键词” when no evidence-based stage name exists.
+Periods are data labels, not generated historical narratives. The UI describes
+this output as Technical Theme Evolution / 技术主题演进 and does not generate
+historical stage names.
 
 ## Recent window and partial-year handling
 
@@ -252,17 +261,22 @@ is used.
 
 Classification is deterministic and evidence-count aware:
 
-- **Emerging**: historical count at most 1, recent count at least 2, and
+- **Emerging**: historical count at most 1, recent count at least 3, and
   positive growth;
-- **Hot**: recent count at least 2, hotness at least 0.65, and recent annual
+- **Hot**: recent count at least 3, hotness at least 0.65, and recent annual
   rate greater than the baseline rate;
-- **Sustained**: recent and historical counts are both at least 2 and the
-  recent/baseline annual-rate ratio is between 0.75 and 1.5;
-- **Declining**: historical count at least 2 and the corrected recent annual
-  rate is below 0.75 of baseline;
+- **Sustained**: a phrase has at least 3 historical evidence papers and the
+  corrected recent/baseline annual-rate ratio remains near its baseline;
+- **Declining**: a phrase has at least 3 historical evidence papers and the
+  corrected recent annual rate is below 0.75 of baseline;
 - phrases without sufficient evidence are omitted from trend cards.
 
-Every returned trend contains at least one persisted evidence canonical ID.
+Before classification, a phrase must cover at least the greater of 3 distinct
+papers or 2% of the Radar corpus. Recent emerging/hot trends require at least 3
+recent papers. Sustained/declining trends may remain visible with at least 3
+historical evidence papers. These thresholds suppress small-baseline growth
+spikes while preserving evidence-backed historical change. Every returned trend
+contains the exact distinct persisted canonical IDs that support that phrase.
 
 ## Representative papers and timeline
 
