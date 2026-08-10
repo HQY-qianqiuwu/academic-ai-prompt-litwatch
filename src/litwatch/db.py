@@ -211,6 +211,86 @@ MIGRATIONS = (
             ON deliveries(subscription_id, attempted_at DESC, id DESC);
         """,
     ),
+    (
+        6,
+        "research_radars",
+        """
+        CREATE TABLE IF NOT EXISTS research_radars (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+            topic TEXT NOT NULL CHECK(length(trim(topic)) > 0),
+            keywords_json TEXT NOT NULL DEFAULT '[]'
+                CHECK(json_valid(keywords_json) AND json_type(keywords_json) = 'array'),
+            exclude_keywords_json TEXT NOT NULL DEFAULT '[]'
+                CHECK(json_valid(exclude_keywords_json)
+                      AND json_type(exclude_keywords_json) = 'array'),
+            providers_json TEXT NOT NULL
+                CHECK(json_valid(providers_json) AND json_type(providers_json) = 'array'),
+            start_year INTEGER NOT NULL CHECK(start_year BETWEEN 1900 AND 2100),
+            end_year INTEGER NOT NULL CHECK(end_year BETWEEN start_year AND 2100),
+            recent_window_years INTEGER NOT NULL CHECK(recent_window_years BETWEEN 1 AND 5),
+            search_limit_per_period INTEGER NOT NULL
+                CHECK(search_limit_per_period BETWEEN 1 AND 50),
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_scan_at TEXT,
+            last_success_at TEXT,
+            CHECK(end_year - start_year + 1 BETWEEN 1 AND 20),
+            CHECK(recent_window_years <= end_year - start_year + 1)
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_radars_created
+            ON research_radars(created_at ASC,id ASC);
+        CREATE INDEX IF NOT EXISTS idx_research_radars_enabled
+            ON research_radars(enabled,updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS radar_scans (
+            id TEXT PRIMARY KEY,
+            radar_id TEXT NOT NULL REFERENCES research_radars(id) ON DELETE RESTRICT,
+            started_at TEXT NOT NULL,
+            heartbeat_at TEXT NOT NULL,
+            finished_at TEXT,
+            status TEXT NOT NULL CHECK(status IN (
+                'pending','running','success','partial_success','failed','interrupted'
+            )),
+            start_year INTEGER NOT NULL,
+            end_year INTEGER NOT NULL,
+            raw_count INTEGER NOT NULL DEFAULT 0 CHECK(raw_count >= 0),
+            dedup_count INTEGER NOT NULL DEFAULT 0 CHECK(dedup_count >= 0),
+            new_count INTEGER NOT NULL DEFAULT 0 CHECK(new_count >= 0),
+            provider_status_json TEXT NOT NULL DEFAULT '[]'
+                CHECK(json_valid(provider_status_json)),
+            analysis_json TEXT NOT NULL DEFAULT '{}'
+                CHECK(json_valid(analysis_json)),
+            safe_error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_radar_scans_history
+            ON radar_scans(radar_id,started_at DESC,id DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_radar_scans_one_active
+            ON radar_scans(radar_id) WHERE status = 'running';
+
+        CREATE TABLE IF NOT EXISTS radar_papers (
+            radar_id TEXT NOT NULL REFERENCES research_radars(id) ON DELETE RESTRICT,
+            canonical_id TEXT NOT NULL REFERENCES papers(canonical_id) ON DELETE RESTRICT,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            first_scan_id TEXT NOT NULL REFERENCES radar_scans(id) ON DELETE RESTRICT,
+            last_scan_id TEXT NOT NULL REFERENCES radar_scans(id) ON DELETE RESTRICT,
+            publication_year INTEGER,
+            relevance_score REAL NOT NULL DEFAULT 0 CHECK(
+                relevance_score BETWEEN 0 AND 1
+            ),
+            representative_score REAL NOT NULL DEFAULT 0 CHECK(
+                representative_score BETWEEN 0 AND 1
+            ),
+            PRIMARY KEY (radar_id,canonical_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_radar_papers_year
+            ON radar_papers(radar_id,publication_year,canonical_id);
+        CREATE INDEX IF NOT EXISTS idx_radar_papers_canonical
+            ON radar_papers(canonical_id);
+        """,
+    ),
 )
 
 
