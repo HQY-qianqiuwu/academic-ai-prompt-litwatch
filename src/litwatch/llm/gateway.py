@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Protocol, TypeVar
+from typing import Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -13,7 +13,12 @@ from litwatch.llm.models import (
     LLMResponse,
     LLMResult,
 )
-from litwatch.llm.security import CostGuard, DataEgressPolicy
+from litwatch.llm.security import (
+    CostGuard,
+    DataEgressPolicy,
+    LLMSecurityError,
+    LLMSecurityErrorCode,
+)
 
 
 class LLMProvider(Protocol):
@@ -28,10 +33,14 @@ class LLMGateway:
         self,
         provider: LLMProvider,
         *,
+        provider_kind: Literal["local", "cloud"],
         data_egress_policy: DataEgressPolicy,
         cost_guard: CostGuard,
     ) -> None:
         self.provider = provider
+        if provider_kind not in {"local", "cloud"}:
+            raise ValueError("provider_kind must be 'local' or 'cloud'")
+        self.provider_kind = provider_kind
         self.data_egress_policy = data_egress_policy
         self.cost_guard = cost_guard
 
@@ -41,8 +50,13 @@ class LLMGateway:
         response_model: type[StructuredValue],
         budget: LLMBudget,
     ) -> LLMResult[StructuredValue]:
+        if request.provider_kind != self.provider_kind:
+            raise LLMSecurityError(
+                LLMSecurityErrorCode.PROVIDER_KIND_MISMATCH,
+                "LLM provider classification does not match trusted configuration",
+            )
         self.data_egress_policy.authorize(
-            request.provider_kind,
+            self.provider_kind,
             request.evidence_scope,
             request.payload_chars,
         )

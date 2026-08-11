@@ -6,6 +6,7 @@ from math import isfinite
 
 
 class LLMSecurityErrorCode(StrEnum):
+    PROVIDER_KIND_MISMATCH = "provider_kind_mismatch"
     CLOUD_CONSENT_REQUIRED = "cloud_consent_required"
     FULLTEXT_CONSENT_REQUIRED = "fulltext_consent_required"
     PAYLOAD_LIMIT_EXCEEDED = "payload_limit_exceeded"

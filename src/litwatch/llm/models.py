@@ -72,11 +72,15 @@ class LLMResponse(BaseModel):
 class LLMBudget(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    input_cost_per_million: float = Field(default=0, ge=0, allow_inf_nan=False)
-    output_cost_per_million: float = Field(default=0, ge=0, allow_inf_nan=False)
+    input_cost_per_million: float = Field(
+        default=0, ge=0, allow_inf_nan=False, strict=True
+    )
+    output_cost_per_million: float = Field(
+        default=0, ge=0, allow_inf_nan=False, strict=True
+    )
     estimated_tokens: int = Field(ge=0, strict=True)
-    estimated_cost: float = Field(ge=0, allow_inf_nan=False)
-    daily_spend: float = Field(ge=0, allow_inf_nan=False)
+    estimated_cost: float = Field(ge=0, allow_inf_nan=False, strict=True)
+    daily_spend: float = Field(ge=0, allow_inf_nan=False, strict=True)
     active_jobs: int = Field(ge=0, strict=True)
 
 

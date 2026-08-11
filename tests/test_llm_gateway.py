@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -85,6 +86,21 @@ def test_budget_rejects_non_finite_pricing(field):
         _budget(**{field: float("inf")})
 
 
+@pytest.mark.parametrize(
+    "field",
+    [
+        "input_cost_per_million",
+        "output_cost_per_million",
+        "estimated_cost",
+        "daily_spend",
+    ],
+)
+@pytest.mark.parametrize("value", [True, "0.5"])
+def test_budget_float_measurements_reject_bool_and_strings(field, value):
+    with pytest.raises(ValidationError):
+        _budget(**{field: value})
+
+
 def _gateway(
     handler,
     *,
@@ -106,6 +122,7 @@ def _gateway(
     return (
         LLMGateway(
             provider,
+            provider_kind="cloud",
             data_egress_policy=DataEgressPolicy(
                 cloud_egress_consent=True,
                 fulltext_egress_consent=True,
@@ -382,6 +399,7 @@ def test_egress_denial_occurs_before_provider_dispatch():
     provider = SpyProvider()
     gateway = LLMGateway(
         provider,
+        provider_kind="cloud",
         data_egress_policy=DataEgressPolicy(
             cloud_egress_consent=False,
             fulltext_egress_consent=False,
@@ -405,6 +423,7 @@ def test_cost_denial_occurs_before_provider_dispatch():
     provider = SpyProvider()
     gateway = LLMGateway(
         provider,
+        provider_kind="cloud",
         data_egress_policy=DataEgressPolicy(
             cloud_egress_consent=True,
             fulltext_egress_consent=True,
@@ -421,4 +440,25 @@ def test_cost_denial_occurs_before_provider_dispatch():
     with pytest.raises(LLMSecurityError):
         gateway.complete_structured(_request(), Summary, _budget(estimated_tokens=101))
 
+    assert provider.calls == 0
+
+
+def test_trusted_provider_kind_mismatch_is_rejected_before_dispatch():
+    provider = SpyProvider()
+    policy = Mock(spec=DataEgressPolicy)
+    guard = Mock(spec=CostGuard)
+    gateway = LLMGateway(
+        provider,
+        provider_kind="cloud",
+        data_egress_policy=policy,
+        cost_guard=guard,
+    )
+    mismatched = _request().model_copy(update={"provider_kind": "local"})
+
+    with pytest.raises(LLMSecurityError) as error:
+        gateway.complete_structured(mismatched, Summary, _budget())
+
+    assert error.value.code.value == "provider_kind_mismatch"
+    policy.authorize.assert_not_called()
+    guard.authorize.assert_not_called()
     assert provider.calls == 0
