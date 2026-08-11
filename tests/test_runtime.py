@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from litwatch.config import Settings
+from litwatch.migrations import MigrationSafetyError
 from litwatch.runtime import RuntimeMode, RuntimeStatus
 from litwatch.web import create_app
 
@@ -36,6 +37,30 @@ def test_application_runtime_starts_and_stops_scheduler_once():
     runtime.stop()
 
     assert calls == ["scheduler-start", "scheduler-stop"]
+
+
+def test_application_runtime_fails_closed_before_services_start():
+    from litwatch.runtime import ApplicationRuntime
+
+    calls: list[str] = []
+
+    def reject_unsafe_database() -> None:
+        calls.append("database-verify")
+        raise MigrationSafetyError("database migration verification failed")
+
+    runtime = ApplicationRuntime(
+        database_preflight=reject_unsafe_database,
+        scheduler_start=lambda: calls.append("scheduler-start"),
+        scheduler_stop=lambda: calls.append("scheduler-stop"),
+        startup_hooks=(lambda: calls.append("service-start"),),
+    )
+
+    with pytest.raises(
+        MigrationSafetyError, match="database migration verification failed"
+    ):
+        runtime.start()
+
+    assert calls == ["database-verify"]
 
 
 def test_runtime_status_api_returns_only_dependency_flags(tmp_path):

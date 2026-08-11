@@ -146,6 +146,7 @@ def create_app(
     state_lock = threading.Lock()
     scan_state: dict[str, object] = {"scanning": False, "last_error": ""}
     runtime = ApplicationRuntime(
+        database_preflight=database.verify_migrations,
         scheduler_start=scheduler_service.start,
         scheduler_stop=scheduler_service.stop,
         startup_hooks=(research_radar_service.recover_stale_scans,),
@@ -153,8 +154,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        runtime.start()
         try:
+            runtime.start()
             yield
         finally:
             runtime.stop()

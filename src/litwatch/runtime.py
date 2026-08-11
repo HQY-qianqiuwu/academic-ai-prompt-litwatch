@@ -36,11 +36,13 @@ class ApplicationRuntime:
     def __init__(
         self,
         *,
+        database_preflight: Callable[[], None] = lambda: None,
         scheduler_start: Callable[[], None],
         scheduler_stop: Callable[[], None],
         startup_hooks: Sequence[Callable[[], None]] = (),
         shutdown_hooks: Sequence[Callable[[], None]] = (),
     ) -> None:
+        self._database_preflight = database_preflight
         self._scheduler_start = scheduler_start
         self._scheduler_stop = scheduler_stop
         self._startup_hooks = tuple(startup_hooks)
@@ -52,6 +54,7 @@ class ApplicationRuntime:
         with self._lock:
             if self._started:
                 return
+            self._database_preflight()
             for hook in self._startup_hooks:
                 hook()
             self._scheduler_start()

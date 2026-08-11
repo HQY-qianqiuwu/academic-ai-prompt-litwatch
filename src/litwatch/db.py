@@ -9,6 +9,7 @@ from litwatch.migrations import (
     DatabaseProcessLock,
     Migration,
     MigrationCoordinator,
+    MigrationSafetyError,
     database_access_lock_path,
     database_recovery_lock_path,
 )
@@ -354,7 +355,32 @@ class Database:
             raise
 
     def _apply_migrations(self) -> None:
-        MigrationCoordinator(self.connection, MIGRATION_REGISTRY).migrate()
+        try:
+            report = MigrationCoordinator(
+                self.connection, MIGRATION_REGISTRY
+            ).migrate()
+        except MigrationSafetyError:
+            raise
+        except (OSError, sqlite3.Error):
+            raise MigrationSafetyError("database migration failed") from None
+        if not report.verification.ok:
+            raise MigrationSafetyError("database migration verification failed")
+
+    def verify_migrations(self) -> None:
+        """Fail closed unless the applied registry and SQLite state are safe."""
+
+        try:
+            verification = MigrationCoordinator(
+                self.connection, MIGRATION_REGISTRY
+            ).verify()
+        except MigrationSafetyError:
+            raise
+        except (OSError, sqlite3.Error):
+            raise MigrationSafetyError(
+                "database migration verification failed"
+            ) from None
+        if not verification.ok:
+            raise MigrationSafetyError("database migration verification failed")
 
     def start_run(self) -> int:
         cursor = self.connection.execute(
