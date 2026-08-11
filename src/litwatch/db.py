@@ -5,6 +5,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from litwatch.migrations import Migration, MigrationCoordinator
 from litwatch.models import Paper
 
 SCHEMA = """
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 """
 
-MIGRATIONS = (
+_MIGRATION_SQL = (
     (
         1,
         "subscriptions",
@@ -293,6 +294,15 @@ MIGRATIONS = (
     ),
 )
 
+MIGRATION_REGISTRY = tuple(
+    Migration.from_sql(version, name, sql) for version, name, sql in _MIGRATION_SQL
+)
+# Compatibility view for v1.7 callers and tests that unpack the historical tuple format.
+MIGRATIONS = tuple(
+    (migration.version, migration.name, migration.sql)
+    for migration in MIGRATION_REGISTRY
+)
+
 
 class Database:
     def __init__(self, path: Path) -> None:
@@ -305,28 +315,7 @@ class Database:
         self._apply_migrations()
 
     def _apply_migrations(self) -> None:
-        applied = {
-            int(row["version"])
-            for row in self.connection.execute(
-                "SELECT version FROM schema_migrations ORDER BY version"
-            ).fetchall()
-        }
-        for version, name, sql in MIGRATIONS:
-            if version in applied:
-                continue
-            escaped_name = name.replace("'", "''")
-            try:
-                self.connection.executescript(
-                    f"""BEGIN IMMEDIATE;
-                    {sql}
-                    INSERT INTO schema_migrations(version,name)
-                    VALUES ({version},'{escaped_name}');
-                    COMMIT;"""
-                )
-            except sqlite3.Error:
-                if self.connection.in_transaction:
-                    self.connection.rollback()
-                raise
+        MigrationCoordinator(self.connection, MIGRATION_REGISTRY).migrate()
 
     def start_run(self) -> int:
         cursor = self.connection.execute(
