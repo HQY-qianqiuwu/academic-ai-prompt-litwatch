@@ -13,6 +13,10 @@ class RuntimeMode(str, Enum):
     DIFY_FREE = "dify_free"
 
 
+class RuntimeLifecycleError(RuntimeError):
+    """Safe public signal that one or more lifecycle resources failed to stop."""
+
+
 @dataclass(frozen=True)
 class RuntimeStatus:
     mode: RuntimeMode
@@ -59,20 +63,43 @@ class ApplicationRuntime:
             if self._started:
                 return
             self._database_preflight()
-            for hook in self._startup_hooks:
-                hook()
-            self._worker_start()
-            self._scheduler_start()
-            self._started = True
+            worker_started = False
+            try:
+                for hook in self._startup_hooks:
+                    hook()
+                self._worker_start()
+                worker_started = True
+                self._scheduler_start()
+            except Exception:
+                if worker_started:
+                    try:
+                        self._worker_stop()
+                    except Exception:  # noqa: BLE001, S110 - preserve startup error
+                        pass
+                raise
+            else:
+                self._started = True
 
     def stop(self) -> None:
         with self._lock:
             if not self._started:
                 return
+            failures: list[Exception] = []
             try:
                 self._scheduler_stop()
+            except Exception as error:  # noqa: BLE001 - continue shutdown sequence
+                failures.append(error)
+            try:
                 self._worker_stop()
-                for hook in reversed(self._shutdown_hooks):
+            except Exception as error:  # noqa: BLE001 - continue shutdown sequence
+                failures.append(error)
+            for hook in reversed(self._shutdown_hooks):
+                try:
                     hook()
-            finally:
-                self._started = False
+                except Exception as error:  # noqa: BLE001 - continue shutdown sequence
+                    failures.append(error)
+            self._started = False
+            if failures:
+                raise RuntimeLifecycleError(
+                    "application runtime shutdown failed"
+                ) from failures[0]

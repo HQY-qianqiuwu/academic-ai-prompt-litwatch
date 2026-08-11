@@ -20,6 +20,13 @@ def _settings(tmp_path: Path) -> Settings:
     )
 
 
+def _app(tmp_path: Path):
+    return create_app(
+        _settings(tmp_path),
+        job_handlers={"paper_analysis": lambda _context, _job: "test-result"},
+    )
+
+
 def _create_job(client: TestClient, **overrides: object):
     body: dict[str, object] = {
         "job_type": "paper_analysis",
@@ -34,7 +41,7 @@ def _create_job(client: TestClient, **overrides: object):
 
 
 def test_create_job_returns_202_and_only_safe_projection(tmp_path):
-    app = create_app(_settings(tmp_path))
+    app = _app(tmp_path)
 
     with TestClient(app) as client:
         response = _create_job(client)
@@ -53,7 +60,7 @@ def test_create_job_returns_202_and_only_safe_projection(tmp_path):
 
 
 def test_identical_idempotency_key_reuses_existing_job(tmp_path):
-    app = create_app(_settings(tmp_path))
+    app = _app(tmp_path)
 
     with TestClient(app) as client:
         first = _create_job(client)
@@ -74,7 +81,7 @@ def test_identical_idempotency_key_reuses_existing_job(tmp_path):
 
 
 def test_unknown_job_type_returns_safe_422(tmp_path):
-    app = create_app(_settings(tmp_path))
+    app = _app(tmp_path)
 
     with TestClient(app) as client:
         response = _create_job(
@@ -88,7 +95,7 @@ def test_unknown_job_type_returns_safe_422(tmp_path):
 
 
 def test_known_job_type_rejects_inline_secret_without_echoing_it(tmp_path):
-    app = create_app(_settings(tmp_path))
+    app = _app(tmp_path)
 
     with TestClient(app) as client:
         response = _create_job(
@@ -101,7 +108,7 @@ def test_known_job_type_rejects_inline_secret_without_echoing_it(tmp_path):
 
 
 def test_get_unknown_job_returns_404(tmp_path):
-    app = create_app(_settings(tmp_path))
+    app = _app(tmp_path)
 
     with TestClient(app) as client:
         response = client.get("/api/v2/jobs/not-found")
@@ -111,7 +118,7 @@ def test_get_unknown_job_returns_404(tmp_path):
 
 
 def test_get_job_returns_safe_projection(tmp_path):
-    app = create_app(_settings(tmp_path))
+    app = _app(tmp_path)
 
     with TestClient(app) as client:
         created = _create_job(client).json()
@@ -125,7 +132,7 @@ def test_get_job_returns_safe_projection(tmp_path):
 
 
 def test_cancel_is_idempotent_and_returns_safe_projection(tmp_path):
-    app = create_app(_settings(tmp_path))
+    app = _app(tmp_path)
 
     with TestClient(app) as client:
         created = _create_job(client).json()
@@ -139,10 +146,21 @@ def test_cancel_is_idempotent_and_returns_safe_projection(tmp_path):
 
 
 def test_application_lifespan_starts_and_stops_job_worker(tmp_path):
-    app = create_app(_settings(tmp_path))
+    app = _app(tmp_path)
     worker = app.state.job_worker
 
     assert worker.is_running is False
     with TestClient(app):
         assert worker.is_running is True
     assert worker.is_running is False
+
+
+def test_production_app_does_not_advertise_unregistered_placeholder_jobs(tmp_path):
+    app = create_app(_settings(tmp_path))
+
+    with TestClient(app) as client:
+        response = _create_job(client)
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "unsupported job type"}
+    assert app.state.job_worker.registered_job_types == frozenset()

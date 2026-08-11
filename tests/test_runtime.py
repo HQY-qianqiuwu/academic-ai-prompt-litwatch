@@ -63,6 +63,63 @@ def test_application_runtime_fails_closed_before_services_start():
     assert calls == ["database-verify"]
 
 
+def test_application_runtime_unwinds_worker_when_scheduler_start_fails():
+    from litwatch.runtime import ApplicationRuntime
+
+    calls: list[str] = []
+
+    def fail_scheduler_start() -> None:
+        calls.append("scheduler-start")
+        raise RuntimeError("scheduler start failed")
+
+    def fail_worker_cleanup() -> None:
+        calls.append("worker-stop")
+        raise RuntimeError("worker cleanup detail")
+
+    runtime = ApplicationRuntime(
+        scheduler_start=fail_scheduler_start,
+        scheduler_stop=lambda: calls.append("scheduler-stop"),
+        worker_start=lambda: calls.append("worker-start"),
+        worker_stop=fail_worker_cleanup,
+    )
+
+    with pytest.raises(RuntimeError, match="scheduler start failed"):
+        runtime.start()
+
+    assert calls == ["worker-start", "scheduler-start", "worker-stop"]
+
+
+def test_scheduler_stop_failure_still_stops_worker_and_reports_safe_error():
+    from litwatch.runtime import ApplicationRuntime, RuntimeLifecycleError
+
+    calls: list[str] = []
+
+    def fail_scheduler_stop() -> None:
+        calls.append("scheduler-stop")
+        raise RuntimeError("secret scheduler detail")
+
+    runtime = ApplicationRuntime(
+        scheduler_start=lambda: calls.append("scheduler-start"),
+        scheduler_stop=fail_scheduler_stop,
+        worker_start=lambda: calls.append("worker-start"),
+        worker_stop=lambda: calls.append("worker-stop"),
+    )
+    runtime.start()
+
+    with pytest.raises(
+        RuntimeLifecycleError, match="application runtime shutdown failed"
+    ) as error:
+        runtime.stop()
+
+    assert "secret scheduler detail" not in str(error.value)
+    assert calls == [
+        "worker-start",
+        "scheduler-start",
+        "scheduler-stop",
+        "worker-stop",
+    ]
+
+
 def test_runtime_status_api_returns_only_dependency_flags(tmp_path):
     topics = tmp_path / "topics.yaml"
     topics.write_text("topics: []\n", encoding="utf-8")

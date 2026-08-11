@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -50,7 +50,7 @@ from litwatch.services import (
     SubscriptionService,
 )
 from litwatch.services.delivery import DeliveryService
-from litwatch.services.jobs import JobWorker
+from litwatch.services.jobs import JobHandler, JobWorker
 from litwatch.services.radars import (
     RadarNotFoundError,
     RadarProviderError,
@@ -87,6 +87,7 @@ def create_app(
     subscription_run_service: SubscriptionRunService | None = None,
     scheduler_service: SchedulerService | None = None,
     research_radar_service: ResearchRadarService | None = None,
+    job_handlers: Mapping[str, JobHandler] | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_runtime_files()
@@ -159,11 +160,8 @@ def create_app(
         default_timeout_seconds=settings.job_default_timeout_seconds,
     )
 
-    def unavailable_paper_analysis(_context: object, _job: object) -> None:
-        # Plan v2.0E replaces this safe boundary with the Python analysis service.
-        raise RuntimeError("paper analysis handler is not configured")
-
-    job_worker.register("paper_analysis", unavailable_paper_analysis)
+    for job_type, handler in (job_handlers or {}).items():
+        job_worker.register(job_type, handler)
     runtime = ApplicationRuntime(
         database_preflight=database.verify_migrations,
         scheduler_start=scheduler_service.start,
