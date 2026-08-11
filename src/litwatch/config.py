@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-5-mini"
+    llm_cloud_egress_consent: bool = False
+    llm_fulltext_egress_consent: bool = False
+    llm_max_payload_chars: int = Field(default=50_000, ge=1, le=1_000_000)
+    max_tokens_per_job: int = Field(default=20_000, ge=1, le=10_000_000)
+    max_cost_per_job: float = Field(default=1.0, gt=0, le=10_000)
+    max_daily_cost: float = Field(default=5.0, gt=0, le=100_000)
+    max_concurrent_llm_jobs: int = Field(default=2, ge=1, le=100)
     runtime_mode: RuntimeMode = RuntimeMode.PYTHON_DEFAULT
 
     smtp_host: str = ""
