@@ -314,7 +314,14 @@ class MigrationCoordinator:
         temporary_path = self.database_path.with_name(
             f".{self.database_path.name}.restore-{uuid4().hex}.tmp"
         )
-        recovery_state = self._acquire_recovery_quiescence()
+        try:
+            recovery_state = self._acquire_recovery_quiescence()
+        except Exception:
+            try:
+                access_lease.restore_shared(self.connection)
+            except MigrationSafetyError:
+                raise MigrationSafetyError("database state restoration failed") from None
+            raise
         temporary_connection: sqlite3.Connection | None = None
         connection_closed = False
         try:

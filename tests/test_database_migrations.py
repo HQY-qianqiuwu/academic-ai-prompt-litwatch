@@ -355,6 +355,38 @@ def test_recovery_fails_safely_when_another_connection_holds_write_lock(tmp_path
     reopened.close()
 
 
+def test_quiescence_preflight_failure_releases_access_lease(tmp_path, monkeypatch):
+    path = tmp_path / "preflight-lock-release.db"
+    backup_path = tmp_path / "preflight-lock-release-backup.db"
+    database = Database(path)
+    backup_connection = sqlite3.connect(backup_path)
+    database.connection.backup(backup_connection)
+    backup_connection.close()
+    coordinator = MigrationCoordinator(database.connection, MIGRATION_REGISTRY)
+    acquired_leases = []
+    acquire_access = coordinator._acquire_recovery_access
+
+    def capture_access_lease():
+        lease = acquire_access()
+        acquired_leases.append(lease)
+        return lease
+
+    monkeypatch.setattr(coordinator, "_acquire_recovery_access", capture_access_lease)
+    unmanaged_writer = sqlite3.connect(path)
+    unmanaged_writer.execute("PRAGMA journal_mode=WAL")
+    unmanaged_writer.execute("BEGIN IMMEDIATE")
+
+    with pytest.raises(MigrationSafetyError, match="database is not quiescent"):
+        coordinator.recover(backup_path)
+
+    unmanaged_writer.rollback()
+    unmanaged_writer.close()
+    assert len(acquired_leases) == 1
+    newly_opened = Database(path)
+    newly_opened.connection.close()
+    database.connection.close()
+
+
 def test_recovery_requires_other_litwatch_database_connections_to_be_closed(
     tmp_path, monkeypatch
 ):
