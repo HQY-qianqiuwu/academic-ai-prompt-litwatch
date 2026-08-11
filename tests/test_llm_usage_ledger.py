@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Event
+from threading import enumerate as enumerate_threads
+from time import monotonic, sleep
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -24,6 +27,7 @@ from litwatch.llm.security import (
     LLMSecurityError,
     LLMSecurityErrorCode,
     LLMUsageLedger,
+    LLMUsageReservation,
 )
 
 
@@ -350,5 +354,117 @@ def test_stale_reservation_is_recovered_before_next_authorization(tmp_path):
 
     assert second.active_jobs == 1
     second.release(replacement)
+    first_database.connection.close()
+    second_database.connection.close()
+
+
+def test_stale_reservation_charges_estimate_to_original_usage_day(tmp_path):
+    database = Database(tmp_path / "stale-charge.db")
+    clock = MutableClock()
+    ledger = LLMUsageLedger(
+        database, _guard(daily=1.0), now=clock, lease_seconds=30
+    )
+    ledger.reserve(estimated_tokens=100, estimated_cost=0.4)
+    clock.current += timedelta(seconds=31)
+
+    assert ledger.recover_stale() == 1
+    assert ledger.daily_spend == pytest.approx(0.4)
+    assert ledger.active_jobs == 0
+    database.connection.close()
+
+
+def test_reservation_owner_mismatch_cannot_renew_or_release(tmp_path):
+    database = Database(tmp_path / "owner.db")
+    ledger = LLMUsageLedger(database, _guard(), now=MutableClock())
+    reservation = ledger.reserve(estimated_tokens=100, estimated_cost=0.1)
+    forged = LLMUsageReservation(
+        reservation_id=reservation.reservation_id,
+        lease_owner="not-the-owner",
+    )
+
+    with pytest.raises(ValueError, match="unknown or no longer owned"):
+        ledger.renew(forged)
+    with pytest.raises(ValueError, match="unknown or no longer owned"):
+        ledger.release(forged)
+    with pytest.raises(ValueError, match="unknown or no longer owned"):
+        ledger.settle(forged, actual_cost=0.1)
+
+    assert ledger.active_jobs == 1
+    ledger.release(reservation)
+    database.connection.close()
+
+
+class BlockingProvider:
+    def __init__(self, started: Event, release: Event) -> None:
+        self.started = started
+        self.release = release
+
+    def complete(self, _request: LLMRequest) -> LLMResponse:
+        self.started.set()
+        if not self.release.wait(timeout=5):
+            raise AssertionError("test provider was not released")
+        return LLMResponse(
+            content='{"answer":"grounded"}',
+            usage=LLMUsage(input_tokens=10, output_tokens=0, total_tokens=10),
+        )
+
+
+def test_gateway_renews_active_reservation_beyond_initial_lease(tmp_path):
+    database_path = tmp_path / "heartbeat.db"
+    first_database = Database(database_path)
+    second_database = Database(database_path)
+    clock = MutableClock()
+    ledger = LLMUsageLedger(
+        first_database, _guard(concurrent=1), now=clock, lease_seconds=1
+    )
+    observer = LLMUsageLedger(
+        second_database, _guard(concurrent=1), now=clock, lease_seconds=1
+    )
+    started = Event()
+    release = Event()
+    gateway = LLMGateway(
+        BlockingProvider(started, release),
+        provider_kind="cloud",
+        data_egress_policy=_policy(),
+        usage_ledger=ledger,
+    )
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                gateway.complete_structured, _request(), Result, _budget()
+            )
+            assert started.wait(timeout=2)
+            initial_row = first_database.connection.execute(
+                "SELECT lease_expires_at FROM llm_usage_reservations"
+            ).fetchone()
+            initial_expiry = datetime.fromisoformat(initial_row[0])
+            clock.current += timedelta(seconds=0.5)
+            deadline = monotonic() + 3
+            while monotonic() < deadline:
+                row = first_database.connection.execute(
+                    "SELECT lease_expires_at FROM llm_usage_reservations"
+                ).fetchone()
+                if row is not None and datetime.fromisoformat(row[0]) > initial_expiry:
+                    break
+                sleep(0.02)
+            else:
+                raise AssertionError("active LLM reservation was not renewed")
+            clock.current += timedelta(seconds=0.75)
+            assert clock.current > initial_expiry
+
+            with pytest.raises(LLMSecurityError) as error:
+                observer.reserve(estimated_tokens=100, estimated_cost=0.1)
+            assert error.value.code is LLMSecurityErrorCode.CONCURRENCY_LIMIT_EXCEEDED
+            release.set()
+            assert future.result(timeout=2).value.answer == "grounded"
+    finally:
+        release.set()
+
+    assert ledger.active_jobs == 0
+    assert not any(
+        thread.name.startswith("litwatch-llm-usage-heartbeat")
+        for thread in enumerate_threads()
+    )
     first_database.connection.close()
     second_database.connection.close()

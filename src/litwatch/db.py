@@ -358,6 +358,14 @@ _MIGRATION_SQL = (
             ON llm_usage_reservations(lease_expires_at);
         """,
     ),
+    (
+        9,
+        "llm_usage_reservation_ownership",
+        """
+        ALTER TABLE llm_usage_reservations
+            ADD COLUMN lease_owner TEXT NOT NULL DEFAULT '';
+        """,
+    ),
 )
 
 MIGRATION_REGISTRY = tuple(

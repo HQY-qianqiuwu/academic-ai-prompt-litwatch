@@ -176,6 +176,7 @@ def _utc_now() -> datetime:
 @dataclass(frozen=True, slots=True)
 class LLMUsageReservation:
     reservation_id: str
+    lease_owner: str
 
 
 class LLMUsageLedger:
@@ -206,7 +207,7 @@ class LLMUsageLedger:
         current = self._utc_now()
         usage_day = current.date().isoformat()
         expires_at = current + timedelta(seconds=self._lease_seconds)
-        reservation = LLMUsageReservation(uuid4().hex)
+        reservation = LLMUsageReservation(uuid4().hex, uuid4().hex)
         with self._database.transaction(immediate=True) as connection:
             self._recover_stale_locked(connection, current)
             row = connection.execute(
@@ -228,17 +229,36 @@ class LLMUsageLedger:
             )
             connection.execute(
                 """INSERT INTO llm_usage_reservations(
-                       reservation_id,usage_day,estimated_cost,created_at,lease_expires_at
-                   ) VALUES (?,?,?,?,?)""",
+                       reservation_id,usage_day,estimated_cost,created_at,
+                       lease_expires_at,lease_owner
+                   ) VALUES (?,?,?,?,?,?)""",
                 (
                     reservation.reservation_id,
                     usage_day,
                     estimated_cost,
                     current.isoformat(),
                     expires_at.isoformat(),
+                    reservation.lease_owner,
                 ),
             )
         return reservation
+
+    def renew(self, reservation: LLMUsageReservation) -> None:
+        current = self._utc_now()
+        expires_at = current + timedelta(seconds=self._lease_seconds)
+        with self._database.transaction(immediate=True) as connection:
+            cursor = connection.execute(
+                """UPDATE llm_usage_reservations SET lease_expires_at=?
+                   WHERE reservation_id=? AND lease_owner=? AND lease_expires_at>?""",
+                (
+                    expires_at.isoformat(),
+                    reservation.reservation_id,
+                    reservation.lease_owner,
+                    current.isoformat(),
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("LLM usage reservation is unknown or no longer owned")
 
     def settle(
         self,
@@ -251,15 +271,16 @@ class LLMUsageLedger:
         with self._database.transaction(immediate=True) as connection:
             row = connection.execute(
                 """SELECT usage_day FROM llm_usage_reservations
-                   WHERE reservation_id=?""",
-                (reservation.reservation_id,),
+                   WHERE reservation_id=? AND lease_owner=?""",
+                (reservation.reservation_id, reservation.lease_owner),
             ).fetchone()
             if row is None:
-                raise ValueError("LLM usage reservation is unknown or already released")
+                raise ValueError("LLM usage reservation is unknown or no longer owned")
             usage_day = str(row[0])
             connection.execute(
-                "DELETE FROM llm_usage_reservations WHERE reservation_id=?",
-                (reservation.reservation_id,),
+                """DELETE FROM llm_usage_reservations
+                   WHERE reservation_id=? AND lease_owner=?""",
+                (reservation.reservation_id, reservation.lease_owner),
             )
             connection.execute(
                 """INSERT INTO llm_daily_usage(usage_day,settled_cost,updated_at)
@@ -273,11 +294,12 @@ class LLMUsageLedger:
     def release(self, reservation: LLMUsageReservation) -> None:
         with self._database.transaction(immediate=True) as connection:
             cursor = connection.execute(
-                "DELETE FROM llm_usage_reservations WHERE reservation_id=?",
-                (reservation.reservation_id,),
+                """DELETE FROM llm_usage_reservations
+                   WHERE reservation_id=? AND lease_owner=?""",
+                (reservation.reservation_id, reservation.lease_owner),
             )
             if cursor.rowcount != 1:
-                raise ValueError("LLM usage reservation is unknown or already released")
+                raise ValueError("LLM usage reservation is unknown or no longer owned")
 
     def recover_stale(self) -> int:
         current = self._utc_now()
@@ -303,13 +325,35 @@ class LLMUsageLedger:
             ).fetchone()
         return int(row[0])
 
+    @property
+    def heartbeat_interval_seconds(self) -> float:
+        return max(0.05, self._lease_seconds / 3)
+
     @staticmethod
     def _recover_stale_locked(connection, current: datetime) -> int:
-        cursor = connection.execute(
+        rows = connection.execute(
+            """SELECT usage_day,estimated_cost FROM llm_usage_reservations
+               WHERE lease_expires_at<=?""",
+            (current.isoformat(),),
+        ).fetchall()
+        by_day: dict[str, float] = {}
+        for row in rows:
+            usage_day = str(row[0])
+            by_day[usage_day] = by_day.get(usage_day, 0.0) + float(row[1])
+        for usage_day, estimated_cost in by_day.items():
+            connection.execute(
+                """INSERT INTO llm_daily_usage(usage_day,settled_cost,updated_at)
+                   VALUES (?,?,?)
+                   ON CONFLICT(usage_day) DO UPDATE SET
+                       settled_cost=settled_cost+excluded.settled_cost,
+                       updated_at=excluded.updated_at""",
+                (usage_day, estimated_cost, current.isoformat()),
+            )
+        connection.execute(
             "DELETE FROM llm_usage_reservations WHERE lease_expires_at<=?",
             (current.isoformat(),),
         )
-        return max(0, cursor.rowcount)
+        return len(rows)
 
     def _utc_now(self) -> datetime:
         current = self._now()

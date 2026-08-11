@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from threading import Event, Thread
 from typing import Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -64,6 +65,26 @@ class LLMGateway:
             estimated_tokens=budget.estimated_tokens,
             estimated_cost=budget.estimated_cost,
         )
+        heartbeat_stop = Event()
+
+        def renew_reservation() -> None:
+            while not heartbeat_stop.wait(
+                self.usage_ledger.heartbeat_interval_seconds
+            ):
+                try:
+                    self.usage_ledger.renew(reservation)
+                except Exception:  # noqa: BLE001 - background renewal stays redacted
+                    return
+
+        heartbeat = Thread(
+            target=renew_reservation,
+            name=(
+                "litwatch-llm-usage-heartbeat-"
+                f"{reservation.reservation_id[:8]}"
+            ),
+            daemon=True,
+        )
+        heartbeat.start()
         actual_cost = 0.0
         try:
             response = self.provider.complete(request)
@@ -103,4 +124,6 @@ class LLMGateway:
                 model=response.model,
             )
         finally:
+            heartbeat_stop.set()
+            heartbeat.join()
             self.usage_ledger.settle(reservation, actual_cost=actual_cost)
