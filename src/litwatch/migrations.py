@@ -5,6 +5,9 @@ import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
+from shutil import copy2
+from uuid import uuid4
 
 
 class MigrationSafetyError(RuntimeError):
@@ -47,6 +50,15 @@ class MigrationVerification:
     current_version: int
 
 
+@dataclass(frozen=True, slots=True)
+class MigrationReport:
+    """The durable outcome of one migration attempt."""
+
+    backup_path: Path | None
+    applied_versions: tuple[int, ...]
+    verification: MigrationVerification
+
+
 MIGRATION_AUDIT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS migration_audit (
     version INTEGER PRIMARY KEY,
@@ -70,9 +82,13 @@ class MigrationCoordinator:
         self,
         connection: sqlite3.Connection,
         migrations: Iterable[Migration],
+        *,
+        backup_directory: Path | None = None,
     ) -> None:
         self.connection = connection
         self.migrations = tuple(migrations)
+        self.database_path = self._database_path()
+        self.backup_directory = backup_directory or self.database_path.parent / "backups"
         self._by_version = {migration.version: migration for migration in self.migrations}
         if len(self._by_version) != len(self.migrations):
             raise MigrationSafetyError("duplicate migration version")
@@ -107,11 +123,75 @@ class MigrationCoordinator:
         target = self.migrations[-1].version if self.migrations else 0
         return MigrationState(current_version=current, target_version=target, pending=pending)
 
-    def migrate(self) -> MigrationVerification:
+    def migrate(self) -> MigrationReport:
         state = self.inspect()
+        if not state.pending:
+            return MigrationReport(
+                backup_path=None,
+                applied_versions=(),
+                verification=self.verify(),
+            )
+
+        backup_path = self._backup_database(state)
+        applied_versions: list[int] = []
         for migration in state.pending:
             self._apply(migration)
-        return self.verify()
+            applied_versions.append(migration.version)
+        return MigrationReport(
+            backup_path=backup_path,
+            applied_versions=tuple(applied_versions),
+            verification=self.verify(),
+        )
+
+    def recover(self, backup_path: Path) -> MigrationVerification:
+        """Restore a verified backup by replacing the database from a sibling temp file.
+
+        The caller must discard this coordinator after recovery: the connection is
+        closed immediately before replacement so Windows can safely replace the
+        database file.
+        """
+
+        if self.connection.in_transaction:
+            raise MigrationSafetyError(
+                "cannot recover migrations during an active transaction"
+            )
+        source = backup_path.resolve(strict=True)
+        temporary_path = self.database_path.with_name(
+            f".{self.database_path.name}.restore-{uuid4().hex}.tmp"
+        )
+        temporary_connection: sqlite3.Connection | None = None
+        try:
+            try:
+                copy2(source, temporary_path)
+                temporary_connection = sqlite3.connect(temporary_path)
+                temporary_connection.execute("PRAGMA foreign_keys=ON")
+                source_state = MigrationCoordinator(
+                    temporary_connection,
+                    self.migrations,
+                    backup_directory=self.backup_directory,
+                ).inspect()
+                verification = MigrationCoordinator(
+                    temporary_connection,
+                    self.migrations[: source_state.current_version],
+                    backup_directory=self.backup_directory,
+                ).verify()
+                if not verification.ok:
+                    raise MigrationSafetyError("backup verification failed")
+            except sqlite3.Error as error:
+                raise MigrationSafetyError("backup verification failed") from error
+            finally:
+                if temporary_connection is not None:
+                    temporary_connection.close()
+
+            self.connection.close()
+            # The temporary file shares the database parent directory, which
+            # makes this a same-volume atomic replacement.
+            temporary_path.replace(self.database_path)
+        except Exception:
+            if temporary_path.exists():
+                temporary_path.unlink()
+            raise
+        return verification
 
     def verify(self) -> MigrationVerification:
         state = self.inspect()
@@ -137,6 +217,27 @@ class MigrationCoordinator:
         self.connection.execute(MIGRATION_AUDIT_SCHEMA)
         if self.connection.in_transaction:
             self.connection.commit()
+
+    def _database_path(self) -> Path:
+        rows = self.connection.execute("PRAGMA database_list").fetchall()
+        for row in rows:
+            if str(row[1]) == "main" and str(row[2]):
+                return Path(str(row[2])).resolve()
+        raise MigrationSafetyError("migration backup requires a file-backed database")
+
+    def _backup_database(self, state: MigrationState) -> Path:
+        self.backup_directory.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        backup_path = self.backup_directory / (
+            f"{self.database_path.stem}.v{state.current_version}-"
+            f"to-v{state.target_version}.{timestamp}.db"
+        )
+        destination = sqlite3.connect(backup_path)
+        try:
+            self.connection.backup(destination)
+        finally:
+            destination.close()
+        return backup_path
 
     def _applied_rows(self) -> tuple[tuple[int, str], ...]:
         rows = self.connection.execute(

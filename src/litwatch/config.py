@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     zotero_api_key: str = ""
 
     database_path: Path = Path("data/litwatch.db")
+    database_backup_path: Path = Path("data/backups")
     topics_path: Path = Path("config/topics.yaml")
     analysis_modes_path: Path = Path("config/analysis_modes.yaml")
     lookback_days: int = Field(default=14, ge=1, le=365)
