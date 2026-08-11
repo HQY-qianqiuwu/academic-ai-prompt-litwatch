@@ -1,95 +1,117 @@
 from __future__ import annotations
 
-import json
 import re
-import time
+from collections.abc import Callable
+from typing import Literal
 
-import httpx
+from pydantic import BaseModel, ConfigDict, Field
 
 from litwatch.config import Settings, Topic
+from litwatch.llm import LLMBudget, LLMGateway, LLMGatewayError, LLMRequest
+from litwatch.llm.security import LLMSecurityError
 from litwatch.models import Paper
 
 
+class PaperAnalysisResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    one_liner: str = "LLM 未返回 one_liner"
+    motivation: str = "LLM 未返回 motivation"
+    methods: list[str] = Field(default_factory=list)
+    results: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    relevance: str = "LLM 未返回 relevance"
+    paper_type: str = "method"
+    research_gap: str = "LLM 未返回 research_gap"
+    reading_priority: int = Field(default=3, ge=1, le=5)
+    workflow_output: dict[str, object] = Field(default_factory=dict)
+    evidence_level: Literal["abstract", "fulltext_excerpt"] = "abstract"
+    confidence: float = Field(default=0.5, ge=0, le=1)
+
+
+_SYSTEM_INSTRUCTION = """你是严谨的科研文献筛选助手。只能依据提供的论文证据，不得补充未出现的事实、论文或引用。
+返回单个 JSON 对象，只能包含以下字段：one_liner、motivation、methods、results、limitations、relevance、paper_type、research_gap、reading_priority、workflow_output、evidence_level、confidence。
+methods、results、limitations 必须是字符串数组；reading_priority 是 1 到 5 的整数；confidence 是 0 到 1 的数字。证据不足时必须明确说明，不得猜测。"""
+
+
 class PaperAnalyzer:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        gateway: LLMGateway | None = None,
+        budget_factory: Callable[[LLMRequest], LLMBudget] | None = None,
+    ) -> None:
         self.settings = settings
-        self.client = httpx.Client(timeout=90, follow_redirects=True)
+        self.gateway = gateway
+        self.budget_factory = budget_factory
 
     @property
     def enabled(self) -> bool:
-        return bool(self.settings.llm_api_key)
+        return bool(
+            self.settings.llm_api_key
+            and self.gateway is not None
+            and self.budget_factory is not None
+        )
 
-    def analyze(self, paper: Paper, topic: Topic, fulltext: str = "") -> dict[str, object]:
+    def analyze(
+        self,
+        paper: Paper,
+        topic: Topic,
+        fulltext: str = "",
+    ) -> dict[str, object]:
         if not self.enabled:
             return self._extractive_fallback(paper, topic)
         evidence = fulltext or paper.abstract
         if not evidence:
-            return {"status": "skipped", "reason": "无摘要或可用全文"}
+            return {
+                "status": "skipped",
+                "reason": "无摘要或可用全文",
+                "evidence_level": "none",
+            }
 
         modes = {mode.id: mode for mode in self.settings.load_analysis_modes()}
         mode = modes.get(topic.analysis_mode) or modes["quick_scan"]
-        prompt = f"""你是严谨的科研文献筛选助手。只能依据提供的论文文本，不得补充未出现的事实、论文或引用。
-研究主题：{topic.name}
-关注点：{", ".join(topic.include)}
-分析工作流：{mode.name}
-工作流要求：{mode.instruction}
-论文标题：{paper.title}
-来源文本（{"开放全文节选" if fulltext else "摘要"}）：
-{evidence[:36000]}
-
-请输出 JSON 对象，字段固定为：
-- one_liner: 一句话中文结论
-- motivation: 研究动机
-- methods: 核心方法，字符串数组
-- results: 主要结果，字符串数组；无定量结果时明确写“摘要未报告”
-- limitations: 局限，字符串数组；文本未说明时写“原文未明确说明”
-- relevance: 与研究主题的具体关系
-- paper_type: theory/method/experiment/application/review 中最接近的一类
-- research_gap: 本文暴露或试图填补的研究空白；证据不足时明确说明
-- reading_priority: 1 到 5 的整数
-- workflow_output: 根据“分析工作流”要求生成的 JSON 对象
-- evidence_level: "abstract" 或 "fulltext_excerpt"
-- confidence: 0 到 1
-"""
-        for attempt in range(3):
-            response = self.client.post(
-                self.settings.llm_base_url.rstrip("/") + "/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.settings.llm_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.settings.llm_model,
-                    "response_format": {"type": "json_object"},
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-            if response.status_code != 429 or attempt == 2:
-                break
-            raw = response.headers.get("retry-after") or ""
-            try:
-                retry_after = float(raw)
-            except ValueError:
-                retry_after = 2 ** (attempt + 1)
-            time.sleep(min(retry_after, 10))
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-        result = json.loads(content)
-        result["status"] = "ok"
-        result["evidence_level"] = "fulltext_excerpt" if fulltext else "abstract"
-        required_fields = (
-            "one_liner", "motivation", "methods", "results", "limitations",
-            "relevance", "paper_type", "research_gap", "reading_priority",
-            "workflow_output", "confidence",
+        evidence_scope: Literal["abstract", "fulltext_excerpt"] = (
+            "fulltext_excerpt" if fulltext else "abstract"
         )
-        for field in required_fields:
-            if field not in result:
-                result[field] = {
-                    "reading_priority": 3, "confidence": 0.5, "paper_type": "method",
-                    "methods": [], "results": [], "limitations": [],
-                }.get(field, f"LLM 未返回 {field}")
-                if result.get("confidence", 0) > 0.3:
-                    result["confidence"] = 0.3
+        if self.gateway is None or self.budget_factory is None:  # pragma: no cover
+            return self._extractive_fallback(paper, topic)
+        request = LLMRequest(
+            model=self.settings.llm_model,
+            system_instruction=_SYSTEM_INSTRUCTION,
+            user_instruction=(
+                f"研究主题：{topic.name}\n"
+                f"关注点：{', '.join(topic.include)}\n"
+                f"分析工作流：{mode.name}\n"
+                f"工作流要求：{mode.instruction}\n"
+                f"论文标题：{paper.title}\n"
+                f"证据范围：{evidence_scope}"
+            ),
+            untrusted_evidence=evidence[:36_000],
+            provider_kind=self.gateway.provider_kind,
+            evidence_scope=evidence_scope,
+        )
+        try:
+            response = self.gateway.complete_structured(
+                request,
+                PaperAnalysisResponse,
+                self.budget_factory(request),
+            )
+        except (LLMGatewayError, LLMSecurityError) as exc:
+            return {
+                "status": "error",
+                "reason": str(exc),
+                "evidence_level": evidence_scope,
+            }
+
+        value = response.value
+        result = value.model_dump()
+        result["status"] = "ok"
+        result["evidence_level"] = evidence_scope
+        expected_fields = set(PaperAnalysisResponse.model_fields) - {"evidence_level"}
+        if not expected_fields.issubset(value.model_fields_set):
+            result["confidence"] = min(float(result["confidence"]), 0.3)
         return result
 
     @staticmethod
@@ -108,22 +130,73 @@ class PaperAnalyzer:
             if sentence.strip()
         ]
         method_words = (
-            "propose", "method", "framework", "model", "algorithm", "develop",
-            "technique", "approach", "architecture", "design", "implement",
-            "scheme", "strategy", "solution", "present", "introduce",
-            "devise", "formulate", "construct", "establish", "derive",
+            "propose",
+            "method",
+            "framework",
+            "model",
+            "algorithm",
+            "develop",
+            "technique",
+            "approach",
+            "architecture",
+            "design",
+            "implement",
+            "scheme",
+            "strategy",
+            "solution",
+            "present",
+            "introduce",
+            "devise",
+            "formulate",
+            "construct",
+            "establish",
+            "derive",
         )
         result_words = (
-            "result", "show", "demonstrate", "achieve", "improve", "outperform",
-            "obtain", "reach", "yield", "exhibit", "reveal", "indicate",
-            "suggest", "confirm", "validate", "verify", "prove", "evidence",
+            "result",
+            "show",
+            "demonstrate",
+            "achieve",
+            "improve",
+            "outperform",
+            "obtain",
+            "reach",
+            "yield",
+            "exhibit",
+            "reveal",
+            "indicate",
+            "suggest",
+            "confirm",
+            "validate",
+            "verify",
+            "prove",
+            "evidence",
         )
         limitation_words = (
-            "limit", "challenge", "however", "remain", "future work",
-            "shortcoming", "drawback", "weakness", "constraint", "restrict",
-            "assume", "caveat", "open question", "further", "need",
+            "limit",
+            "challenge",
+            "however",
+            "remain",
+            "future work",
+            "shortcoming",
+            "drawback",
+            "weakness",
+            "constraint",
+            "restrict",
+            "assume",
+            "caveat",
+            "open question",
+            "further",
+            "need",
         )
-        conclusion_words = ("conclude", "demonstrate", "show", "propose", "result", "find")
+        conclusion_words = (
+            "conclude",
+            "demonstrate",
+            "show",
+            "propose",
+            "result",
+            "find",
+        )
 
         def select(keywords: tuple[str, ...], limit: int = 3) -> list[str]:
             matches = [
@@ -136,26 +209,63 @@ class PaperAnalyzer:
         methods = select(method_words)
         results = select(result_words)
         limitations = select(limitation_words)
-
-        # one_liner: pick a conclusion-bearing sentence, not just the first
         one_liner_sentences = [
-            s for s in sentences
-            if any(k in s.casefold() for k in conclusion_words)
+            sentence
+            for sentence in sentences
+            if any(keyword in sentence.casefold() for keyword in conclusion_words)
         ]
         one_liner = (
-            one_liner_sentences[0][:500] if one_liner_sentences else sentences[0][:500]
+            one_liner_sentences[0][:500]
+            if one_liner_sentences
+            else sentences[0][:500]
         )
 
-        # paper_type: multi-keyword voting
+        folded = text.casefold()
         type_scores = {
-            "theory": sum(w in text.casefold() for w in ("theorem", "proof", "theoretical", "bound", "derive")),
-            "method": sum(w in text.casefold() for w in ("propose", "method", "framework", "algorithm", "architecture", "technique", "design")),
-            "experiment": sum(w in text.casefold() for w in ("experiment", "simulation", "measure", "benchmark", "dataset", "evaluat")),
-            "application": sum(w in text.casefold() for w in ("apply", "deploy", "real-world", "implement", "system", "field test")),
-            "review": sum(w in text.casefold() for w in ("survey", "review", "overview", "taxonomy", "compar")),
+            "theory": sum(
+                word in folded
+                for word in ("theorem", "proof", "theoretical", "bound", "derive")
+            ),
+            "method": sum(
+                word in folded
+                for word in (
+                    "propose",
+                    "method",
+                    "framework",
+                    "algorithm",
+                    "architecture",
+                    "technique",
+                    "design",
+                )
+            ),
+            "experiment": sum(
+                word in folded
+                for word in (
+                    "experiment",
+                    "simulation",
+                    "measure",
+                    "benchmark",
+                    "dataset",
+                    "evaluat",
+                )
+            ),
+            "application": sum(
+                word in folded
+                for word in (
+                    "apply",
+                    "deploy",
+                    "real-world",
+                    "implement",
+                    "system",
+                    "field test",
+                )
+            ),
+            "review": sum(
+                word in folded
+                for word in ("survey", "review", "overview", "taxonomy", "compar")
+            ),
         }
-        paper_type = max(type_scores, key=lambda k: type_scores[k]) if methods else "unknown"
-
+        paper_type = max(type_scores, key=type_scores.get) if methods else "unknown"
         relevance_terms = [
             term
             for term in topic.include
