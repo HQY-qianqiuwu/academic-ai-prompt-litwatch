@@ -18,11 +18,15 @@ from litwatch.migrations import (
     database_access_lock_path,
 )
 
+V1_7_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = len(MIGRATION_REGISTRY)
+NEXT_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION + 1
+
 
 def _create_v1_7_database(path) -> None:
     connection = sqlite3.connect(path)
     connection.executescript(SCHEMA)
-    for version, name, sql in MIGRATIONS:
+    for version, name, sql in MIGRATIONS[:V1_7_SCHEMA_VERSION]:
         connection.executescript(sql)
         connection.execute(
             "INSERT INTO schema_migrations(version,name) VALUES (?,?)",
@@ -43,13 +47,13 @@ def test_fresh_database_applies_immutable_registry_and_records_audit(tmp_path):
            FROM migration_audit ORDER BY version"""
     ).fetchall()
 
-    assert state.current_version == 6
-    assert state.target_version == 6
+    assert state.current_version == CURRENT_SCHEMA_VERSION
+    assert state.target_version == CURRENT_SCHEMA_VERSION
     assert state.pending == ()
     assert verification.ok is True
     assert verification.integrity == "ok"
     assert verification.foreign_key_errors == ()
-    assert verification.current_version == 6
+    assert verification.current_version == CURRENT_SCHEMA_VERSION
     assert [(row["version"], row["name"]) for row in audit] == [
         (migration.version, migration.name) for migration in MIGRATION_REGISTRY
     ]
@@ -59,7 +63,7 @@ def test_fresh_database_applies_immutable_registry_and_records_audit(tmp_path):
     database.connection.close()
 
 
-def test_copied_v1_7_version_six_database_is_backfilled_without_reapplying(tmp_path):
+def test_copied_v1_7_version_six_database_migrates_to_current_registry(tmp_path):
     path = tmp_path / "v1_7.db"
     _create_v1_7_database(path)
 
@@ -69,10 +73,10 @@ def test_copied_v1_7_version_six_database_is_backfilled_without_reapplying(tmp_p
     assert coordinator.inspect().pending == ()
     assert database.connection.execute(
         "SELECT COUNT(*) FROM schema_migrations"
-    ).fetchone()[0] == 6
+    ).fetchone()[0] == CURRENT_SCHEMA_VERSION
     assert database.connection.execute(
         "SELECT COUNT(*) FROM migration_audit WHERE status='success'"
-    ).fetchone()[0] == 6
+    ).fetchone()[0] == CURRENT_SCHEMA_VERSION
     database.connection.close()
 
 
@@ -122,7 +126,7 @@ def test_verify_reports_integrity_and_foreign_key_errors(tmp_path):
     assert verification.ok is False
     assert verification.integrity == "ok"
     assert verification.foreign_key_errors
-    assert verification.current_version == 6
+    assert verification.current_version == CURRENT_SCHEMA_VERSION
     database.connection.close()
 
 
@@ -152,7 +156,7 @@ def test_read_operation_rejects_active_transaction_without_committing_it(
 def test_invalid_migration_rolls_back_schema_version_and_audit(tmp_path):
     database = Database(tmp_path / "invalid-migration.db")
     invalid = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "intentionally_invalid",
         "CREATE TABLE partial_table(id INTEGER); THIS IS NOT VALID SQL;",
     )
@@ -166,10 +170,10 @@ def test_invalid_migration_rolls_back_schema_version_and_audit(tmp_path):
         "SELECT COUNT(*) FROM sqlite_master WHERE name='partial_table'"
     ).fetchone()[0] == 0
     assert database.connection.execute(
-        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+        f"SELECT COUNT(*) FROM schema_migrations WHERE version={NEXT_SCHEMA_VERSION}"
     ).fetchone()[0] == 0
     assert database.connection.execute(
-        "SELECT COUNT(*) FROM migration_audit WHERE version=7"
+        f"SELECT COUNT(*) FROM migration_audit WHERE version={NEXT_SCHEMA_VERSION}"
     ).fetchone()[0] == 0
     database.connection.close()
 
@@ -177,7 +181,7 @@ def test_invalid_migration_rolls_back_schema_version_and_audit(tmp_path):
 def test_pending_migration_creates_sqlite_backup_and_reports_it(tmp_path):
     database = Database(tmp_path / "pending.db")
     migration = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "backup_probe",
         "CREATE TABLE backup_probe(id INTEGER PRIMARY KEY);",
     )
@@ -190,7 +194,7 @@ def test_pending_migration_creates_sqlite_backup_and_reports_it(tmp_path):
     ).migrate()
 
     assert isinstance(report, MigrationReport)
-    assert report.applied_versions == (7,)
+    assert report.applied_versions == (NEXT_SCHEMA_VERSION,)
     assert report.backup_path is not None
     assert report.backup_path.parent == backup_directory
     assert report.backup_path.is_file()
@@ -213,7 +217,7 @@ def test_failed_sqlite_backup_removes_partial_destination_artifact(tmp_path):
 
     database = Database(tmp_path / "backup-failure.db")
     migration = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "backup_failure_probe",
         "CREATE TABLE backup_failure_probe(id INTEGER PRIMARY KEY);",
     )
@@ -228,7 +232,7 @@ def test_failed_sqlite_backup_removes_partial_destination_artifact(tmp_path):
 
     assert list(backup_directory.glob("*.db")) == []
     assert database.connection.execute(
-        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+        f"SELECT COUNT(*) FROM schema_migrations WHERE version={NEXT_SCHEMA_VERSION}"
     ).fetchone()[0] == 0
     database.connection.close()
 
@@ -238,7 +242,7 @@ def test_invalid_pending_migration_keeps_existing_data_and_version_unchanged(tmp
     database.connection.execute("INSERT INTO runs(started_at) VALUES ('before-failure')")
     database.connection.commit()
     invalid = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "invalid_after_backup",
         "CREATE TABLE should_not_exist(id INTEGER); THIS IS NOT VALID SQL;",
     )
@@ -254,7 +258,7 @@ def test_invalid_pending_migration_keeps_existing_data_and_version_unchanged(tmp
         "SELECT COUNT(*) FROM runs WHERE started_at='before-failure'"
     ).fetchone()[0] == 1
     assert database.connection.execute(
-        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+        f"SELECT COUNT(*) FROM schema_migrations WHERE version={NEXT_SCHEMA_VERSION}"
     ).fetchone()[0] == 0
     assert database.connection.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE name='should_not_exist'"
@@ -268,7 +272,7 @@ def test_recovery_verifies_temporary_copy_before_same_volume_replacement(tmp_pat
     database.connection.execute("INSERT INTO runs(started_at) VALUES ('before-backup')")
     database.connection.commit()
     migration = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "recovery_probe",
         "CREATE TABLE recovery_probe(id INTEGER PRIMARY KEY);",
     )
@@ -294,7 +298,7 @@ def test_recovery_verifies_temporary_copy_before_same_volume_replacement(tmp_pat
         "SELECT COUNT(*) FROM runs WHERE started_at='after-backup'"
     ).fetchone()[0] == 0
     assert restored.execute(
-        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+        f"SELECT COUNT(*) FROM schema_migrations WHERE version={NEXT_SCHEMA_VERSION}"
     ).fetchone()[0] == 0
     restored.close()
 
@@ -322,7 +326,7 @@ def test_recovery_fails_safely_when_another_connection_holds_write_lock(tmp_path
     path = tmp_path / "concurrent-recovery.db"
     database = Database(path)
     migration = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "concurrent_recovery_probe",
         "CREATE TABLE concurrent_recovery_probe(id INTEGER PRIMARY KEY);",
     )
@@ -347,7 +351,7 @@ def test_recovery_fails_safely_when_another_connection_holds_write_lock(tmp_path
     database.connection.close()
     reopened = sqlite3.connect(path)
     assert reopened.execute(
-        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+        f"SELECT COUNT(*) FROM schema_migrations WHERE version={NEXT_SCHEMA_VERSION}"
     ).fetchone()[0] == 1
     assert reopened.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE name='concurrent_recovery_probe'"
@@ -394,7 +398,7 @@ def test_recovery_requires_other_litwatch_database_connections_to_be_closed(
     database = Database(path)
     other_process_connection = Database(path)
     migration = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "litwatch_process_quiescence_probe",
         "CREATE TABLE litwatch_process_quiescence_probe(id INTEGER PRIMARY KEY);",
     )
@@ -418,7 +422,7 @@ def test_recovery_requires_other_litwatch_database_connections_to_be_closed(
 
     other_process_connection.connection.close()
     assert coordinator.connection.execute(
-        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+        f"SELECT COUNT(*) FROM schema_migrations WHERE version={NEXT_SCHEMA_VERSION}"
     ).fetchone()[0] == 1
     database.connection.close()
 
@@ -429,7 +433,7 @@ def test_recovery_holds_cross_process_lock_through_path_replacement(
     path = tmp_path / "locked-through-replace.db"
     database = Database(path)
     migration = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "cross_process_lock_probe",
         "CREATE TABLE cross_process_lock_probe(id INTEGER PRIMARY KEY);",
     )
@@ -490,7 +494,7 @@ def test_replacement_failure_restores_journal_mode_and_busy_timeout(
     path = tmp_path / "failed-replace.db"
     database = Database(path)
     migration = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "failed_replace_probe",
         "CREATE TABLE failed_replace_probe(id INTEGER PRIMARY KEY);",
     )
@@ -538,7 +542,7 @@ def test_recovery_copy_failure_is_reported_without_path_leak(tmp_path, monkeypat
     path = tmp_path / "copy-failure.db"
     database = Database(path)
     migration = Migration.from_sql(
-        7,
+        NEXT_SCHEMA_VERSION,
         "copy_failure_probe",
         "CREATE TABLE copy_failure_probe(id INTEGER PRIMARY KEY);",
     )

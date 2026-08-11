@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import RLock
 
 from litwatch.migrations import (
     DatabaseProcessLock,
@@ -299,6 +302,41 @@ _MIGRATION_SQL = (
             ON radar_papers(canonical_id);
         """,
     ),
+    (
+        7,
+        "durable_jobs",
+        """
+        CREATE TABLE IF NOT EXISTS jobs (
+            job_id TEXT PRIMARY KEY,
+            job_type TEXT NOT NULL CHECK(length(trim(job_type)) > 0),
+            idempotency_key TEXT NOT NULL CHECK(length(trim(idempotency_key)) > 0),
+            status TEXT NOT NULL CHECK(status IN (
+                'queued','running','completed','failed','cancelled'
+            )),
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            heartbeat_at TEXT,
+            attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt >= 0),
+            max_attempts INTEGER NOT NULL CHECK(max_attempts >= 1),
+            timeout_seconds INTEGER NOT NULL CHECK(timeout_seconds >= 1),
+            input_hash TEXT NOT NULL CHECK(length(trim(input_hash)) > 0),
+            payload_json TEXT NOT NULL DEFAULT '{}'
+                CHECK(json_valid(payload_json) AND json_type(payload_json) = 'object'),
+            result_reference TEXT,
+            safe_error_code TEXT,
+            safe_error_message TEXT,
+            cancellation_requested_at TEXT,
+            lease_owner TEXT,
+            lease_expires_at TEXT,
+            UNIQUE(job_type,idempotency_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_jobs_claim
+            ON jobs(status,created_at ASC,job_id ASC);
+        CREATE INDEX IF NOT EXISTS idx_jobs_status
+            ON jobs(status,finished_at DESC,job_id ASC);
+        """,
+    ),
 )
 
 MIGRATION_REGISTRY = tuple(
@@ -327,6 +365,7 @@ class Database:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
+        self.transaction_lock = RLock()
         recovery_gate = DatabaseProcessLock(
             database_recovery_lock_path(path.resolve()), shared=True
         )
@@ -353,6 +392,24 @@ class Database:
         except Exception:
             self.connection.close()
             raise
+
+    @contextmanager
+    def transaction(
+        self, *, immediate: bool = False
+    ) -> Iterator[sqlite3.Connection]:
+        """Run one non-nested transaction under the database's shared thread lock."""
+
+        with self.transaction_lock:
+            if self.connection.in_transaction:
+                raise RuntimeError("cannot nest database transactions")
+            self.connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
+            try:
+                yield self.connection
+            except Exception:
+                self.connection.rollback()
+                raise
+            else:
+                self.connection.commit()
 
     def _apply_migrations(self) -> None:
         try:
