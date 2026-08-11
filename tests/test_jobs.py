@@ -355,3 +355,28 @@ def test_restart_recovery_finishes_cancellation_requested_stale_job(tmp_path):
     assert recovered[0].finished_at == NOW + timedelta(seconds=6)
     assert repository.claim_next("worker-b", lease_seconds=30, now=NOW) is None
     database.connection.close()
+
+
+@pytest.mark.parametrize(
+    ("request_cancellation", "expected_status"),
+    [
+        (False, JobStatus.QUEUED),
+        (True, JobStatus.CANCELLED),
+    ],
+)
+def test_restart_recovery_handles_lease_at_exact_expiry_boundary(
+    tmp_path, request_cancellation, expected_status
+):
+    database = Database(tmp_path / f"boundary-{request_cancellation}.db")
+    repository = JobRepository(database)
+    _enqueue(repository)
+    running = repository.claim_next("worker-a", lease_seconds=5, now=NOW)
+    assert running is not None
+    if request_cancellation:
+        repository.request_cancel(running.job_id, now=NOW + timedelta(seconds=1))
+
+    recovered = repository.recover_stale(NOW + timedelta(seconds=5))
+
+    assert len(recovered) == 1
+    assert recovered[0].status is expected_status
+    database.connection.close()

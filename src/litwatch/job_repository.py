@@ -263,7 +263,7 @@ class JobRepository:
                                                ELSE 'stale job exhausted retries' END,
                        lease_owner=NULL,lease_expires_at=NULL
                    WHERE status='running' AND lease_expires_at IS NOT NULL
-                     AND lease_expires_at < ?
+                     AND lease_expires_at <= ?
                    RETURNING *""",
                 (recovered_at, recovered_at, recovered_at, recovered_at),
             ).fetchall()
