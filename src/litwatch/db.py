@@ -5,7 +5,13 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from litwatch.migrations import Migration, MigrationCoordinator
+from litwatch.migrations import (
+    DatabaseProcessLock,
+    Migration,
+    MigrationCoordinator,
+    database_access_lock_path,
+    database_recovery_lock_path,
+)
 from litwatch.models import Paper
 
 SCHEMA = """
@@ -304,15 +310,48 @@ MIGRATIONS = tuple(
 )
 
 
+class _LockedSQLiteConnection(sqlite3.Connection):
+    _litwatch_access_lock: DatabaseProcessLock | None = None
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            if self._litwatch_access_lock is not None:
+                self._litwatch_access_lock.release()
+                self._litwatch_access_lock = None
+
+
 class Database:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
-        self.connection = sqlite3.connect(path, check_same_thread=False)
-        self.connection.row_factory = sqlite3.Row
-        self.connection.execute("PRAGMA foreign_keys=ON")
-        self.connection.executescript(SCHEMA)
-        self._apply_migrations()
+        recovery_gate = DatabaseProcessLock(
+            database_recovery_lock_path(path.resolve()), shared=True
+        )
+        access_lock = DatabaseProcessLock(
+            database_access_lock_path(path.resolve()), shared=True
+        )
+        with recovery_gate:
+            access_lock.acquire()
+            try:
+                self.connection = sqlite3.connect(
+                    path,
+                    check_same_thread=False,
+                    factory=_LockedSQLiteConnection,
+                )
+            except Exception:
+                access_lock.release()
+                raise
+        self.connection._litwatch_access_lock = access_lock
+        try:
+            self.connection.row_factory = sqlite3.Row
+            self.connection.execute("PRAGMA foreign_keys=ON")
+            self.connection.executescript(SCHEMA)
+            self._apply_migrations()
+        except Exception:
+            self.connection.close()
+            raise
 
     def _apply_migrations(self) -> None:
         MigrationCoordinator(self.connection, MIGRATION_REGISTRY).migrate()

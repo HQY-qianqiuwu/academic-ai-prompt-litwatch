@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from shutil import copy2
+from typing import Self
 from uuid import uuid4
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 
 class MigrationSafetyError(RuntimeError):
@@ -57,6 +64,141 @@ class MigrationReport:
     backup_path: Path | None
     applied_versions: tuple[int, ...]
     verification: MigrationVerification
+
+
+@dataclass(frozen=True, slots=True)
+class _RecoveryConnectionState:
+    busy_timeout: int
+    connection_factory: type[sqlite3.Connection]
+    foreign_keys: bool
+    journal_mode: str
+    row_factory: object
+    text_factory: object
+    isolation_level: str | None
+
+
+class DatabaseProcessLock:
+    """Cross-process shared/exclusive lock used by every LitWatch DB lifetime."""
+
+    _WINDOWS_READER_SLOTS = 64
+
+    def __init__(self, path: Path, *, shared: bool) -> None:
+        self.path = path
+        self.shared = shared
+        self._handle = None
+        self._offset = 0
+        self._length = 0
+
+    @property
+    def held(self) -> bool:
+        return self._handle is not None
+
+    def acquire(self) -> None:
+        if self.held:
+            return
+        try:
+            handle = self.path.open("a+b")
+            handle.seek(0, os.SEEK_END)
+            minimum_size = self._WINDOWS_READER_SLOTS if os.name == "nt" else 1
+            if handle.tell() < minimum_size:
+                handle.write(b"\0" * (minimum_size - handle.tell()))
+                handle.flush()
+            if os.name == "nt":
+                if self.shared:
+                    for offset in range(self._WINDOWS_READER_SLOTS):
+                        handle.seek(offset)
+                        try:
+                            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                        except OSError:
+                            continue
+                        self._offset = offset
+                        self._length = 1
+                        break
+                    else:
+                        raise OSError("no database reader lock slots available")
+                else:
+                    handle.seek(0)
+                    msvcrt.locking(
+                        handle.fileno(),
+                        msvcrt.LK_NBLCK,
+                        self._WINDOWS_READER_SLOTS,
+                    )
+                    self._offset = 0
+                    self._length = self._WINDOWS_READER_SLOTS
+            else:
+                mode = fcntl.LOCK_SH if self.shared else fcntl.LOCK_EX
+                fcntl.flock(handle.fileno(), mode | fcntl.LOCK_NB)
+        except OSError:
+            if "handle" in locals():
+                handle.close()
+            raise MigrationSafetyError("database is not quiescent") from None
+        self._handle = handle
+
+    def release(self) -> None:
+        if self._handle is None:
+            return
+        try:
+            if os.name == "nt":
+                self._handle.seek(self._offset)
+                msvcrt.locking(
+                    self._handle.fileno(), msvcrt.LK_UNLCK, self._length
+                )
+            else:
+                fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            self._handle.close()
+            self._handle = None
+            self._offset = 0
+            self._length = 0
+
+    def __enter__(self) -> Self:
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.release()
+
+
+class _RecoveryFileLock(DatabaseProcessLock):
+    """Serialize recovery while preventing new LitWatch DB connections.
+
+    SQLite's exclusive preflight separately rejects unmanaged clients that
+    still hold an active transaction; an OS replacement conflict remains
+    fail-closed.
+    """
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path, shared=False)
+
+
+def database_access_lock_path(database_path: Path) -> Path:
+    return database_path.with_name(f".{database_path.name}.access.lock")
+
+
+def database_recovery_lock_path(database_path: Path) -> Path:
+    return database_path.with_name(f".{database_path.name}.recovery.lock")
+
+
+@dataclass(slots=True)
+class _RecoveryAccessLease:
+    exclusive: DatabaseProcessLock
+    shared: DatabaseProcessLock | None
+    active: bool = True
+
+    def restore_shared(self, connection: sqlite3.Connection) -> None:
+        if not self.active:
+            return
+        self.exclusive.release()
+        if self.shared is not None:
+            self.shared.acquire()
+            if hasattr(connection, "_litwatch_access_lock"):
+                connection._litwatch_access_lock = self.shared
+        self.active = False
+
+    def finish(self) -> None:
+        if self.active:
+            self.exclusive.release()
+            self.active = False
 
 
 MIGRATION_AUDIT_SCHEMA = """
@@ -155,7 +297,20 @@ class MigrationCoordinator:
             raise MigrationSafetyError(
                 "cannot recover migrations during an active transaction"
             )
-        source = backup_path.resolve(strict=True)
+        lock_path = self.database_path.with_name(
+            f".{self.database_path.name}.recovery.lock"
+        )
+        with _RecoveryFileLock(lock_path):
+            try:
+                source = backup_path.resolve(strict=True)
+            except (OSError, RuntimeError):
+                raise MigrationSafetyError("backup is unavailable") from None
+            access_lease = self._acquire_recovery_access()
+            return self._recover_locked(source, access_lease)
+
+    def _recover_locked(
+        self, source: Path, access_lease: _RecoveryAccessLease
+    ) -> MigrationVerification:
         temporary_path = self.database_path.with_name(
             f".{self.database_path.name}.restore-{uuid4().hex}.tmp"
         )
@@ -164,7 +319,10 @@ class MigrationCoordinator:
         connection_closed = False
         try:
             try:
-                copy2(source, temporary_path)
+                try:
+                    copy2(source, temporary_path)
+                except OSError:
+                    raise MigrationSafetyError("backup copy failed") from None
                 temporary_connection = sqlite3.connect(temporary_path)
                 temporary_connection.execute("PRAGMA foreign_keys=ON")
                 source_state = MigrationCoordinator(
@@ -191,14 +349,29 @@ class MigrationCoordinator:
             # makes this a same-volume atomic replacement.
             try:
                 temporary_path.replace(self.database_path)
-            except OSError as error:
-                raise MigrationSafetyError("database is not quiescent") from error
+            except OSError:
+                self._reopen_database_connection(recovery_state)
+                connection_closed = False
+                raise MigrationSafetyError("database replacement failed") from None
         except Exception:
+            restoration_failed = False
             if not connection_closed:
-                self._release_recovery_quiescence(recovery_state)
+                try:
+                    self._release_recovery_quiescence(recovery_state)
+                except sqlite3.Error:
+                    restoration_failed = True
+                try:
+                    access_lease.restore_shared(self.connection)
+                except MigrationSafetyError:
+                    restoration_failed = True
+            else:
+                access_lease.finish()
             if temporary_path.exists():
                 temporary_path.unlink()
+            if restoration_failed:
+                raise MigrationSafetyError("database state restoration failed") from None
             raise
+        access_lease.finish()
         return verification
 
     def verify(self) -> MigrationVerification:
@@ -251,11 +424,37 @@ class MigrationCoordinator:
             destination.close()
         return backup_path
 
-    def _acquire_recovery_quiescence(self) -> tuple[int, str]:
+    def _acquire_recovery_access(self) -> _RecoveryAccessLease:
+        shared = getattr(self.connection, "_litwatch_access_lock", None)
+        if shared is not None:
+            shared.release()
+        exclusive = DatabaseProcessLock(
+            database_access_lock_path(self.database_path), shared=False
+        )
+        try:
+            exclusive.acquire()
+        except MigrationSafetyError:
+            if shared is not None:
+                shared.acquire()
+            raise
+        return _RecoveryAccessLease(exclusive=exclusive, shared=shared)
+
+    def _acquire_recovery_quiescence(self) -> _RecoveryConnectionState:
         busy_timeout = int(self.connection.execute("PRAGMA busy_timeout").fetchone()[0])
         journal_mode = str(
             self.connection.execute("PRAGMA journal_mode").fetchone()[0]
         ).lower()
+        state = _RecoveryConnectionState(
+            busy_timeout=busy_timeout,
+            connection_factory=type(self.connection),
+            foreign_keys=bool(
+                self.connection.execute("PRAGMA foreign_keys").fetchone()[0]
+            ),
+            journal_mode=journal_mode,
+            row_factory=self.connection.row_factory,
+            text_factory=self.connection.text_factory,
+            isolation_level=self.connection.isolation_level,
+        )
         self.connection.execute("PRAGMA busy_timeout=0")
         try:
             delete_mode = str(
@@ -274,15 +473,29 @@ class MigrationCoordinator:
                 except sqlite3.Error:
                     pass
             raise MigrationSafetyError("database is not quiescent") from error
-        return busy_timeout, journal_mode
+        return state
 
-    def _release_recovery_quiescence(self, state: tuple[int, str]) -> None:
-        busy_timeout, journal_mode = state
+    def _release_recovery_quiescence(self, state: _RecoveryConnectionState) -> None:
         if self.connection.in_transaction:
             self.connection.rollback()
-        if journal_mode != "delete":
-            self.connection.execute(f"PRAGMA journal_mode={journal_mode}")
-        self.connection.execute(f"PRAGMA busy_timeout={busy_timeout}")
+        if state.journal_mode != "delete":
+            self.connection.execute(f"PRAGMA journal_mode={state.journal_mode}")
+        self.connection.execute(f"PRAGMA busy_timeout={state.busy_timeout}")
+        self.connection.execute(f"PRAGMA foreign_keys={int(state.foreign_keys)}")
+
+    def _reopen_database_connection(self, state: _RecoveryConnectionState) -> None:
+        try:
+            connection = sqlite3.connect(
+                self.database_path,
+                check_same_thread=False,
+                factory=state.connection_factory,
+                isolation_level=state.isolation_level,
+            )
+            connection.row_factory = state.row_factory
+            connection.text_factory = state.text_factory
+        except sqlite3.Error:
+            raise MigrationSafetyError("database state restoration failed") from None
+        self.connection = connection
 
     def _applied_rows(self) -> tuple[tuple[int, str], ...]:
         rows = self.connection.execute(

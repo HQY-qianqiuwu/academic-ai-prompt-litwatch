@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import sqlite3
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
 from litwatch.db import MIGRATION_REGISTRY, MIGRATIONS, SCHEMA, Database
 from litwatch.migrations import (
+    DatabaseProcessLock,
     Migration,
     MigrationChecksumError,
     MigrationCoordinator,
     MigrationReport,
     MigrationSafetyError,
+    database_access_lock_path,
 )
 
 
@@ -69,6 +74,21 @@ def test_copied_v1_7_version_six_database_is_backfilled_without_reapplying(tmp_p
         "SELECT COUNT(*) FROM migration_audit WHERE status='success'"
     ).fetchone()[0] == 6
     database.connection.close()
+
+
+def test_database_connection_releases_shared_access_lock_on_close(tmp_path):
+    path = tmp_path / "lifetime-lock.db"
+    database = Database(path)
+    exclusive = DatabaseProcessLock(
+        database_access_lock_path(path.resolve()), shared=False
+    )
+
+    with pytest.raises(MigrationSafetyError, match="database is not quiescent"):
+        exclusive.acquire()
+
+    database.connection.close()
+    exclusive.acquire()
+    exclusive.release()
 
 
 def test_applied_migration_checksum_mismatch_fails_closed(tmp_path):
@@ -333,6 +353,181 @@ def test_recovery_fails_safely_when_another_connection_holds_write_lock(tmp_path
         "SELECT COUNT(*) FROM sqlite_master WHERE name='concurrent_recovery_probe'"
     ).fetchone()[0] == 1
     reopened.close()
+
+
+def test_recovery_requires_other_litwatch_database_connections_to_be_closed(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "litwatch-process-quiescence.db"
+    database = Database(path)
+    other_process_connection = Database(path)
+    migration = Migration.from_sql(
+        7,
+        "litwatch_process_quiescence_probe",
+        "CREATE TABLE litwatch_process_quiescence_probe(id INTEGER PRIMARY KEY);",
+    )
+    coordinator = MigrationCoordinator(
+        database.connection,
+        (*MIGRATION_REGISTRY, migration),
+        backup_directory=tmp_path / "backups",
+    )
+    report = coordinator.migrate()
+    assert report.backup_path is not None
+
+    def sqlite_preflight_must_not_run():
+        raise AssertionError("shared lifetime lock must reject recovery first")
+
+    monkeypatch.setattr(
+        coordinator, "_acquire_recovery_quiescence", sqlite_preflight_must_not_run
+    )
+
+    with pytest.raises(MigrationSafetyError, match="database is not quiescent"):
+        coordinator.recover(report.backup_path)
+
+    other_process_connection.connection.close()
+    assert coordinator.connection.execute(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+    ).fetchone()[0] == 1
+    database.connection.close()
+
+
+def test_recovery_holds_cross_process_lock_through_path_replacement(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "locked-through-replace.db"
+    database = Database(path)
+    migration = Migration.from_sql(
+        7,
+        "cross_process_lock_probe",
+        "CREATE TABLE cross_process_lock_probe(id INTEGER PRIMARY KEY);",
+    )
+    coordinator = MigrationCoordinator(
+        database.connection,
+        (*MIGRATION_REGISTRY, migration),
+        backup_directory=tmp_path / "backups",
+    )
+    report = coordinator.migrate()
+    assert report.backup_path is not None
+    real_replace = Path.replace
+    observed_locked = False
+
+    def assert_lock_is_held_then_replace(source, target):
+        nonlocal observed_locked
+        lock_path = path.with_name(f".{path.name}.recovery.lock")
+        probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import os, sys\n"
+                    "from pathlib import Path\n"
+                    "handle = Path(sys.argv[1]).open('a+b')\n"
+                    "handle.seek(0)\n"
+                    "try:\n"
+                    "    if os.name == 'nt':\n"
+                    "        import msvcrt\n"
+                    "        msvcrt.locking(handle.fileno(), msvcrt.LK_NBRLCK, 1)\n"
+                    "    else:\n"
+                    "        import fcntl\n"
+                    "        fcntl.flock(handle.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)\n"
+                    "except OSError:\n"
+                    "    raise SystemExit(3)\n"
+                    "raise SystemExit(0)\n"
+                ),
+                str(lock_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        observed_locked = probe.returncode == 3
+        assert observed_locked, (probe.returncode, probe.stdout, probe.stderr)
+        return real_replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", assert_lock_is_held_then_replace)
+
+    verification = coordinator.recover(report.backup_path)
+
+    assert verification.ok is True
+    assert observed_locked is True
+
+
+def test_replacement_failure_restores_journal_mode_and_busy_timeout(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "failed-replace.db"
+    database = Database(path)
+    migration = Migration.from_sql(
+        7,
+        "failed_replace_probe",
+        "CREATE TABLE failed_replace_probe(id INTEGER PRIMARY KEY);",
+    )
+    coordinator = MigrationCoordinator(
+        database.connection,
+        (*MIGRATION_REGISTRY, migration),
+        backup_directory=tmp_path / "backups",
+    )
+    report = coordinator.migrate()
+    assert report.backup_path is not None
+    coordinator.connection.execute("PRAGMA busy_timeout=4321")
+    original_journal_mode = coordinator.connection.execute(
+        "PRAGMA journal_mode"
+    ).fetchone()[0]
+
+    def fail_replace(source, target):
+        raise PermissionError("sensitive-path-that-must-not-leak")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    with pytest.raises(MigrationSafetyError, match="database replacement failed") as exc:
+        coordinator.recover(report.backup_path)
+
+    assert "sensitive-path-that-must-not-leak" not in str(exc.value)
+    assert coordinator.connection.execute("PRAGMA journal_mode").fetchone()[0] == (
+        original_journal_mode
+    )
+    assert coordinator.connection.execute("PRAGMA busy_timeout").fetchone()[0] == 4321
+    coordinator.connection.close()
+
+
+def test_missing_recovery_backup_is_reported_without_path_leak(tmp_path):
+    database = Database(tmp_path / "missing-source.db")
+    coordinator = MigrationCoordinator(database.connection, MIGRATION_REGISTRY)
+    missing = tmp_path / "sensitive-missing-backup.db"
+
+    with pytest.raises(MigrationSafetyError, match="backup is unavailable") as exc:
+        coordinator.recover(missing)
+
+    assert "sensitive-missing-backup.db" not in str(exc.value)
+    database.connection.close()
+
+
+def test_recovery_copy_failure_is_reported_without_path_leak(tmp_path, monkeypatch):
+    path = tmp_path / "copy-failure.db"
+    database = Database(path)
+    migration = Migration.from_sql(
+        7,
+        "copy_failure_probe",
+        "CREATE TABLE copy_failure_probe(id INTEGER PRIMARY KEY);",
+    )
+    coordinator = MigrationCoordinator(
+        database.connection,
+        (*MIGRATION_REGISTRY, migration),
+        backup_directory=tmp_path / "backups",
+    )
+    report = coordinator.migrate()
+    assert report.backup_path is not None
+
+    def fail_copy(source, target):
+        raise PermissionError("sensitive-copy-path-that-must-not-leak")
+
+    monkeypatch.setattr("litwatch.migrations.copy2", fail_copy)
+
+    with pytest.raises(MigrationSafetyError, match="backup copy failed") as exc:
+        coordinator.recover(report.backup_path)
+
+    assert "sensitive-copy-path-that-must-not-leak" not in str(exc.value)
+    database.connection.close()
 
 
 def test_no_pending_migration_does_not_create_backup(tmp_path):
