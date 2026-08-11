@@ -19,7 +19,12 @@ from litwatch.llm import (
     LLMUsage,
     OpenAICompatibleProvider,
 )
-from litwatch.llm.security import CostGuard, DataEgressPolicy, LLMSecurityError
+from litwatch.llm.security import (
+    CostGuard,
+    DataEgressPolicy,
+    LLMSecurityError,
+    LLMUsageLedger,
+)
 
 
 class Summary(BaseModel):
@@ -45,8 +50,6 @@ def _budget(**overrides) -> LLMBudget:
         "output_cost_per_million": 0,
         "estimated_tokens": 300,
         "estimated_cost": 0,
-        "daily_spend": 0,
-        "active_jobs": 0,
     }
     values.update(overrides)
     return LLMBudget(**values)
@@ -92,7 +95,6 @@ def test_budget_rejects_non_finite_pricing(field):
         "input_cost_per_million",
         "output_cost_per_million",
         "estimated_cost",
-        "daily_spend",
     ],
 )
 @pytest.mark.parametrize("value", [True, "0.5"])
@@ -128,11 +130,13 @@ def _gateway(
                 fulltext_egress_consent=True,
                 max_payload_chars=10_000,
             ),
-            cost_guard=CostGuard(
-                max_tokens_per_job=10_000,
-                max_cost_per_job=10,
-                max_daily_cost=100,
-                max_concurrent_llm_jobs=10,
+            usage_ledger=LLMUsageLedger(
+                CostGuard(
+                    max_tokens_per_job=10_000,
+                    max_cost_per_job=10,
+                    max_daily_cost=100,
+                    max_concurrent_llm_jobs=10,
+                )
             ),
         ),
         client,
@@ -405,11 +409,13 @@ def test_egress_denial_occurs_before_provider_dispatch():
             fulltext_egress_consent=False,
             max_payload_chars=10_000,
         ),
-        cost_guard=CostGuard(
-            max_tokens_per_job=10_000,
-            max_cost_per_job=10,
-            max_daily_cost=100,
-            max_concurrent_llm_jobs=10,
+        usage_ledger=LLMUsageLedger(
+            CostGuard(
+                max_tokens_per_job=10_000,
+                max_cost_per_job=10,
+                max_daily_cost=100,
+                max_concurrent_llm_jobs=10,
+            )
         ),
     )
 
@@ -429,11 +435,13 @@ def test_cost_denial_occurs_before_provider_dispatch():
             fulltext_egress_consent=True,
             max_payload_chars=10_000,
         ),
-        cost_guard=CostGuard(
-            max_tokens_per_job=100,
-            max_cost_per_job=10,
-            max_daily_cost=100,
-            max_concurrent_llm_jobs=10,
+        usage_ledger=LLMUsageLedger(
+            CostGuard(
+                max_tokens_per_job=100,
+                max_cost_per_job=10,
+                max_daily_cost=100,
+                max_concurrent_llm_jobs=10,
+            )
         ),
     )
 
@@ -446,12 +454,12 @@ def test_cost_denial_occurs_before_provider_dispatch():
 def test_trusted_provider_kind_mismatch_is_rejected_before_dispatch():
     provider = SpyProvider()
     policy = Mock(spec=DataEgressPolicy)
-    guard = Mock(spec=CostGuard)
+    ledger = Mock(spec=LLMUsageLedger)
     gateway = LLMGateway(
         provider,
         provider_kind="cloud",
         data_egress_policy=policy,
-        cost_guard=guard,
+        usage_ledger=ledger,
     )
     mismatched = _request().model_copy(update={"provider_kind": "local"})
 
@@ -460,5 +468,5 @@ def test_trusted_provider_kind_mismatch_is_rejected_before_dispatch():
 
     assert error.value.code.value == "provider_kind_mismatch"
     policy.authorize.assert_not_called()
-    guard.authorize.assert_not_called()
+    ledger.reserve.assert_not_called()
     assert provider.calls == 0

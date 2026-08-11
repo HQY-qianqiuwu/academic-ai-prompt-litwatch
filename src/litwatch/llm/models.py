@@ -80,8 +80,6 @@ class LLMBudget(BaseModel):
     )
     estimated_tokens: int = Field(ge=0, strict=True)
     estimated_cost: float = Field(ge=0, allow_inf_nan=False, strict=True)
-    daily_spend: float = Field(ge=0, allow_inf_nan=False, strict=True)
-    active_jobs: int = Field(ge=0, strict=True)
 
 
 StructuredValue = TypeVar("StructuredValue", bound=BaseModel)

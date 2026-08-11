@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from math import isfinite
+from threading import RLock
 
 
 class LLMSecurityErrorCode(StrEnum):
@@ -162,3 +165,101 @@ class CostGuard:
         _require_finite_nonnegative_number(estimated_cost, "estimated_cost")
         _require_finite_nonnegative_number(daily_spend, "daily_spend")
         _require_nonnegative_int(active_jobs, "active_jobs")
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+@dataclass(frozen=True, slots=True)
+class LLMUsageReservation:
+    reservation_id: int
+
+
+class LLMUsageLedger:
+    """Thread-safe trusted accounting for daily spend and active model calls."""
+
+    def __init__(
+        self,
+        cost_guard: CostGuard,
+        *,
+        now: Callable[[], datetime] = _utc_now,
+    ) -> None:
+        self._cost_guard = cost_guard
+        self._now = now
+        self._lock = RLock()
+        self._day = self._utc_day()
+        self._daily_spend = 0.0
+        self._next_reservation_id = 1
+        self._active_reservations: dict[int, tuple[date, float]] = {}
+
+    def reserve(
+        self,
+        *,
+        estimated_tokens: int,
+        estimated_cost: float,
+    ) -> LLMUsageReservation:
+        with self._lock:
+            self._rollover_locked()
+            reserved_cost = sum(
+                estimate
+                for reservation_day, estimate in self._active_reservations.values()
+                if reservation_day == self._day
+            )
+            self._cost_guard.authorize(
+                estimated_tokens=estimated_tokens,
+                estimated_cost=estimated_cost,
+                daily_spend=self._daily_spend + reserved_cost,
+                active_jobs=len(self._active_reservations),
+            )
+            reservation = LLMUsageReservation(self._next_reservation_id)
+            self._next_reservation_id += 1
+            self._active_reservations[reservation.reservation_id] = (
+                self._day,
+                estimated_cost,
+            )
+            return reservation
+
+    def settle(
+        self,
+        reservation: LLMUsageReservation,
+        *,
+        actual_cost: float,
+    ) -> None:
+        settled_cost = _require_finite_nonnegative_number(actual_cost, "actual_cost")
+        with self._lock:
+            self._rollover_locked()
+            self._remove_reservation_locked(reservation)
+            self._daily_spend += settled_cost
+
+    def release(self, reservation: LLMUsageReservation) -> None:
+        with self._lock:
+            self._remove_reservation_locked(reservation)
+
+    @property
+    def daily_spend(self) -> float:
+        with self._lock:
+            self._rollover_locked()
+            return self._daily_spend
+
+    @property
+    def active_jobs(self) -> int:
+        with self._lock:
+            return len(self._active_reservations)
+
+    def _remove_reservation_locked(self, reservation: LLMUsageReservation) -> None:
+        if reservation.reservation_id not in self._active_reservations:
+            raise ValueError("LLM usage reservation is unknown or already released")
+        del self._active_reservations[reservation.reservation_id]
+
+    def _rollover_locked(self) -> None:
+        current_day = self._utc_day()
+        if current_day != self._day:
+            self._day = current_day
+            self._daily_spend = 0.0
+
+    def _utc_day(self) -> date:
+        current = self._now()
+        if current.tzinfo is None:
+            raise ValueError("LLM usage ledger clock must be timezone-aware")
+        return current.astimezone(UTC).date()

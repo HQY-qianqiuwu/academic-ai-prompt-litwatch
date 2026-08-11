@@ -10,7 +10,7 @@ from litwatch.config import Settings
 from litwatch.llm.gateway import LLMGateway
 from litwatch.llm.models import LLMBudget, LLMRequest
 from litwatch.llm.openai_compatible import OpenAICompatibleProvider
-from litwatch.llm.security import CostGuard, DataEgressPolicy
+from litwatch.llm.security import CostGuard, DataEgressPolicy, LLMUsageLedger
 
 
 @dataclass(slots=True)
@@ -49,11 +49,13 @@ def build_llm_runtime(
             fulltext_egress_consent=settings.llm_fulltext_egress_consent,
             max_payload_chars=settings.llm_max_payload_chars,
         ),
-        cost_guard=CostGuard(
-            max_tokens_per_job=settings.max_tokens_per_job,
-            max_cost_per_job=settings.max_cost_per_job,
-            max_daily_cost=settings.max_daily_cost,
-            max_concurrent_llm_jobs=settings.max_concurrent_llm_jobs,
+        usage_ledger=LLMUsageLedger(
+            CostGuard(
+                max_tokens_per_job=settings.max_tokens_per_job,
+                max_cost_per_job=settings.max_cost_per_job,
+                max_daily_cost=settings.max_daily_cost,
+                max_concurrent_llm_jobs=settings.max_concurrent_llm_jobs,
+            )
         ),
     )
 
@@ -71,8 +73,6 @@ def build_llm_runtime(
             output_cost_per_million=float(settings.llm_output_cost_per_million),
             estimated_tokens=estimated_tokens,
             estimated_cost=float(estimated_cost),
-            daily_spend=0.0,
-            active_jobs=0,
         )
 
     return LLMRuntime(

@@ -42,8 +42,6 @@ def _budget(_request) -> LLMBudget:
         output_cost_per_million=0.0,
         estimated_tokens=1_000,
         estimated_cost=0.0,
-        daily_spend=0.0,
-        active_jobs=0,
     )
 
 
