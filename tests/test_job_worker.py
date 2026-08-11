@@ -107,6 +107,8 @@ def test_timeout_watchdog_persists_timeout_without_spawning_extra_handlers(tmp_p
 
     timed_out = repository.get(job.job_id)
     assert timed_out.status.value == "running"
+    assert timed_out.safe_error_code == "timeout"
+    assert timed_out.safe_error_message == "job exceeded its execution time limit"
     assert worker.active_count == 1
     release.set()
     timed_out = _wait_for(repository, job.job_id, {"queued"})
@@ -148,7 +150,10 @@ def test_timeout_never_requeues_while_original_physical_attempt_is_active(tmp_pa
         worker.run_once()
         sleep(0.02)
 
-    assert repository.get(job.job_id).status.value == "running"
+    timed_out = repository.get(job.job_id)
+    assert timed_out.status.value == "running"
+    assert timed_out.safe_error_code == "timeout"
+    assert timed_out.safe_error_message == "job exceeded its execution time limit"
     assert calls == 1
     assert maximum == 1
     assert worker.active_count == 1

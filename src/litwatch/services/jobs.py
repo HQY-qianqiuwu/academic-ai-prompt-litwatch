@@ -49,6 +49,7 @@ class _ActiveAttempt:
     future: Future[None]
     deadline: float
     cancelled: Event
+    timed_out: bool = False
 
 
 @dataclass(slots=True)
@@ -233,6 +234,21 @@ class JobWorker:
                 continue
             if now >= attempt.deadline:
                 attempt.cancelled.set()
+                if not attempt.timed_out:
+                    try:
+                        self.repository.mark_active_timeout(
+                            attempt.job.job_id,
+                            self.worker_id,
+                            lease_seconds=self.lease_seconds,
+                            safe_error_message=(
+                                "job exceeded its execution time limit"
+                            ),
+                        )
+                    except JobTransitionError:
+                        pass
+                    else:
+                        attempt.timed_out = True
+                    continue
             try:
                 self.repository.heartbeat(
                     attempt.job.job_id,

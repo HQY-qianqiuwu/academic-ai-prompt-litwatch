@@ -312,6 +312,39 @@ class JobRepository:
             ),
         )
 
+    def mark_active_timeout(
+        self,
+        job_id: str,
+        lease_owner: str,
+        *,
+        lease_seconds: int,
+        safe_error_message: str,
+        now: datetime | None = None,
+    ) -> JobRecord:
+        """Persist timeout evidence without making an active attempt claimable."""
+
+        if lease_seconds < 1:
+            raise ValueError("lease_seconds must be positive")
+        marked_at = self._utc(now)
+        lease_expires_at = marked_at + timedelta(seconds=lease_seconds)
+        return self._guarded_update(
+            job_id,
+            lease_owner,
+            """UPDATE jobs SET
+                   heartbeat_at=?,lease_expires_at=?,
+                   safe_error_code='timeout',safe_error_message=?
+               WHERE job_id=? AND status='running' AND lease_owner=?
+                 AND cancellation_requested_at IS NULL
+               RETURNING *""",
+            (
+                marked_at.isoformat(),
+                lease_expires_at.isoformat(),
+                safe_error_message,
+                job_id,
+                lease_owner,
+            ),
+        )
+
     def _guarded_update(
         self,
         job_id: str,
