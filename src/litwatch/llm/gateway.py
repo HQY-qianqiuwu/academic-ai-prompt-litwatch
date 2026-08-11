@@ -13,6 +13,7 @@ from litwatch.llm.models import (
     LLMResponse,
     LLMResult,
 )
+from litwatch.llm.security import CostGuard, DataEgressPolicy
 
 
 class LLMProvider(Protocol):
@@ -23,8 +24,16 @@ StructuredValue = TypeVar("StructuredValue", bound=BaseModel)
 
 
 class LLMGateway:
-    def __init__(self, provider: LLMProvider) -> None:
+    def __init__(
+        self,
+        provider: LLMProvider,
+        *,
+        data_egress_policy: DataEgressPolicy,
+        cost_guard: CostGuard,
+    ) -> None:
         self.provider = provider
+        self.data_egress_policy = data_egress_policy
+        self.cost_guard = cost_guard
 
     def complete_structured(
         self,
@@ -32,6 +41,17 @@ class LLMGateway:
         response_model: type[StructuredValue],
         budget: LLMBudget,
     ) -> LLMResult[StructuredValue]:
+        self.data_egress_policy.authorize(
+            request.provider_kind,
+            request.evidence_scope,
+            request.payload_chars,
+        )
+        self.cost_guard.authorize(
+            estimated_tokens=budget.estimated_tokens,
+            estimated_cost=budget.estimated_cost,
+            daily_spend=budget.daily_spend,
+            active_jobs=budget.active_jobs,
+        )
         response = self.provider.complete(request)
 
         parsed: object | None = None

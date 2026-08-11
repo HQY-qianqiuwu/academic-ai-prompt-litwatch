@@ -30,6 +30,23 @@ _EVIDENCE_SCOPES = frozenset(
 _FULLTEXT_SCOPES = frozenset({"fulltext_excerpt", "fulltext", "notes"})
 
 
+def _require_nonnegative_int(value: object, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{field_name} must be a non-negative integer")
+    if value < 0:
+        raise ValueError(f"{field_name} must be a non-negative integer")
+    return value
+
+
+def _require_finite_nonnegative_number(value: object, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{field_name} must be a finite non-negative number")
+    numeric = float(value)
+    if not isfinite(numeric) or numeric < 0:
+        raise ValueError(f"{field_name} must be a finite non-negative number")
+    return numeric
+
+
 @dataclass(frozen=True, slots=True)
 class DataEgressPolicy:
     cloud_egress_consent: bool
@@ -37,6 +54,7 @@ class DataEgressPolicy:
     max_payload_chars: int
 
     def __post_init__(self) -> None:
+        _require_nonnegative_int(self.max_payload_chars, "max_payload_chars")
         if self.max_payload_chars < 1:
             raise ValueError("max_payload_chars must be positive")
 
@@ -50,8 +68,7 @@ class DataEgressPolicy:
             raise ValueError("provider_kind must be 'local' or 'cloud'")
         if evidence_scope not in _EVIDENCE_SCOPES:
             raise ValueError("evidence_scope is not supported")
-        if payload_chars < 0:
-            raise ValueError("payload_chars must be non-negative")
+        _require_nonnegative_int(payload_chars, "payload_chars")
         if payload_chars > self.max_payload_chars:
             raise LLMSecurityError(
                 LLMSecurityErrorCode.PAYLOAD_LIMIT_EXCEEDED,
@@ -79,11 +96,21 @@ class CostGuard:
     max_concurrent_llm_jobs: int
 
     def __post_init__(self) -> None:
+        _require_nonnegative_int(self.max_tokens_per_job, "max_tokens_per_job")
+        _require_nonnegative_int(
+            self.max_concurrent_llm_jobs, "max_concurrent_llm_jobs"
+        )
+        max_job_cost = _require_finite_nonnegative_number(
+            self.max_cost_per_job, "max_cost_per_job"
+        )
+        max_daily_cost = _require_finite_nonnegative_number(
+            self.max_daily_cost, "max_daily_cost"
+        )
         if self.max_tokens_per_job < 1:
             raise ValueError("max_tokens_per_job must be positive")
-        if not isfinite(self.max_cost_per_job) or self.max_cost_per_job <= 0:
+        if max_job_cost <= 0:
             raise ValueError("max_cost_per_job must be finite and positive")
-        if not isfinite(self.max_daily_cost) or self.max_daily_cost <= 0:
+        if max_daily_cost <= 0:
             raise ValueError("max_daily_cost must be finite and positive")
         if self.max_concurrent_llm_jobs < 1:
             raise ValueError("max_concurrent_llm_jobs must be positive")
@@ -130,11 +157,7 @@ class CostGuard:
         daily_spend: float,
         active_jobs: int,
     ) -> None:
-        if estimated_tokens < 0:
-            raise ValueError("estimated_tokens must be non-negative")
-        if not isfinite(estimated_cost) or estimated_cost < 0:
-            raise ValueError("estimated_cost must be finite and non-negative")
-        if not isfinite(daily_spend) or daily_spend < 0:
-            raise ValueError("daily_spend must be finite and non-negative")
-        if active_jobs < 0:
-            raise ValueError("active_jobs must be non-negative")
+        _require_nonnegative_int(estimated_tokens, "estimated_tokens")
+        _require_finite_nonnegative_number(estimated_cost, "estimated_cost")
+        _require_finite_nonnegative_number(daily_spend, "daily_spend")
+        _require_nonnegative_int(active_jobs, "active_jobs")

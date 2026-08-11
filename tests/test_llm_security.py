@@ -148,6 +148,50 @@ def test_cost_guard_rejects_negative_runtime_measurements(field, value):
         _guard().authorize(**values)
 
 
+@pytest.mark.parametrize("value", [True, 1.5, float("nan"), float("inf")])
+def test_payload_chars_rejects_non_integral_or_non_finite_values(value):
+    policy = DataEgressPolicy(
+        cloud_egress_consent=True,
+        fulltext_egress_consent=True,
+        max_payload_chars=1_000,
+    )
+
+    with pytest.raises((TypeError, ValueError), match="payload_chars"):
+        policy.authorize("cloud", "abstract", value)
+
+
+@pytest.mark.parametrize("field", ["estimated_tokens", "active_jobs"])
+@pytest.mark.parametrize("value", [True, 1.5, float("nan"), float("inf")])
+def test_integer_runtime_measurements_reject_bool_fraction_and_non_finite(
+    field, value
+):
+    values = {
+        "estimated_tokens": 100,
+        "estimated_cost": 0.10,
+        "daily_spend": 0.20,
+        "active_jobs": 0,
+    }
+    values[field] = value
+
+    with pytest.raises((TypeError, ValueError), match=field):
+        _guard().authorize(**values)
+
+
+@pytest.mark.parametrize("field", ["estimated_cost", "daily_spend"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_cost_runtime_measurements_reject_non_finite_values(field, value):
+    values = {
+        "estimated_tokens": 100,
+        "estimated_cost": 0.10,
+        "daily_spend": 0.20,
+        "active_jobs": 0,
+    }
+    values[field] = value
+
+    with pytest.raises(ValueError, match=field):
+        _guard().authorize(**values)
+
+
 def test_settings_expose_fail_closed_llm_security_defaults():
     settings = Settings(_env_file=None)
 
