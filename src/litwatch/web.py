@@ -37,6 +37,7 @@ from litwatch.provider_config import ProviderProfileStore, default_provider_prof
 from litwatch.provider_security import ProviderBaseUrlError, validate_provider_base_url
 from litwatch.radar_repository import RadarRepository
 from litwatch.radars import ResearchRadar
+from litwatch.runtime import ApplicationRuntime, RuntimeStatus
 from litwatch.services import (
     AllProvidersFailedError,
     LiteratureSearchService,
@@ -144,15 +145,19 @@ def create_app(
     scan_lock = threading.Lock()
     state_lock = threading.Lock()
     scan_state: dict[str, object] = {"scanning": False, "last_error": ""}
+    runtime = ApplicationRuntime(
+        scheduler_start=scheduler_service.start,
+        scheduler_stop=scheduler_service.stop,
+        startup_hooks=(research_radar_service.recover_stale_scans,),
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        research_radar_service.recover_stale_scans()
-        scheduler_service.start()
+        runtime.start()
         try:
             yield
         finally:
-            scheduler_service.stop()
+            runtime.stop()
             database.connection.close()
 
     app = FastAPI(title="LitWatch", version="0.1.0", lifespan=lifespan)
@@ -167,6 +172,7 @@ def create_app(
     app.state.subscription_run_repository = run_repository
     app.state.delivery_repository = delivery_repository
     app.state.scheduler_service = scheduler_service
+    app.state.runtime = runtime
     app.state.research_radar_service = research_radar_service
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
@@ -328,6 +334,17 @@ def create_app(
             "status": "ok",
             "latest_run": database.latest_run(),
             **state_snapshot(),
+        }
+
+    @app.get("/api/v2/runtime")
+    def runtime_status() -> dict[str, bool | str]:
+        status = RuntimeStatus.from_mode(settings.runtime_mode)
+        return {
+            "mode": status.mode.value,
+            "python_primary": status.python_primary,
+            "requires_dify": status.requires_dify,
+            "requires_docker": status.requires_docker,
+            "requires_ssrf_proxy": status.requires_ssrf_proxy,
         }
 
     @app.post(
