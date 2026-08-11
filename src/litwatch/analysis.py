@@ -21,7 +21,9 @@ class PaperAnalysisResponse(BaseModel):
     results: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     relevance: str = "LLM 未返回 relevance"
-    paper_type: str = "method"
+    paper_type: Literal[
+        "theory", "method", "experiment", "application", "review"
+    ] = "method"
     research_gap: str = "LLM 未返回 research_gap"
     reading_priority: int = Field(default=3, ge=1, le=5)
     workflow_output: dict[str, object] = Field(default_factory=dict)
@@ -30,8 +32,19 @@ class PaperAnalysisResponse(BaseModel):
 
 
 _SYSTEM_INSTRUCTION = """你是严谨的科研文献筛选助手。只能依据提供的论文证据，不得补充未出现的事实、论文或引用。
-返回单个 JSON 对象，只能包含以下字段：one_liner、motivation、methods、results、limitations、relevance、paper_type、research_gap、reading_priority、workflow_output、evidence_level、confidence。
-methods、results、limitations 必须是字符串数组；reading_priority 是 1 到 5 的整数；confidence 是 0 到 1 的数字。证据不足时必须明确说明，不得猜测。"""
+返回单个 JSON 对象，只能包含以下字段，并遵守各字段的证据规则：
+- one_liner：一句话中文结论。
+- motivation：研究动机；证据未说明时明确写“原文未明确说明”。
+- methods：核心方法，字符串数组；证据未说明时返回空数组。
+- results：主要结果，字符串数组；无定量或可核实结果时明确写“摘要未报告”。
+- limitations：局限，字符串数组；证据未说明时明确写“原文未明确说明”。
+- relevance：与研究主题的具体关系，只能依据当前证据。
+- paper_type：只能是 theory/method/experiment/application/review 之一。
+- research_gap：本文暴露或试图填补的研究空白；证据不足时明确说明，不得猜测。
+- reading_priority：1 到 5 的整数。
+- workflow_output：严格根据用户消息中的分析工作流及其要求生成 JSON 对象。
+- evidence_level：只能与调用方声明的 abstract 或 fulltext_excerpt 证据范围一致。
+- confidence：0 到 1；仅反映当前 evidence_level 支持程度。"""
 
 
 class PaperAnalyzer:
@@ -91,6 +104,7 @@ class PaperAnalyzer:
             untrusted_evidence=evidence[:36_000],
             provider_kind=self.gateway.provider_kind,
             evidence_scope=evidence_scope,
+            max_output_tokens=self.settings.llm_max_output_tokens,
         )
         try:
             response = self.gateway.complete_structured(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shutil
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -71,6 +72,14 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-5-mini"
+    llm_provider_kind: Literal["local", "cloud"] = "cloud"
+    llm_max_output_tokens: int = Field(default=2_048, ge=1, le=100_000)
+    llm_input_cost_per_million: float = Field(
+        default=0.0, ge=0, allow_inf_nan=False
+    )
+    llm_output_cost_per_million: float = Field(
+        default=0.0, ge=0, allow_inf_nan=False
+    )
     llm_cloud_egress_consent: bool = False
     llm_fulltext_egress_consent: bool = False
     llm_max_payload_chars: int = Field(default=50_000, ge=1, le=1_000_000)

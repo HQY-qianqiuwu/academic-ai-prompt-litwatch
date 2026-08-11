@@ -31,7 +31,11 @@ def scan(
 ) -> None:
     """执行一次多源检索、去重、排序和可选 AI 分析。"""
     settings = _settings()
-    summary, papers = Pipeline(settings).run(days=days)
+    pipeline = Pipeline(settings)
+    try:
+        summary, papers = pipeline.run(days=days)
+    finally:
+        pipeline.close()
     typer.echo(summary.model_dump_json(indent=2))
     if email:
         today = datetime.now(UTC).date().isoformat()

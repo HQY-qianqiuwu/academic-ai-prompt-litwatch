@@ -225,12 +225,16 @@ def create_app(
 
         def worker() -> None:
             worker_database = Database(settings.database_path)
+            pipeline: Pipeline | None = None
             try:
-                Pipeline(settings, worker_database).run(days=days, topics=topics)
+                pipeline = Pipeline(settings, worker_database)
+                pipeline.run(days=days, topics=topics)
             except Exception as exc:  # noqa: BLE001 - surfaced in dashboard and health
                 with state_lock:
                     scan_state["last_error"] = f"{type(exc).__name__}: {exc}"
             finally:
+                if pipeline is not None:
+                    pipeline.close()
                 worker_database.connection.close()
                 with state_lock:
                     scan_state["scanning"] = False

@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import httpx
+
 from litwatch.analysis import PaperAnalyzer
 from litwatch.config import Settings, Topic
 from litwatch.db import Database
 from litwatch.fulltext import FullTextExtractor
+from litwatch.llm.factory import LLMRuntime, build_llm_runtime
 from litwatch.models import Paper, RunSummary
 from litwatch.ranking import score_paper
 from litwatch.sources import ArxivSource, OpenAlexSource, SemanticScholarSource
@@ -31,7 +34,13 @@ def merge_papers(existing: Paper, incoming: Paper) -> Paper:
 
 
 class Pipeline:
-    def __init__(self, settings: Settings, database: Database | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        database: Database | None = None,
+        *,
+        llm_http_client: httpx.Client | None = None,
+    ) -> None:
         self.settings = settings
         self.database = database or Database(settings.database_path)
         timeout = settings.request_timeout_seconds
@@ -46,8 +55,21 @@ class Pipeline:
                     timeout=timeout,
                 )
             )
-        self.analyzer = PaperAnalyzer(settings)
+        self._llm_runtime: LLMRuntime | None = build_llm_runtime(
+            settings, client=llm_http_client
+        )
+        self.analyzer = PaperAnalyzer(
+            settings,
+            gateway=(self._llm_runtime.gateway if self._llm_runtime else None),
+            budget_factory=(
+                self._llm_runtime.budget_factory if self._llm_runtime else None
+            ),
+        )
         self.fulltext = FullTextExtractor(timeout=max(45, timeout))
+
+    def close(self) -> None:
+        if self._llm_runtime is not None:
+            self._llm_runtime.close()
 
     def run(
         self, *, days: int | None = None, topics: list[Topic] | None = None
