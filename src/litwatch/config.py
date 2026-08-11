@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = Field(default=30, ge=5, le=120)
     scheduler_poll_seconds: float = Field(default=30, ge=1, le=3600)
     scheduler_lease_seconds: int = Field(default=300, ge=30, le=3600)
+    job_poll_seconds: float = Field(default=1, gt=0, le=3600)
+    job_lease_seconds: int = Field(default=300, ge=1, le=3600)
+    job_concurrency: int = Field(default=2, ge=1, le=16)
+    job_default_timeout_seconds: int = Field(default=300, ge=1, le=3600)
 
     def ensure_runtime_files(self) -> None:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
