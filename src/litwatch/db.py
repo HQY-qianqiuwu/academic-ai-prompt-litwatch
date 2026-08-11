@@ -366,6 +366,32 @@ _MIGRATION_SQL = (
             ADD COLUMN lease_owner TEXT NOT NULL DEFAULT '';
         """,
     ),
+    (
+        10,
+        "paper_analyses",
+        """
+        CREATE TABLE IF NOT EXISTS paper_analyses (
+            canonical_id TEXT NOT NULL REFERENCES papers(canonical_id) ON DELETE RESTRICT,
+            analysis_version TEXT NOT NULL CHECK(length(trim(analysis_version)) > 0),
+            evidence_hash TEXT NOT NULL CHECK(length(trim(evidence_hash)) > 0),
+            model_config_hash TEXT NOT NULL CHECK(length(trim(model_config_hash)) > 0),
+            status TEXT NOT NULL CHECK(status IN (
+                'completed','extractive','skipped','failed'
+            )),
+            evidence_scope TEXT NOT NULL CHECK(evidence_scope IN (
+                'metadata_only','abstract','fulltext_excerpt','fulltext'
+            )),
+            analysis_json TEXT NOT NULL CHECK(json_valid(analysis_json)),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (
+                canonical_id,analysis_version,evidence_hash,model_config_hash
+            )
+        );
+        CREATE INDEX IF NOT EXISTS idx_paper_analyses_lookup
+            ON paper_analyses(canonical_id,updated_at DESC);
+        """,
+    ),
 )
 
 MIGRATION_REGISTRY = tuple(
