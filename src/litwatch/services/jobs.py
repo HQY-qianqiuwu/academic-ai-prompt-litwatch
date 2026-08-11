@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime
 from threading import Event, RLock, Thread, current_thread
@@ -23,8 +23,12 @@ class JobContext:
     lease_owner: str
     lease_seconds: int
     _deadline: float
+    _shutdown: Event
+    _attempt_cancelled: Event
 
     def cancelled(self) -> bool:
+        if self._shutdown.is_set() or self._attempt_cancelled.is_set():
+            return True
         job = self.repository.get(self.job_id)
         return job is None or job.cancellation_requested_at is not None
 
@@ -40,6 +44,14 @@ class JobContext:
 
 
 @dataclass(slots=True)
+class _ActiveAttempt:
+    job: JobRecord
+    future: Future[None]
+    deadline: float
+    cancelled: Event
+
+
+@dataclass(slots=True)
 class JobWorker:
     """Small, bounded in-process executor backed by durable SQLite job leases."""
 
@@ -50,9 +62,9 @@ class JobWorker:
     default_timeout_seconds: int = 300
     worker_id: str = field(default_factory=lambda: f"litwatch-{uuid4().hex}")
     _handlers: dict[str, JobHandler] = field(default_factory=dict, init=False)
-    _futures: dict[str, Future[None]] = field(default_factory=dict, init=False)
-    _deadlines: dict[str, float] = field(default_factory=dict, init=False)
-    _executor: ThreadPoolExecutor | None = field(default=None, init=False)
+    _attempts: dict[tuple[str, int], _ActiveAttempt] = field(
+        default_factory=dict, init=False
+    )
     _thread: Thread | None = field(default=None, init=False)
     _stopping: Event = field(default_factory=Event, init=False)
     _lock: RLock = field(default_factory=RLock, init=False)
@@ -71,7 +83,7 @@ class JobWorker:
     def active_count(self) -> int:
         with self._lock:
             self._prune_completed()
-            return len(self._futures)
+            return len(self._attempts)
 
     @property
     def is_running(self) -> bool:
@@ -88,10 +100,9 @@ class JobWorker:
             if self.is_running:
                 return
             self._prune_completed()
-            if self._futures:
+            if self._attempts:
                 raise RuntimeError("worker still has active handlers")
             self._stopping.clear()
-            self._ensure_executor()
             self._thread = Thread(
                 target=self._run_loop,
                 name="litwatch-job-worker",
@@ -100,32 +111,47 @@ class JobWorker:
             self._thread.start()
 
     def stop(self) -> None:
-        self._stopping.set()
+        with self._lock:
+            self._stopping.set()
+            for attempt in self._attempts.values():
+                attempt.cancelled.set()
         thread = self._thread
         if thread is not None and thread is not current_thread():
             thread.join(timeout=max(1.0, self.poll_seconds * 2))
+
+        drain_deadline = monotonic() + max(0.1, min(0.4, self.poll_seconds * 2))
+        while monotonic() < drain_deadline:
+            with self._lock:
+                self._prune_completed()
+                if not self._attempts:
+                    break
+            self._stopping.wait(0.01)
+
         with self._lock:
-            executor = self._executor
-            self._executor = None
+            self._prune_completed()
+            for attempt in self._attempts.values():
+                try:
+                    self.repository.abandon_active_attempt(
+                        attempt.job.job_id,
+                        self.worker_id,
+                        safe_error_code="worker_shutdown",
+                        safe_error_message="worker stopped before handler drained",
+                    )
+                except JobTransitionError:
+                    pass
             self._thread = None
-        if executor is not None:
-            # Python cannot safely kill a running thread.  Never wait forever:
-            # the fixed-size pool keeps any non-cooperative handler bounded, and
-            # start() rejects a replacement pool until it has drained.
-            executor.shutdown(wait=False, cancel_futures=True)
 
     def run_once(self) -> int:
         """Recover stale work and submit up to the configured free slots."""
 
-        self.recover_stale()
         submitted = 0
         with self._lock:
             self._prune_completed()
-            self._expire_timed_out()
-            capacity = self.concurrency - len(self._futures)
+            self._maintain_active()
+            self.recover_stale()
+            capacity = self.concurrency - len(self._attempts)
             if capacity <= 0 or self._stopping.is_set():
                 return submitted
-            executor = self._ensure_executor()
             for _ in range(capacity):
                 claimed = self.repository.claim_next(
                     self.worker_id, lease_seconds=self.lease_seconds
@@ -136,54 +162,120 @@ class JobWorker:
                 if handler is None:
                     self._fail_unhandled(claimed)
                     continue
-                future = executor.submit(self._execute, claimed, handler)
-                self._futures[claimed.job_id] = future
-                self._deadlines[claimed.job_id] = monotonic() + claimed.timeout_seconds
+                cancelled = Event()
+                deadline = monotonic() + claimed.timeout_seconds
+                future = self._start_attempt(
+                    claimed, handler, deadline, cancelled
+                )
+                attempt_key = (claimed.job_id, claimed.attempt)
+                self._attempts[attempt_key] = _ActiveAttempt(
+                    job=claimed,
+                    future=future,
+                    deadline=deadline,
+                    cancelled=cancelled,
+                )
                 submitted += 1
         return submitted
 
     def recover_stale(self, now: datetime | None = None) -> list[JobRecord]:
-        return self.repository.recover_stale(now)
+        active_job_ids = tuple(
+            sorted({attempt.job.job_id for attempt in self._attempts.values()})
+        )
+        return self.repository.recover_stale(now, exclude_job_ids=active_job_ids)
 
     def _run_loop(self) -> None:
         while not self._stopping.is_set():
             self.run_once()
-            self._stopping.wait(self.poll_seconds)
+            heartbeat_interval = max(0.05, self.lease_seconds / 3)
+            self._stopping.wait(min(self.poll_seconds, heartbeat_interval))
 
-    def _ensure_executor(self) -> ThreadPoolExecutor:
-        if self._executor is None:
-            self._executor = ThreadPoolExecutor(
-                max_workers=self.concurrency,
-                thread_name_prefix="litwatch-job",
-            )
-        return self._executor
+    def _start_attempt(
+        self,
+        job: JobRecord,
+        handler: JobHandler,
+        deadline: float,
+        cancelled: Event,
+    ) -> Future[None]:
+        future: Future[None] = Future()
+
+        def run() -> None:
+            if not future.set_running_or_notify_cancel():
+                return
+            try:
+                self._execute(job, handler, deadline, cancelled)
+            except Exception as error:  # noqa: BLE001  # pragma: no cover
+                future.set_exception(error)
+            else:
+                future.set_result(None)
+
+        # A handler may ignore cooperative cancellation. Daemon attempts keep
+        # stop bounded and cannot hold the Python interpreter open at shutdown.
+        Thread(
+            target=run,
+            name=f"litwatch-job-{job.job_id[:8]}-{job.attempt}",
+            daemon=True,
+        ).start()
+        return future
 
     def _prune_completed(self) -> None:
-        completed = [job_id for job_id, future in self._futures.items() if future.done()]
-        for job_id in completed:
-            self._futures.pop(job_id, None)
-            self._deadlines.pop(job_id, None)
+        completed = [
+            attempt_key
+            for attempt_key, attempt in self._attempts.items()
+            if attempt.future.done()
+        ]
+        for attempt_key in completed:
+            self._attempts.pop(attempt_key, None)
 
-    def _expire_timed_out(self) -> None:
+    def _maintain_active(self) -> None:
         now = monotonic()
-        for job_id, deadline in tuple(self._deadlines.items()):
-            if now < deadline:
+        for attempt in self._attempts.values():
+            if attempt.future.done():
                 continue
-            job = self.repository.get(job_id)
-            if job is None or job.status.value != "running":
-                continue
-            self._fail(job, "timeout", "job exceeded its execution time limit", retryable=True)
+            if now >= attempt.deadline:
+                attempt.cancelled.set()
+            try:
+                self.repository.heartbeat(
+                    attempt.job.job_id,
+                    self.worker_id,
+                    lease_seconds=self.lease_seconds,
+                )
+            except JobTransitionError:
+                # A cancellation or externally sealed attempt is already durable.
+                pass
 
-    def _execute(self, job: JobRecord, handler: JobHandler) -> None:
-        deadline = monotonic() + job.timeout_seconds
+    def _execute(
+        self,
+        job: JobRecord,
+        handler: JobHandler,
+        deadline: float,
+        attempt_cancelled: Event,
+    ) -> None:
         context = JobContext(
             repository=self.repository,
             job_id=job.job_id,
             lease_owner=self.worker_id,
             lease_seconds=self.lease_seconds,
             _deadline=deadline,
+            _shutdown=self._stopping,
+            _attempt_cancelled=attempt_cancelled,
         )
         try:
+            if self._stopping.is_set():
+                self._fail(
+                    job,
+                    "worker_shutdown",
+                    "worker stopped before job execution",
+                    retryable=True,
+                )
+                return
+            if attempt_cancelled.is_set():
+                self._fail(
+                    job,
+                    "timeout",
+                    "job exceeded its execution time limit",
+                    retryable=True,
+                )
+                return
             if context.cancelled():
                 self.repository.complete(job.job_id, self.worker_id, result_reference=None)
                 return
@@ -191,7 +283,18 @@ class JobWorker:
             if context.remaining_seconds() <= 0:
                 self._fail(job, "timeout", "job exceeded its execution time limit", retryable=True)
                 return
-            self.repository.complete(job.job_id, self.worker_id, result_reference=result_reference)
+            with self._lock:
+                if self._stopping.is_set():
+                    self._fail(
+                        job,
+                        "worker_shutdown",
+                        "worker stopped during job execution",
+                        retryable=True,
+                    )
+                    return
+                self.repository.complete(
+                    job.job_id, self.worker_id, result_reference=result_reference
+                )
         except TimeoutError:
             self._fail(job, "timeout", "job timed out", retryable=True)
         except ConnectionError:

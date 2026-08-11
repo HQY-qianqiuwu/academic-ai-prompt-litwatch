@@ -239,11 +239,23 @@ class JobRepository:
             raise KeyError(job_id)
         return self._from_row(row)
 
-    def recover_stale(self, now: datetime | None = None) -> list[JobRecord]:
+    def recover_stale(
+        self,
+        now: datetime | None = None,
+        *,
+        exclude_job_ids: tuple[str, ...] = (),
+    ) -> list[JobRecord]:
         recovered_at = self._utc(now).isoformat()
+        excluded = tuple(sorted({job_id for job_id in exclude_job_ids if job_id}))
+        exclusion_sql = ""
+        values: list[object] = [recovered_at, recovered_at, recovered_at, recovered_at]
+        if excluded:
+            placeholders = ",".join("?" for _ in excluded)
+            exclusion_sql = f" AND job_id NOT IN ({placeholders})"
+            values.extend(excluded)
         with self.database.transaction(immediate=True) as connection:
             rows = connection.execute(
-                """UPDATE jobs SET
+                f"""UPDATE jobs SET
                        status=CASE
                            WHEN cancellation_requested_at IS NOT NULL THEN 'cancelled'
                            WHEN attempt < max_attempts THEN 'queued'
@@ -263,11 +275,42 @@ class JobRepository:
                                                ELSE 'stale job exhausted retries' END,
                        lease_owner=NULL,lease_expires_at=NULL
                    WHERE status='running' AND lease_expires_at IS NOT NULL
-                     AND lease_expires_at <= ?
+                     AND lease_expires_at <= ?{exclusion_sql}
                    RETURNING *""",
-                (recovered_at, recovered_at, recovered_at, recovered_at),
+                tuple(values),
             ).fetchall()
         return sorted((self._from_row(row) for row in rows), key=lambda job: job.job_id)
+
+    def abandon_active_attempt(
+        self,
+        job_id: str,
+        lease_owner: str,
+        *,
+        safe_error_code: str,
+        safe_error_message: str,
+        now: datetime | None = None,
+    ) -> JobRecord:
+        """Seal a locally active attempt that cannot drain during worker shutdown."""
+
+        finished_at = self._utc(now).isoformat()
+        return self._guarded_update(
+            job_id,
+            lease_owner,
+            """UPDATE jobs SET
+                   status='failed',finished_at=?,heartbeat_at=?,
+                   safe_error_code=?,safe_error_message=?,
+                   lease_owner=NULL,lease_expires_at=NULL
+               WHERE job_id=? AND status='running' AND lease_owner=?
+               RETURNING *""",
+            (
+                finished_at,
+                finished_at,
+                safe_error_code,
+                safe_error_message,
+                job_id,
+                lease_owner,
+            ),
+        )
 
     def _guarded_update(
         self,

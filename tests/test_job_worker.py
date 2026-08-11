@@ -4,8 +4,6 @@ from datetime import UTC, datetime, timedelta
 from threading import Event, Lock
 from time import monotonic, sleep
 
-import pytest
-
 from litwatch.db import Database
 from litwatch.job_repository import JobRepository
 from litwatch.services.jobs import JobWorker
@@ -107,19 +105,150 @@ def test_timeout_watchdog_persists_timeout_without_spawning_extra_handlers(tmp_p
     sleep(1.05)
     worker.run_once()
 
+    timed_out = repository.get(job.job_id)
+    assert timed_out.status.value == "running"
+    assert worker.active_count == 1
+    release.set()
     timed_out = _wait_for(repository, job.job_id, {"queued"})
     assert timed_out.safe_error_code == "timeout"
+    worker.stop()
+    database.connection.close()
+
+
+def test_timeout_never_requeues_while_original_physical_attempt_is_active(tmp_path):
+    database = Database(tmp_path / "no-duplicate-timeout.db")
+    repository = JobRepository(database)
+    job = _enqueue(repository, attempts=2, timeout=1)
+    entered = Event()
+    release = Event()
+    calls = 0
+    active = 0
+    maximum = 0
+    lock = Lock()
+    worker = JobWorker(repository, poll_seconds=0.01, lease_seconds=3, concurrency=2)
+
+    def slow(_context, _record):
+        nonlocal calls, active, maximum
+        with lock:
+            calls += 1
+            active += 1
+            maximum = max(maximum, active)
+        entered.set()
+        release.wait(5)
+        with lock:
+            active -= 1
+        return "late"
+
+    worker.register("analysis", slow)
+    worker.run_once()
+    assert entered.wait(1)
+    sleep(1.05)
+
+    for _ in range(3):
+        worker.run_once()
+        sleep(0.02)
+
+    assert repository.get(job.job_id).status.value == "running"
+    assert calls == 1
+    assert maximum == 1
     assert worker.active_count == 1
+
+    release.set()
+    _wait_for(repository, job.job_id, {"queued"})
+    worker.stop()
+    database.connection.close()
+
+
+def test_background_worker_heartbeats_long_running_attempt_without_duplicate(tmp_path):
+    database = Database(tmp_path / "automatic-heartbeat.db")
+    repository = JobRepository(database)
+    job = _enqueue(repository, attempts=2, timeout=3)
+    entered = Event()
+    release = Event()
+    calls = 0
+    worker = JobWorker(repository, poll_seconds=0.01, lease_seconds=1, concurrency=2)
+
+    def slow(_context, _record):
+        nonlocal calls
+        calls += 1
+        entered.set()
+        release.wait(5)
+        return "done"
+
+    worker.register("analysis", slow)
+    worker.start()
+    assert entered.wait(1)
+    sleep(1.15)
+
+    running = repository.get(job.job_id)
+    assert running.status.value == "running"
+    assert running.heartbeat_at is not None
+    assert running.heartbeat_at > running.started_at
+    assert calls == 1
+    assert worker.active_count == 1
+
+    release.set()
+    _wait_for(repository, job.job_id, {"completed"})
+    worker.stop()
+    database.connection.close()
+
+
+def test_stop_signals_cooperative_handler_and_prevents_post_stop_completion(tmp_path):
+    database = Database(tmp_path / "cooperative-stop.db")
+    repository = JobRepository(database)
+    job = _enqueue(repository, attempts=2, timeout=5)
+    entered = Event()
+    worker = JobWorker(repository, poll_seconds=0.01, lease_seconds=3, concurrency=1)
+
+    def cooperative(context, _record):
+        entered.set()
+        while not context.cancelled():
+            sleep(0.01)
+        return "must-not-complete"
+
+    worker.register("analysis", cooperative)
+    worker.start()
+    assert entered.wait(1)
+    worker.stop()
+
+    stopped = repository.get(job.job_id)
+    assert stopped.status.value != "completed"
+    assert stopped.result_reference is None
+    assert worker.active_count == 0
+    database.connection.close()
+
+
+def test_stop_is_bounded_and_seals_non_cooperative_attempt_before_return(tmp_path):
+    database = Database(tmp_path / "non-cooperative-stop.db")
+    repository = JobRepository(database)
+    job = _enqueue(repository, attempts=2, timeout=5)
+    entered = Event()
+    release = Event()
+    worker = JobWorker(repository, poll_seconds=0.01, lease_seconds=3, concurrency=1)
+
+    def non_cooperative(_context, _record):
+        entered.set()
+        release.wait(5)
+        return "must-not-complete"
+
+    worker.register("analysis", non_cooperative)
+    worker.start()
+    assert entered.wait(1)
+
     started = monotonic()
     worker.stop()
     assert monotonic() - started < 0.5
-    with pytest.raises(RuntimeError, match="active handlers"):
-        worker.start()
+    sealed = repository.get(job.job_id)
+    assert sealed.status.value in {"failed", "cancelled"}
+    assert sealed.result_reference is None
+
     release.set()
     deadline = monotonic() + 1
     while worker.active_count and monotonic() < deadline:
         sleep(0.01)
-    assert worker.active_count == 0
+    after_release = repository.get(job.job_id)
+    assert after_release.status == sealed.status
+    assert after_release.result_reference is None
     database.connection.close()
 
 
