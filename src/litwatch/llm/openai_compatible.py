@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from math import isfinite
 from time import sleep as default_sleep
 
@@ -15,6 +17,10 @@ from litwatch.llm.models import (
 )
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 class OpenAICompatibleProvider:
     """Minimal OpenAI-compatible transport with finite, normalized retries."""
 
@@ -25,6 +31,7 @@ class OpenAICompatibleProvider:
         "_client",
         "_max_attempts",
         "_max_retry_delay_seconds",
+        "_now",
         "_sleep",
         "_timeout_seconds",
     )
@@ -40,6 +47,7 @@ class OpenAICompatibleProvider:
         backoff_seconds: float = 1,
         max_retry_delay_seconds: float = 10,
         sleep: Callable[[float], None] = default_sleep,
+        now: Callable[[], datetime] = _utc_now,
     ) -> None:
         if max_attempts < 1:
             raise ValueError("max_attempts must be at least one")
@@ -53,6 +61,7 @@ class OpenAICompatibleProvider:
         self._backoff_seconds = backoff_seconds
         self._max_retry_delay_seconds = max_retry_delay_seconds
         self._sleep = sleep
+        self._now = now
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         payload = {
@@ -197,10 +206,19 @@ class OpenAICompatibleProvider:
 
     def _retry_after(self, response: httpx.Response, attempt: int) -> float:
         raw = response.headers.get("Retry-After", "")
+        delay: float | None = None
         try:
-            delay = max(0, float(raw))
+            delay = float(raw)
         except ValueError:
+            retry_at: datetime | None = None
+            try:
+                retry_at = parsedate_to_datetime(raw)
+            except (TypeError, ValueError, OverflowError):
+                pass
+            if retry_at is not None and retry_at.tzinfo is not None:
+                current = self._now()
+                if current.tzinfo is not None:
+                    delay = (retry_at.astimezone(UTC) - current.astimezone(UTC)).total_seconds()
+        if delay is None or not isfinite(delay):
             delay = self._backoff(attempt)
-        if not isfinite(delay):
-            delay = self._backoff(attempt)
-        return min(delay, self._max_retry_delay_seconds)
+        return min(max(0, delay), self._max_retry_delay_seconds)

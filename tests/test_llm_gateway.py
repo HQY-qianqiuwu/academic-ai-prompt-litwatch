@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 
 import httpx
 import pytest
@@ -47,7 +49,13 @@ def _success(content: str = '{"title":"Grounded","score":0.8}') -> httpx.Respons
     )
 
 
-def _gateway(handler, *, sleeps: list[float] | None = None, attempts: int = 3):
+def _gateway(
+    handler,
+    *,
+    sleeps: list[float] | None = None,
+    attempts: int = 3,
+    now=None,
+):
     client = httpx.Client(transport=httpx.MockTransport(handler))
     provider = OpenAICompatibleProvider(
         client=client,
@@ -57,6 +65,7 @@ def _gateway(handler, *, sleeps: list[float] | None = None, attempts: int = 3):
         timeout_seconds=2,
         backoff_seconds=0.1,
         sleep=(sleeps.append if sleeps is not None else lambda _seconds: None),
+        **({"now": now} if now is not None else {}),
     )
     return LLMGateway(provider), client
 
@@ -179,6 +188,52 @@ def test_429_caps_excessive_retry_after():
         client.close()
 
     assert sleeps == [10]
+
+
+@pytest.mark.parametrize(
+    ("offset_seconds", "expected_delay"),
+    [(3, 3), (-5, 0)],
+)
+def test_429_parses_http_date_against_injected_clock(offset_seconds, expected_delay):
+    current = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
+    retry_at = format_datetime(current + timedelta(seconds=offset_seconds), usegmt=True)
+    calls = 0
+    sleeps: list[float] = []
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(429, headers={"Retry-After": retry_at})
+        return _success()
+
+    gateway, client = _gateway(handler, sleeps=sleeps, now=lambda: current)
+    try:
+        gateway.complete_structured(_request(), Summary, LLMBudget())
+    finally:
+        client.close()
+
+    assert sleeps == [expected_delay]
+
+
+def test_429_invalid_http_date_falls_back_to_exponential_backoff():
+    calls = 0
+    sleeps: list[float] = []
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(429, headers={"Retry-After": "not-a-date"})
+        return _success()
+
+    gateway, client = _gateway(handler, sleeps=sleeps)
+    try:
+        gateway.complete_structured(_request(), Summary, LLMBudget())
+    finally:
+        client.close()
+
+    assert sleeps == [0.1]
 
 
 def test_5xx_uses_finite_exponential_backoff():
