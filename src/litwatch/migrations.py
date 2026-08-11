@@ -88,6 +88,10 @@ class MigrationCoordinator:
                 )
 
     def inspect(self) -> MigrationState:
+        if self.connection.in_transaction:
+            raise MigrationSafetyError(
+                "cannot inspect migrations during an active transaction"
+            )
         self._ensure_audit_table()
         applied = self._applied_rows()
         self._validate_applied(applied)
@@ -130,7 +134,9 @@ class MigrationCoordinator:
         )
 
     def _ensure_audit_table(self) -> None:
-        self.connection.executescript(MIGRATION_AUDIT_SCHEMA)
+        self.connection.execute(MIGRATION_AUDIT_SCHEMA)
+        if self.connection.in_transaction:
+            self.connection.commit()
 
     def _applied_rows(self) -> tuple[tuple[int, str], ...]:
         rows = self.connection.execute(
@@ -150,22 +156,39 @@ class MigrationCoordinator:
                 raise MigrationChecksumError(f"migration name mismatch at version {version}")
 
     def _backfill_legacy_audit(self, applied: tuple[tuple[int, str], ...]) -> None:
+        audited_versions = {
+            int(row[0])
+            for row in self.connection.execute(
+                "SELECT version FROM migration_audit"
+            ).fetchall()
+        }
+        missing = tuple(
+            version for version, _ in applied if version not in audited_versions
+        )
+        if not missing:
+            return
         now = datetime.now(UTC).isoformat()
-        for version, _ in applied:
-            migration = self._by_version[version]
-            self.connection.execute(
-                """INSERT OR IGNORE INTO migration_audit(
-                       version,name,checksum,started_at,finished_at,status
-                   ) VALUES (?,?,?,?,?,'success')""",
-                (
-                    migration.version,
-                    migration.name,
-                    migration.checksum,
-                    now,
-                    now,
-                ),
-            )
-        self.connection.commit()
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            for version in missing:
+                migration = self._by_version[version]
+                self.connection.execute(
+                    """INSERT INTO migration_audit(
+                           version,name,checksum,started_at,finished_at,status
+                       ) VALUES (?,?,?,?,?,'success')""",
+                    (
+                        migration.version,
+                        migration.name,
+                        migration.checksum,
+                        now,
+                        now,
+                    ),
+                )
+            self.connection.commit()
+        except sqlite3.Error:
+            if self.connection.in_transaction:
+                self.connection.rollback()
+            raise
 
     def _validate_audit(self) -> None:
         rows = self.connection.execute(

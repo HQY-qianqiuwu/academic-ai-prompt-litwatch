@@ -6,8 +6,10 @@ import pytest
 
 from litwatch.db import MIGRATION_REGISTRY, MIGRATIONS, SCHEMA, Database
 from litwatch.migrations import (
+    Migration,
     MigrationChecksumError,
     MigrationCoordinator,
+    MigrationSafetyError,
 )
 
 
@@ -100,4 +102,52 @@ def test_verify_reports_integrity_and_foreign_key_errors(tmp_path):
     assert verification.integrity == "ok"
     assert verification.foreign_key_errors
     assert verification.current_version == 6
+    database.connection.close()
+
+
+@pytest.mark.parametrize("operation", ["inspect", "verify"])
+def test_read_operation_rejects_active_transaction_without_committing_it(
+    tmp_path, operation
+):
+    path = tmp_path / f"active-{operation}.db"
+    database = Database(path)
+    database.connection.execute("INSERT INTO runs(started_at) VALUES ('uncommitted')")
+    coordinator = MigrationCoordinator(database.connection, MIGRATION_REGISTRY)
+
+    with pytest.raises(MigrationSafetyError, match="active transaction"):
+        getattr(coordinator, operation)()
+
+    assert database.connection.in_transaction is True
+    database.connection.rollback()
+    database.connection.close()
+
+    reopened = sqlite3.connect(path)
+    assert reopened.execute(
+        "SELECT COUNT(*) FROM runs WHERE started_at='uncommitted'"
+    ).fetchone()[0] == 0
+    reopened.close()
+
+
+def test_invalid_migration_rolls_back_schema_version_and_audit(tmp_path):
+    database = Database(tmp_path / "invalid-migration.db")
+    invalid = Migration.from_sql(
+        7,
+        "intentionally_invalid",
+        "CREATE TABLE partial_table(id INTEGER); THIS IS NOT VALID SQL;",
+    )
+
+    with pytest.raises(sqlite3.Error):
+        MigrationCoordinator(
+            database.connection, (*MIGRATION_REGISTRY, invalid)
+        ).migrate()
+
+    assert database.connection.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE name='partial_table'"
+    ).fetchone()[0] == 0
+    assert database.connection.execute(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+    ).fetchone()[0] == 0
+    assert database.connection.execute(
+        "SELECT COUNT(*) FROM migration_audit WHERE version=7"
+    ).fetchone()[0] == 0
     database.connection.close()
