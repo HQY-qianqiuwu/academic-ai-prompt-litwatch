@@ -248,7 +248,6 @@ class JobWorker:
                         pass
                     else:
                         attempt.timed_out = True
-                    continue
             try:
                 self.repository.heartbeat(
                     attempt.job.job_id,

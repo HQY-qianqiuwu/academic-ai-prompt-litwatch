@@ -198,6 +198,62 @@ def test_background_worker_heartbeats_long_running_attempt_without_duplicate(tmp
     database.connection.close()
 
 
+def test_timed_out_attempt_renews_lease_across_multiple_intervals(tmp_path):
+    database = Database(tmp_path / "timed-out-heartbeat.db")
+    repository = JobRepository(database)
+    job = _enqueue(repository, attempts=2, timeout=1)
+    entered = Event()
+    release = Event()
+    calls = 0
+    owner = JobWorker(repository, poll_seconds=0.01, lease_seconds=1, concurrency=1)
+    contender = JobWorker(
+        repository, poll_seconds=0.01, lease_seconds=1, concurrency=1
+    )
+
+    def slow(_context, _record):
+        nonlocal calls
+        calls += 1
+        entered.set()
+        release.wait(8)
+        return "late"
+
+    owner.register("analysis", slow)
+    contender.register("analysis", slow)
+    owner.start()
+    try:
+        assert entered.wait(1)
+        marker_deadline = monotonic() + 2
+        while monotonic() < marker_deadline:
+            current = repository.get(job.job_id)
+            if current.safe_error_code == "timeout":
+                break
+            sleep(0.02)
+        else:
+            raise AssertionError("durable timeout marker was not recorded")
+
+        # Keep probing from another worker beyond two complete lease intervals.
+        probe_deadline = monotonic() + 2.2
+        while monotonic() < probe_deadline:
+            contender.run_once()
+            sleep(0.05)
+
+        active = repository.get(job.job_id)
+        assert active.status.value == "running"
+        assert active.attempt == 1
+        assert active.safe_error_code == "timeout"
+        assert calls == 1
+        assert owner.active_count == 1
+        assert contender.active_count == 0
+    finally:
+        owner.stop()
+        contender.stop()
+        release.set()
+        deadline = monotonic() + 1
+        while owner.active_count and monotonic() < deadline:
+            sleep(0.01)
+        database.connection.close()
+
+
 def test_stop_signals_cooperative_handler_and_prevents_post_stop_completion(tmp_path):
     database = Database(tmp_path / "cooperative-stop.db")
     repository = JobRepository(database)
