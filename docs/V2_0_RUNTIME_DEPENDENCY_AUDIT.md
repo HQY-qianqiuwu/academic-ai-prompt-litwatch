@@ -19,7 +19,9 @@ declared requirements only; it does not probe Dify, Docker, or a proxy.
 |---|---|---|---|
 | Dify workflow | The compatible HTTP workflow contract is retained in versioned release artifacts. | `dify/workflows/literature-search-v1.0.yml`, `dify/workflows/literature-search-v1.1.yml` | Frozen; do not modify, move, or delete. |
 | Stack lifecycle | The full-stack start path starts Docker Desktop when needed, runs `docker compose up -d` in Dify, waits for `http://localhost`, and requires `ssrf_proxy`. | `scripts/start-stack.ps1`, `scripts/stack-common.ps1` | Legacy-only after cutover; it remains available for rollback. |
+| Root start launcher | The desktop-facing launcher delegates to the full-stack Dify/Docker start script. | `启动科研文献系统.cmd` -> `scripts/start-stack.ps1` | Legacy full-stack wrapper and a cutover point; redirect only after Python-default start is released. |
 | Stack shutdown/status | Stop and status resolve the Dify compose directory and inspect Docker/Dify/`ssrf_proxy`. | `scripts/stop-stack.ps1`, `scripts/status-stack.ps1`, `scripts/stack-common.ps1` | Legacy-only after cutover. |
+| Root stop launcher | The desktop-facing launcher delegates to the full-stack Dify/Docker stop script. | `停止科研文献系统.cmd` -> `scripts/stop-stack.ps1` | Legacy full-stack wrapper and a cutover point; redirect only after Python-default stop is released. |
 | Dify network smoke | A Dify worker container calls the LitWatch API through `host.docker.internal:8000`; the check is optional with `-SkipDocker`. | `scripts/smoke-v1.1.ps1` | Historical compatibility evidence, not a Python-default requirement. |
 | SSRF integration | A version-locked Dify 1.16.1 patch permits only `host.docker.internal:8000` and can recreate `ssrf_proxy`. | `scripts/apply-dify-ssrf-integration.ps1`, `integrations/dify/1.16.1/litwatch-ssrf.patch`, `docs/DIFY_SSRF_INTEGRATION.md` | Frozen legacy integration; never broaden its allowlist. |
 | Local Python launch | LitWatch can be started/stopped without the Dify stack through its local scripts. | `scripts/start-local.ps1`, `scripts/stop-local.ps1`, `scripts/run-weekly.ps1` | Foundation for Python-primary lifecycle. |
@@ -42,6 +44,9 @@ SMTP passwords, and Zotero keys remain uncommitted.
 | Delivery | `LITWATCH_SMTP_HOST`, `LITWATCH_SMTP_PORT`, `LITWATCH_SMTP_USERNAME`, `LITWATCH_SMTP_PASSWORD`, `LITWATCH_EMAIL_FROM`, `LITWATCH_EMAIL_TO` | Optional email digest delivery. |
 | Zotero | `LITWATCH_ZOTERO_USER_ID`, `LITWATCH_ZOTERO_API_KEY` | Explicit Zotero export adapter. |
 | Local persistence and limits | `LITWATCH_DATABASE_PATH`, `LITWATCH_TOPICS_PATH`, `LITWATCH_LOOKBACK_DAYS`, `LITWATCH_MAX_RESULTS_PER_SOURCE`, `LITWATCH_ANALYZE_TOP_N`, `LITWATCH_FULLTEXT_TOP_N` | SQLite, topic loading, retrieval, and analysis limits. |
+| Analysis-mode file | `LITWATCH_ANALYSIS_MODES_PATH` | `Settings.load_analysis_modes()` reads this YAML file for `PaperAnalyzer` mode instructions. |
+| HTTP timeout | `LITWATCH_REQUEST_TIMEOUT_SECONDS` | `Pipeline` passes it to sources and full-text extraction; the provider registry uses it as the default source timeout. |
+| Scheduler timing | `LITWATCH_SCHEDULER_POLL_SECONDS`, `LITWATCH_SCHEDULER_LEASE_SECONDS` | `create_app()` passes them to `SchedulerService` for polling and run-lease recovery. |
 
 The provider credential store layers write-only runtime profile values over
 environment fallback values in `src/litwatch/sources/registry.py`. That is a
