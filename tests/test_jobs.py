@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 
 import pytest
 
 from litwatch.db import Database
 from litwatch.job_repository import JobRepository, JobTransitionError
-from litwatch.jobs import JobRecord, JobStatus
+from litwatch.jobs import CredentialReference, JobRecord, JobStatus
 
 NOW = datetime(2026, 8, 11, 1, 2, 3, tzinfo=UTC)
 
@@ -83,6 +85,63 @@ def test_enqueue_rejects_inline_credentials(tmp_path, payload):
     database.connection.close()
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"configuration": "Bearer eyJhbGciOiJIUzI1NiJ9.secret.signature"},
+        {"configuration": "sk-proj-this-is-an-inline-key-value"},
+        {"configuration": "password=hunter2"},
+    ],
+)
+def test_enqueue_rejects_secret_like_values_under_benign_keys(tmp_path, payload):
+    database = Database(tmp_path / "jobs.db")
+    repository = JobRepository(database)
+
+    with pytest.raises(ValueError, match="credential references"):
+        _enqueue(repository, payload=payload)
+
+    assert database.connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
+    database.connection.close()
+
+
+def test_credential_reference_is_constrained_and_typed(tmp_path):
+    database = Database(tmp_path / "jobs.db")
+    repository = JobRepository(database)
+
+    with pytest.raises(ValueError, match="credential reference"):
+        _enqueue(repository, payload={"credential_reference": "sk-inline-secret"})
+
+    queued = _enqueue(
+        repository,
+        idempotency_key="typed-reference",
+        payload={"credential_reference": "provider:openai-compatible"},
+    )
+    reference = CredentialReference.model_validate(
+        queued.payload["credential_reference"]
+    )
+    assert reference.root == "provider:openai-compatible"
+    database.connection.close()
+
+
+def test_payload_validation_allows_ordinary_research_security_terms(tmp_path):
+    database = Database(tmp_path / "jobs.db")
+    repository = JobRepository(database)
+
+    queued = _enqueue(
+        repository,
+        idempotency_key="research-security-terms",
+        payload={
+            "paper_id": "doi:10.1000/security",
+            "research_note": (
+                "Bearer token authentication and API key management are research topics."
+            ),
+        },
+    )
+
+    assert queued.status is JobStatus.QUEUED
+    database.connection.close()
+
+
 def test_claim_next_is_atomic_and_increments_attempt(tmp_path):
     database = Database(tmp_path / "jobs.db")
     first_repository = JobRepository(database)
@@ -102,6 +161,28 @@ def test_claim_next_is_atomic_and_increments_attempt(tmp_path):
     assert claimed.lease_expires_at == NOW + timedelta(seconds=30)
     assert second_claim is None
     database.connection.close()
+
+
+def test_simultaneous_separate_connections_have_exactly_one_claim_winner(tmp_path):
+    path = tmp_path / "jobs.db"
+    database = Database(path)
+    queued = _enqueue(JobRepository(database))
+    database.connection.close()
+    barrier = Barrier(2)
+
+    def claim(worker_id: str) -> str | None:
+        connection = Database(path)
+        repository = JobRepository(connection)
+        barrier.wait(timeout=5)
+        claimed = repository.claim_next(worker_id, lease_seconds=30, now=NOW)
+        connection.connection.close()
+        return claimed.job_id if claimed is not None else None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(claim, ("worker-a", "worker-b")))
+
+    assert results.count(queued.job_id) == 1
+    assert results.count(None) == 1
 
 
 def test_guarded_running_transitions_require_lease_owner(tmp_path):
@@ -133,6 +214,40 @@ def test_guarded_running_transitions_require_lease_owner(tmp_path):
     assert completed.finished_at == heartbeat_at
     assert completed.result_reference == "analysis:doi:10.1000/example"
     assert completed.lease_owner is None
+    database.connection.close()
+
+
+@pytest.mark.parametrize("transition", ["heartbeat", "complete", "fail"])
+def test_guarded_running_transitions_reject_expired_lease(tmp_path, transition):
+    database = Database(tmp_path / f"expired-{transition}.db")
+    repository = JobRepository(database)
+    _enqueue(repository)
+    running = repository.claim_next("worker-a", lease_seconds=5, now=NOW)
+    assert running is not None
+    late = NOW + timedelta(seconds=6)
+
+    with pytest.raises(JobTransitionError):
+        if transition == "heartbeat":
+            repository.heartbeat(
+                running.job_id, "worker-a", lease_seconds=30, now=late
+            )
+        elif transition == "complete":
+            repository.complete(
+                running.job_id,
+                "worker-a",
+                result_reference="late-result",
+                now=late,
+            )
+        else:
+            repository.fail(
+                running.job_id,
+                "worker-a",
+                safe_error_code="late_failure",
+                safe_error_message="late failure",
+                now=late,
+            )
+
+    assert repository.get(running.job_id).status is JobStatus.RUNNING
     database.connection.close()
 
 
@@ -221,3 +336,22 @@ def test_restart_recovery_requeues_once_then_exhausts_stale_job(tmp_path):
     assert exhausted[0].safe_error_code == "restart_recovery_exhausted"
     assert exhausted[0].finished_at == NOW + timedelta(seconds=13)
     reopened.connection.close()
+
+
+def test_restart_recovery_finishes_cancellation_requested_stale_job(tmp_path):
+    database = Database(tmp_path / "cancelled-stale.db")
+    repository = JobRepository(database)
+    _enqueue(repository)
+    running = repository.claim_next("worker-a", lease_seconds=5, now=NOW)
+    assert running is not None
+    requested = repository.request_cancel(
+        running.job_id, now=NOW + timedelta(seconds=1)
+    )
+
+    recovered = repository.recover_stale(NOW + timedelta(seconds=6))
+
+    assert requested.status is JobStatus.RUNNING
+    assert recovered[0].status is JobStatus.CANCELLED
+    assert recovered[0].finished_at == NOW + timedelta(seconds=6)
+    assert repository.claim_next("worker-b", lease_seconds=30, now=NOW) is None
+    database.connection.close()

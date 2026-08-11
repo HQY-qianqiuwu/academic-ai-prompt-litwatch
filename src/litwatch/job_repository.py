@@ -5,17 +5,12 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from pydantic import TypeAdapter
-
 from litwatch.db import Database
-from litwatch.jobs import JobRecord, validate_secret_free_payload
+from litwatch.jobs import JobPayload, JobRecord
 
 
 class JobTransitionError(RuntimeError):
     """Raised when a guarded job state transition no longer applies."""
-
-
-_PAYLOAD_ADAPTER = TypeAdapter(dict[str, object])
 
 
 class JobRepository:
@@ -40,8 +35,7 @@ class JobRepository:
             raise ValueError("max_attempts must be at least one")
         if timeout_seconds < 1:
             raise ValueError("timeout_seconds must be positive")
-        normalized_payload = _PAYLOAD_ADAPTER.validate_python(payload)
-        validate_secret_free_payload(normalized_payload)
+        normalized_payload = JobPayload.model_validate(payload).root
         created_at = self._utc(now)
         job_id = uuid4().hex
         payload_json = json.dumps(
@@ -134,12 +128,14 @@ class JobRepository:
             lease_owner,
             """UPDATE jobs SET heartbeat_at=?,lease_expires_at=?
                WHERE job_id=? AND status='running' AND lease_owner=?
+                 AND lease_expires_at > ?
                RETURNING *""",
             (
                 heartbeat_at.isoformat(),
                 lease_expires_at.isoformat(),
                 job_id,
                 lease_owner,
+                heartbeat_at.isoformat(),
             ),
         )
 
@@ -163,8 +159,16 @@ class JobRepository:
                                          THEN ? ELSE NULL END,
                    lease_owner=NULL,lease_expires_at=NULL
                WHERE job_id=? AND status='running' AND lease_owner=?
+                 AND lease_expires_at > ?
                RETURNING *""",
-            (finished_at, finished_at, result_reference, job_id, lease_owner),
+            (
+                finished_at,
+                finished_at,
+                result_reference,
+                job_id,
+                lease_owner,
+                finished_at,
+            ),
         )
 
     def fail(
@@ -196,6 +200,7 @@ class JobRepository:
                    heartbeat_at=?,safe_error_code=?,safe_error_message=?,
                    lease_owner=NULL,lease_expires_at=NULL
                WHERE job_id=? AND status='running' AND lease_owner=?
+                 AND lease_expires_at > ?
                RETURNING *""",
             (
                 retry,
@@ -206,6 +211,7 @@ class JobRepository:
                 safe_error_message,
                 job_id,
                 lease_owner,
+                failed_at,
             ),
         )
 
@@ -238,8 +244,16 @@ class JobRepository:
         with self.database.transaction(immediate=True) as connection:
             rows = connection.execute(
                 """UPDATE jobs SET
-                       status=CASE WHEN attempt < max_attempts THEN 'queued' ELSE 'failed' END,
-                       finished_at=CASE WHEN attempt < max_attempts THEN NULL ELSE ? END,
+                       status=CASE
+                           WHEN cancellation_requested_at IS NOT NULL THEN 'cancelled'
+                           WHEN attempt < max_attempts THEN 'queued'
+                           ELSE 'failed'
+                       END,
+                       finished_at=CASE
+                           WHEN cancellation_requested_at IS NOT NULL THEN ?
+                           WHEN attempt < max_attempts THEN NULL
+                           ELSE ?
+                       END,
                        heartbeat_at=?,
                        safe_error_code=CASE WHEN attempt < max_attempts
                                             THEN safe_error_code
@@ -251,7 +265,7 @@ class JobRepository:
                    WHERE status='running' AND lease_expires_at IS NOT NULL
                      AND lease_expires_at < ?
                    RETURNING *""",
-                (recovered_at, recovered_at, recovered_at),
+                (recovered_at, recovered_at, recovered_at, recovered_at),
             ).fetchall()
         return sorted((self._from_row(row) for row in rows), key=lambda job: job.job_id)
 

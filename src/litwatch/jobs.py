@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, JsonValue, field_validator
+from pydantic import BaseModel, Field, JsonValue, RootModel, field_validator
 
 
 class JobStatus(StrEnum):
@@ -14,33 +15,70 @@ class JobStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
-_BLOCKED_PAYLOAD_KEYS = {
+_CREDENTIAL_VALUE_FIELDS = {
     "apikey",
     "authorization",
     "cookie",
-    "credential",
+    "credentials",
     "password",
     "secret",
     "token",
 }
 _REFERENCE_KEYS = {"credentialreference", "credentialref"}
+_REFERENCE_PATTERN = re.compile(
+    r"^[a-z][a-z0-9_.-]{1,31}:[A-Za-z0-9][A-Za-z0-9_.:/-]{0,191}$"
+)
+_SECRET_VALUE_PATTERNS = (
+    re.compile(r"(?i)^\s*(?:bearer|basic)\s+\S{8,}\s*$"),
+    re.compile(r"(?i)^\s*sk-[A-Za-z0-9_-]{10,}\s*$"),
+    re.compile(
+        r"(?i)(?:password|passwd|api[_-]?key|secret|token)\s*[:=]\s*\S+"
+    ),
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    re.compile(r"^[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$"),
+)
 
 
-def validate_secret_free_payload(value: JsonValue) -> JsonValue:
-    """Reject credential-bearing fields while allowing opaque references."""
+class CredentialReference(RootModel[str]):
+    @field_validator("root")
+    @classmethod
+    def is_opaque_reference(cls, value: str) -> str:
+        normalized = value.strip()
+        if not _REFERENCE_PATTERN.fullmatch(normalized):
+            raise ValueError("credential reference must be an opaque namespaced reference")
+        return normalized
 
+
+class JobPayload(RootModel[dict[str, JsonValue]]):
+    @field_validator("root")
+    @classmethod
+    def contains_references_not_secrets(
+        cls, value: dict[str, JsonValue]
+    ) -> dict[str, JsonValue]:
+        _validate_payload_node(value)
+        return value
+
+
+def _validate_payload_node(value: JsonValue, *, field_name: str = "") -> None:
     if isinstance(value, dict):
         for key, item in value.items():
             normalized = "".join(character for character in key.lower() if character.isalnum())
-            if normalized not in _REFERENCE_KEYS and any(
-                blocked in normalized for blocked in _BLOCKED_PAYLOAD_KEYS
-            ):
+            if normalized in _REFERENCE_KEYS:
+                if not isinstance(item, str):
+                    raise ValueError("credential reference must be a string")
+                CredentialReference.model_validate(item)
+            elif normalized in _CREDENTIAL_VALUE_FIELDS:
                 raise ValueError("job payloads must use credential references")
-            validate_secret_free_payload(item)
+            _validate_payload_node(item, field_name=normalized)
     elif isinstance(value, list):
         for item in value:
-            validate_secret_free_payload(item)
-    return value
+            _validate_payload_node(item, field_name=field_name)
+    elif (
+        isinstance(value, str)
+        and field_name not in _REFERENCE_KEYS
+        and any(pattern.search(value) for pattern in _SECRET_VALUE_PATTERNS)
+    ):
+        raise ValueError("job payloads must use credential references")
 
 
 class JobRecord(BaseModel):
@@ -85,5 +123,4 @@ class JobRecord(BaseModel):
     def payload_contains_references_not_secrets(
         cls, value: dict[str, JsonValue]
     ) -> dict[str, JsonValue]:
-        validate_secret_free_payload(value)
-        return value
+        return JobPayload.model_validate(value).root
