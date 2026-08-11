@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import json
+from typing import Protocol, TypeVar
+
+from pydantic import BaseModel, ValidationError
+
+from litwatch.llm.models import (
+    LLMBudget,
+    LLMErrorCode,
+    LLMGatewayError,
+    LLMRequest,
+    LLMResponse,
+    LLMResult,
+)
+
+
+class LLMProvider(Protocol):
+    def complete(self, request: LLMRequest) -> LLMResponse: ...
+
+
+StructuredValue = TypeVar("StructuredValue", bound=BaseModel)
+
+
+class LLMGateway:
+    def __init__(self, provider: LLMProvider) -> None:
+        self.provider = provider
+
+    def complete_structured(
+        self,
+        request: LLMRequest,
+        response_model: type[StructuredValue],
+        budget: LLMBudget,
+    ) -> LLMResult[StructuredValue]:
+        response = self.provider.complete(request)
+
+        parsed: object | None = None
+        parse_failed = False
+        try:
+            parsed = json.loads(response.content)
+        except (TypeError, json.JSONDecodeError):
+            parse_failed = True
+        if parse_failed:
+            raise LLMGatewayError(
+                LLMErrorCode.PARSE, "LLM response was not valid JSON"
+            ) from None
+
+        value: StructuredValue | None = None
+        validation_failed = False
+        try:
+            value = response_model.model_validate(parsed)
+        except ValidationError:
+            validation_failed = True
+        if validation_failed or value is None:
+            raise LLMGatewayError(
+                LLMErrorCode.VALIDATION,
+                "LLM response did not match the required schema",
+            ) from None
+
+        cost_usd = (
+            response.usage.input_tokens * budget.input_cost_per_million
+            + response.usage.output_tokens * budget.output_cost_per_million
+        ) / 1_000_000
+        return LLMResult(
+            value=value,
+            usage=response.usage,
+            cost_usd=cost_usd,
+            provider_request_id=response.provider_request_id,
+            model=response.model,
+        )
