@@ -9,6 +9,7 @@ import httpx
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from litwatch.db import Database
 from litwatch.llm import (
     LLMBudget,
     LLMErrorCode,
@@ -53,6 +54,13 @@ def _budget(**overrides) -> LLMBudget:
     }
     values.update(overrides)
     return LLMBudget(**values)
+
+
+@pytest.fixture
+def usage_database(tmp_path):
+    database = Database(tmp_path / "gateway-usage.db")
+    yield database
+    database.connection.close()
 
 
 def _success(content: str = '{"title":"Grounded","score":0.8}') -> httpx.Response:
@@ -106,6 +114,7 @@ def test_budget_float_measurements_reject_bool_and_strings(field, value):
 def _gateway(
     handler,
     *,
+    database,
     sleeps: list[float] | None = None,
     attempts: int = 3,
     now=None,
@@ -131,6 +140,7 @@ def _gateway(
                 max_payload_chars=10_000,
             ),
             usage_ledger=LLMUsageLedger(
+                database,
                 CostGuard(
                     max_tokens_per_job=10_000,
                     max_cost_per_job=10,
@@ -143,7 +153,7 @@ def _gateway(
     )
 
 
-def test_structured_success_tracks_usage_cost_and_separates_evidence():
+def test_structured_success_tracks_usage_cost_and_separates_evidence(usage_database):
     captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -151,7 +161,7 @@ def test_structured_success_tracks_usage_cost_and_separates_evidence():
         captured["payload"] = json.loads(request.content)
         return _success()
 
-    gateway, client = _gateway(handler)
+    gateway, client = _gateway(handler, database=usage_database)
     try:
         result = gateway.complete_structured(
             _request(),
@@ -184,8 +194,12 @@ def test_structured_success_tracks_usage_cost_and_separates_evidence():
         ('{"title":"missing score"}', LLMErrorCode.VALIDATION),
     ],
 )
-def test_structured_parse_and_validation_errors_are_normalized(content, code):
-    gateway, client = _gateway(lambda _request: _success(content))
+def test_structured_parse_and_validation_errors_are_normalized(
+    content, code, usage_database
+):
+    gateway, client = _gateway(
+        lambda _request: _success(content), database=usage_database
+    )
     try:
         with pytest.raises(LLMGatewayError) as error:
             gateway.complete_structured(_request(), Summary, _budget())
@@ -196,7 +210,7 @@ def test_structured_parse_and_validation_errors_are_normalized(content, code):
     assert content not in str(error.value)
 
 
-def test_timeout_retries_finitely_then_succeeds():
+def test_timeout_retries_finitely_then_succeeds(usage_database):
     calls = 0
     sleeps: list[float] = []
 
@@ -207,7 +221,9 @@ def test_timeout_retries_finitely_then_succeeds():
             raise httpx.ReadTimeout("secret timeout detail", request=request)
         return _success()
 
-    gateway, client = _gateway(handler, sleeps=sleeps, attempts=3)
+    gateway, client = _gateway(
+        handler, database=usage_database, sleeps=sleeps, attempts=3
+    )
     try:
         result = gateway.complete_structured(_request(), Summary, _budget())
     finally:
@@ -218,7 +234,7 @@ def test_timeout_retries_finitely_then_succeeds():
     assert sleeps == [0.1, 0.2]
 
 
-def test_429_honors_bounded_retry_after_then_succeeds():
+def test_429_honors_bounded_retry_after_then_succeeds(usage_database):
     calls = 0
     sleeps: list[float] = []
 
@@ -233,7 +249,7 @@ def test_429_honors_bounded_retry_after_then_succeeds():
             )
         return _success()
 
-    gateway, client = _gateway(handler, sleeps=sleeps)
+    gateway, client = _gateway(handler, database=usage_database, sleeps=sleeps)
     try:
         gateway.complete_structured(_request(), Summary, _budget())
     finally:
@@ -243,7 +259,7 @@ def test_429_honors_bounded_retry_after_then_succeeds():
     assert sleeps == [0.25]
 
 
-def test_429_caps_excessive_retry_after():
+def test_429_caps_excessive_retry_after(usage_database):
     calls = 0
     sleeps: list[float] = []
 
@@ -254,7 +270,7 @@ def test_429_caps_excessive_retry_after():
             return httpx.Response(429, headers={"Retry-After": "999999"})
         return _success()
 
-    gateway, client = _gateway(handler, sleeps=sleeps)
+    gateway, client = _gateway(handler, database=usage_database, sleeps=sleeps)
     try:
         gateway.complete_structured(_request(), Summary, _budget())
     finally:
@@ -267,7 +283,9 @@ def test_429_caps_excessive_retry_after():
     ("offset_seconds", "expected_delay"),
     [(3, 3), (-5, 0)],
 )
-def test_429_parses_http_date_against_injected_clock(offset_seconds, expected_delay):
+def test_429_parses_http_date_against_injected_clock(
+    offset_seconds, expected_delay, usage_database
+):
     current = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
     retry_at = format_datetime(current + timedelta(seconds=offset_seconds), usegmt=True)
     calls = 0
@@ -280,7 +298,9 @@ def test_429_parses_http_date_against_injected_clock(offset_seconds, expected_de
             return httpx.Response(429, headers={"Retry-After": retry_at})
         return _success()
 
-    gateway, client = _gateway(handler, sleeps=sleeps, now=lambda: current)
+    gateway, client = _gateway(
+        handler, database=usage_database, sleeps=sleeps, now=lambda: current
+    )
     try:
         gateway.complete_structured(_request(), Summary, _budget())
     finally:
@@ -289,7 +309,7 @@ def test_429_parses_http_date_against_injected_clock(offset_seconds, expected_de
     assert sleeps == [expected_delay]
 
 
-def test_429_invalid_http_date_falls_back_to_exponential_backoff():
+def test_429_invalid_http_date_falls_back_to_exponential_backoff(usage_database):
     calls = 0
     sleeps: list[float] = []
 
@@ -300,7 +320,7 @@ def test_429_invalid_http_date_falls_back_to_exponential_backoff():
             return httpx.Response(429, headers={"Retry-After": "not-a-date"})
         return _success()
 
-    gateway, client = _gateway(handler, sleeps=sleeps)
+    gateway, client = _gateway(handler, database=usage_database, sleeps=sleeps)
     try:
         gateway.complete_structured(_request(), Summary, _budget())
     finally:
@@ -309,7 +329,7 @@ def test_429_invalid_http_date_falls_back_to_exponential_backoff():
     assert sleeps == [0.1]
 
 
-def test_5xx_uses_finite_exponential_backoff():
+def test_5xx_uses_finite_exponential_backoff(usage_database):
     calls = 0
     sleeps: list[float] = []
 
@@ -318,7 +338,9 @@ def test_5xx_uses_finite_exponential_backoff():
         calls += 1
         return httpx.Response(503, text="secret upstream") if calls < 3 else _success()
 
-    gateway, client = _gateway(handler, sleeps=sleeps, attempts=3)
+    gateway, client = _gateway(
+        handler, database=usage_database, sleeps=sleeps, attempts=3
+    )
     try:
         gateway.complete_structured(_request(), Summary, _budget())
     finally:
@@ -329,7 +351,9 @@ def test_5xx_uses_finite_exponential_backoff():
 
 
 @pytest.mark.parametrize("status", [401, 403])
-def test_authentication_failures_do_not_retry_or_disclose_secrets(status):
+def test_authentication_failures_do_not_retry_or_disclose_secrets(
+    status, usage_database
+):
     calls = 0
 
     def handler(_request: httpx.Request) -> httpx.Response:
@@ -337,7 +361,7 @@ def test_authentication_failures_do_not_retry_or_disclose_secrets(status):
         calls += 1
         return httpx.Response(status, text="top-secret-api-key")
 
-    gateway, client = _gateway(handler, attempts=3)
+    gateway, client = _gateway(handler, database=usage_database, attempts=3)
     try:
         with pytest.raises(LLMGatewayError) as error:
             gateway.complete_structured(_request(), Summary, _budget())
@@ -349,11 +373,11 @@ def test_authentication_failures_do_not_retry_or_disclose_secrets(status):
     assert "top-secret-api-key" not in str(error.value)
 
 
-def test_exhausted_timeout_returns_redacted_safe_error():
+def test_exhausted_timeout_returns_redacted_safe_error(usage_database):
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("token=top-secret-api-key", request=request)
 
-    gateway, client = _gateway(handler, attempts=2)
+    gateway, client = _gateway(handler, database=usage_database, attempts=2)
     try:
         with pytest.raises(LLMGatewayError) as error:
             gateway.complete_structured(_request(), Summary, _budget())
@@ -366,7 +390,7 @@ def test_exhausted_timeout_returns_redacted_safe_error():
     assert error.value.__cause__ is None
 
 
-def test_non_timeout_transport_error_does_not_retry_or_leak_details():
+def test_non_timeout_transport_error_does_not_retry_or_leak_details(usage_database):
     calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -374,7 +398,7 @@ def test_non_timeout_transport_error_does_not_retry_or_leak_details():
         calls += 1
         raise httpx.ConnectError("Authorization=top-secret-api-key", request=request)
 
-    gateway, client = _gateway(handler, attempts=3)
+    gateway, client = _gateway(handler, database=usage_database, attempts=3)
     try:
         with pytest.raises(LLMGatewayError) as error:
             gateway.complete_structured(_request(), Summary, _budget())
@@ -399,7 +423,7 @@ class SpyProvider:
         )
 
 
-def test_egress_denial_occurs_before_provider_dispatch():
+def test_egress_denial_occurs_before_provider_dispatch(usage_database):
     provider = SpyProvider()
     gateway = LLMGateway(
         provider,
@@ -410,6 +434,7 @@ def test_egress_denial_occurs_before_provider_dispatch():
             max_payload_chars=10_000,
         ),
         usage_ledger=LLMUsageLedger(
+            usage_database,
             CostGuard(
                 max_tokens_per_job=10_000,
                 max_cost_per_job=10,
@@ -425,7 +450,7 @@ def test_egress_denial_occurs_before_provider_dispatch():
     assert provider.calls == 0
 
 
-def test_cost_denial_occurs_before_provider_dispatch():
+def test_cost_denial_occurs_before_provider_dispatch(usage_database):
     provider = SpyProvider()
     gateway = LLMGateway(
         provider,
@@ -436,6 +461,7 @@ def test_cost_denial_occurs_before_provider_dispatch():
             max_payload_chars=10_000,
         ),
         usage_ledger=LLMUsageLedger(
+            usage_database,
             CostGuard(
                 max_tokens_per_job=100,
                 max_cost_per_job=10,

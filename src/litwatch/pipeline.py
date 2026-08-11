@@ -56,7 +56,9 @@ class Pipeline:
                 )
             )
         self._llm_runtime: LLMRuntime | None = build_llm_runtime(
-            settings, client=llm_http_client
+            settings,
+            database=self.database,
+            client=llm_http_client,
         )
         self.analyzer = PaperAnalyzer(
             settings,

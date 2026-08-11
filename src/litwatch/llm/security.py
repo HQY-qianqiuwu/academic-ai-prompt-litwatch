@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from math import isfinite
-from threading import RLock
+from uuid import uuid4
+
+from litwatch.db import Database
 
 
 class LLMSecurityErrorCode(StrEnum):
@@ -173,7 +175,7 @@ def _utc_now() -> datetime:
 
 @dataclass(frozen=True, slots=True)
 class LLMUsageReservation:
-    reservation_id: int
+    reservation_id: str
 
 
 class LLMUsageLedger:
@@ -181,17 +183,19 @@ class LLMUsageLedger:
 
     def __init__(
         self,
+        database: Database,
         cost_guard: CostGuard,
         *,
         now: Callable[[], datetime] = _utc_now,
+        lease_seconds: int = 600,
     ) -> None:
+        _require_nonnegative_int(lease_seconds, "lease_seconds")
+        if lease_seconds < 1:
+            raise ValueError("lease_seconds must be positive")
+        self._database = database
         self._cost_guard = cost_guard
         self._now = now
-        self._lock = RLock()
-        self._day = self._utc_day()
-        self._daily_spend = 0.0
-        self._next_reservation_id = 1
-        self._active_reservations: dict[int, tuple[date, float]] = {}
+        self._lease_seconds = lease_seconds
 
     def reserve(
         self,
@@ -199,26 +203,42 @@ class LLMUsageLedger:
         estimated_tokens: int,
         estimated_cost: float,
     ) -> LLMUsageReservation:
-        with self._lock:
-            self._rollover_locked()
-            reserved_cost = sum(
-                estimate
-                for reservation_day, estimate in self._active_reservations.values()
-                if reservation_day == self._day
-            )
+        current = self._utc_now()
+        usage_day = current.date().isoformat()
+        expires_at = current + timedelta(seconds=self._lease_seconds)
+        reservation = LLMUsageReservation(uuid4().hex)
+        with self._database.transaction(immediate=True) as connection:
+            self._recover_stale_locked(connection, current)
+            row = connection.execute(
+                "SELECT settled_cost FROM llm_daily_usage WHERE usage_day=?",
+                (usage_day,),
+            ).fetchone()
+            daily_spend = float(row[0]) if row is not None else 0.0
+            pending = connection.execute(
+                """SELECT COALESCE(SUM(estimated_cost),0),COUNT(*)
+                   FROM llm_usage_reservations"""
+            ).fetchone()
+            reserved_cost = float(pending[0])
+            active_jobs = int(pending[1])
             self._cost_guard.authorize(
                 estimated_tokens=estimated_tokens,
                 estimated_cost=estimated_cost,
-                daily_spend=self._daily_spend + reserved_cost,
-                active_jobs=len(self._active_reservations),
+                daily_spend=daily_spend + reserved_cost,
+                active_jobs=active_jobs,
             )
-            reservation = LLMUsageReservation(self._next_reservation_id)
-            self._next_reservation_id += 1
-            self._active_reservations[reservation.reservation_id] = (
-                self._day,
-                estimated_cost,
+            connection.execute(
+                """INSERT INTO llm_usage_reservations(
+                       reservation_id,usage_day,estimated_cost,created_at,lease_expires_at
+                   ) VALUES (?,?,?,?,?)""",
+                (
+                    reservation.reservation_id,
+                    usage_day,
+                    estimated_cost,
+                    current.isoformat(),
+                    expires_at.isoformat(),
+                ),
             )
-            return reservation
+        return reservation
 
     def settle(
         self,
@@ -227,39 +247,72 @@ class LLMUsageLedger:
         actual_cost: float,
     ) -> None:
         settled_cost = _require_finite_nonnegative_number(actual_cost, "actual_cost")
-        with self._lock:
-            self._rollover_locked()
-            self._remove_reservation_locked(reservation)
-            self._daily_spend += settled_cost
+        current = self._utc_now()
+        with self._database.transaction(immediate=True) as connection:
+            row = connection.execute(
+                """SELECT usage_day FROM llm_usage_reservations
+                   WHERE reservation_id=?""",
+                (reservation.reservation_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("LLM usage reservation is unknown or already released")
+            usage_day = str(row[0])
+            connection.execute(
+                "DELETE FROM llm_usage_reservations WHERE reservation_id=?",
+                (reservation.reservation_id,),
+            )
+            connection.execute(
+                """INSERT INTO llm_daily_usage(usage_day,settled_cost,updated_at)
+                   VALUES (?,?,?)
+                   ON CONFLICT(usage_day) DO UPDATE SET
+                       settled_cost=settled_cost+excluded.settled_cost,
+                       updated_at=excluded.updated_at""",
+                (usage_day, settled_cost, current.isoformat()),
+            )
 
     def release(self, reservation: LLMUsageReservation) -> None:
-        with self._lock:
-            self._remove_reservation_locked(reservation)
+        with self._database.transaction(immediate=True) as connection:
+            cursor = connection.execute(
+                "DELETE FROM llm_usage_reservations WHERE reservation_id=?",
+                (reservation.reservation_id,),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("LLM usage reservation is unknown or already released")
+
+    def recover_stale(self) -> int:
+        current = self._utc_now()
+        with self._database.transaction(immediate=True) as connection:
+            return self._recover_stale_locked(connection, current)
 
     @property
     def daily_spend(self) -> float:
-        with self._lock:
-            self._rollover_locked()
-            return self._daily_spend
+        usage_day = self._utc_now().date().isoformat()
+        with self._database.transaction_lock:
+            row = self._database.connection.execute(
+                "SELECT settled_cost FROM llm_daily_usage WHERE usage_day=?",
+                (usage_day,),
+            ).fetchone()
+        return float(row[0]) if row is not None else 0.0
 
     @property
     def active_jobs(self) -> int:
-        with self._lock:
-            return len(self._active_reservations)
+        self.recover_stale()
+        with self._database.transaction_lock:
+            row = self._database.connection.execute(
+                "SELECT COUNT(*) FROM llm_usage_reservations"
+            ).fetchone()
+        return int(row[0])
 
-    def _remove_reservation_locked(self, reservation: LLMUsageReservation) -> None:
-        if reservation.reservation_id not in self._active_reservations:
-            raise ValueError("LLM usage reservation is unknown or already released")
-        del self._active_reservations[reservation.reservation_id]
+    @staticmethod
+    def _recover_stale_locked(connection, current: datetime) -> int:
+        cursor = connection.execute(
+            "DELETE FROM llm_usage_reservations WHERE lease_expires_at<=?",
+            (current.isoformat(),),
+        )
+        return max(0, cursor.rowcount)
 
-    def _rollover_locked(self) -> None:
-        current_day = self._utc_day()
-        if current_day != self._day:
-            self._day = current_day
-            self._daily_spend = 0.0
-
-    def _utc_day(self) -> date:
+    def _utc_now(self) -> datetime:
         current = self._now()
         if current.tzinfo is None:
             raise ValueError("LLM usage ledger clock must be timezone-aware")
-        return current.astimezone(UTC).date()
+        return current.astimezone(UTC)

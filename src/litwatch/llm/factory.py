@@ -7,6 +7,7 @@ from math import ceil
 import httpx
 
 from litwatch.config import Settings
+from litwatch.db import Database
 from litwatch.llm.gateway import LLMGateway
 from litwatch.llm.models import LLMBudget, LLMRequest
 from litwatch.llm.openai_compatible import OpenAICompatibleProvider
@@ -28,6 +29,7 @@ class LLMRuntime:
 def build_llm_runtime(
     settings: Settings,
     *,
+    database: Database,
     client: httpx.Client | None = None,
 ) -> LLMRuntime | None:
     """Build the production LLM boundary; no credential means no model runtime."""
@@ -50,12 +52,17 @@ def build_llm_runtime(
             max_payload_chars=settings.llm_max_payload_chars,
         ),
         usage_ledger=LLMUsageLedger(
+            database,
             CostGuard(
                 max_tokens_per_job=settings.max_tokens_per_job,
                 max_cost_per_job=settings.max_cost_per_job,
                 max_daily_cost=settings.max_daily_cost,
                 max_concurrent_llm_jobs=settings.max_concurrent_llm_jobs,
-            )
+            ),
+            lease_seconds=max(
+                settings.job_default_timeout_seconds,
+                ceil(settings.request_timeout_seconds * 3 + 30),
+            ),
         ),
     )
 

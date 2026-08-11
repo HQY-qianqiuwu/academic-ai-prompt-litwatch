@@ -337,6 +337,27 @@ _MIGRATION_SQL = (
             ON jobs(status,finished_at DESC,job_id ASC);
         """,
     ),
+    (
+        8,
+        "llm_usage_accounting",
+        """
+        CREATE TABLE IF NOT EXISTS llm_daily_usage (
+            usage_day TEXT PRIMARY KEY,
+            settled_cost REAL NOT NULL DEFAULT 0 CHECK(settled_cost >= 0),
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS llm_usage_reservations (
+            reservation_id TEXT PRIMARY KEY,
+            usage_day TEXT NOT NULL,
+            estimated_cost REAL NOT NULL CHECK(estimated_cost >= 0),
+            created_at TEXT NOT NULL,
+            lease_expires_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_llm_usage_reservations_expiry
+            ON llm_usage_reservations(lease_expires_at);
+        """,
+    ),
 )
 
 MIGRATION_REGISTRY = tuple(
