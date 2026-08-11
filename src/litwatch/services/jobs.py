@@ -90,6 +90,10 @@ class JobWorker:
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    @property
+    def registered_job_types(self) -> frozenset[str]:
+        return frozenset(self._handlers)
+
     def register(self, job_type: str, handler: JobHandler) -> None:
         normalized = job_type.strip()
         if not normalized:

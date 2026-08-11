@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import threading
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -15,6 +16,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from litwatch.api_models import (
+    JobCreateRequest,
+    JobResponse,
     LiteratureSearchRequest,
     LiteratureSearchResponse,
     ProviderCapabilityResponse,
@@ -32,6 +35,7 @@ from litwatch.db import Database
 from litwatch.delivery_repository import DeliveryRepository
 from litwatch.export import rows_to_bibtex
 from litwatch.historical_paper_repository import HistoricalPaperRepository
+from litwatch.job_repository import JobRepository
 from litwatch.pipeline import Pipeline
 from litwatch.provider_config import ProviderProfileStore, default_provider_profile
 from litwatch.provider_security import ProviderBaseUrlError, validate_provider_base_url
@@ -46,6 +50,7 @@ from litwatch.services import (
     SubscriptionService,
 )
 from litwatch.services.delivery import DeliveryService
+from litwatch.services.jobs import JobWorker
 from litwatch.services.radars import (
     RadarNotFoundError,
     RadarProviderError,
@@ -145,10 +150,26 @@ def create_app(
     scan_lock = threading.Lock()
     state_lock = threading.Lock()
     scan_state: dict[str, object] = {"scanning": False, "last_error": ""}
+    job_repository = JobRepository(database)
+    job_worker = JobWorker(
+        job_repository,
+        poll_seconds=settings.job_poll_seconds,
+        lease_seconds=settings.job_lease_seconds,
+        concurrency=settings.job_concurrency,
+        default_timeout_seconds=settings.job_default_timeout_seconds,
+    )
+
+    def unavailable_paper_analysis(_context: object, _job: object) -> None:
+        # Plan v2.0E replaces this safe boundary with the Python analysis service.
+        raise RuntimeError("paper analysis handler is not configured")
+
+    job_worker.register("paper_analysis", unavailable_paper_analysis)
     runtime = ApplicationRuntime(
         database_preflight=database.verify_migrations,
         scheduler_start=scheduler_service.start,
         scheduler_stop=scheduler_service.stop,
+        worker_start=job_worker.start,
+        worker_stop=job_worker.stop,
         startup_hooks=(research_radar_service.recover_stale_scans,),
     )
 
@@ -174,6 +195,8 @@ def create_app(
     app.state.delivery_repository = delivery_repository
     app.state.scheduler_service = scheduler_service
     app.state.runtime = runtime
+    app.state.job_repository = job_repository
+    app.state.job_worker = job_worker
     app.state.research_radar_service = research_radar_service
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
@@ -347,6 +370,46 @@ def create_app(
             "requires_docker": status.requires_docker,
             "requires_ssrf_proxy": status.requires_ssrf_proxy,
         }
+
+    @app.post("/api/v2/jobs", response_model=JobResponse, status_code=202)
+    def create_job(payload: JobCreateRequest) -> JobResponse:
+        if payload.job_type not in job_worker.registered_job_types:
+            raise HTTPException(status_code=422, detail="unsupported job type")
+        canonical_payload = json.dumps(
+            payload.payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        input_hash = hashlib.sha256(
+            f"{payload.job_type}\0{canonical_payload}".encode()
+        ).hexdigest()
+        record = job_repository.enqueue(
+            job_type=payload.job_type,
+            idempotency_key=payload.idempotency_key,
+            input_hash=input_hash,
+            payload=payload.payload,
+            max_attempts=payload.max_attempts,
+            timeout_seconds=(
+                payload.timeout_seconds or settings.job_default_timeout_seconds
+            ),
+        )
+        return JobResponse.from_record(record)
+
+    @app.get("/api/v2/jobs/{job_id}", response_model=JobResponse)
+    def get_job(job_id: str) -> JobResponse:
+        record = job_repository.get(job_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        return JobResponse.from_record(record)
+
+    @app.post("/api/v2/jobs/{job_id}/cancel", response_model=JobResponse)
+    def cancel_job(job_id: str) -> JobResponse:
+        try:
+            record = job_repository.request_cancel(job_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="job not found") from None
+        return JobResponse.from_record(record)
 
     @app.post(
         "/api/v1/literature/search",

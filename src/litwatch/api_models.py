@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from litwatch.deliveries import Delivery
+from litwatch.jobs import JobPayload, JobRecord, JobStatus
 from litwatch.models import Paper
 from litwatch.provider_config import (
     DEFAULT_CREDENTIAL_REFERENCES,
@@ -63,6 +64,66 @@ class LiteratureSearchRequest(BaseModel):
         if len(normalized) != len(set(normalized)):
             raise ValueError("provider identifiers must be unique")
         return normalized
+
+
+class JobCreateRequest(BaseModel):
+    """Validated, secret-free input for a durable background job."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_type: str = Field(min_length=1, max_length=64)
+    idempotency_key: str = Field(min_length=1, max_length=256)
+    payload: dict[str, JsonValue] = Field(default_factory=dict)
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    timeout_seconds: int | None = Field(default=None, ge=1, le=3600)
+
+    @field_validator("job_type", "idempotency_key", mode="before")
+    @classmethod
+    def strip_job_identifiers(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("payload")
+    @classmethod
+    def reject_inline_credentials(
+        cls, value: dict[str, JsonValue]
+    ) -> dict[str, JsonValue]:
+        return JobPayload.model_validate(value).root
+
+
+class JobResponse(BaseModel):
+    """Public job status projection with internal inputs and leases omitted."""
+
+    job_id: str
+    job_type: str
+    status: JobStatus
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    attempt: int
+    max_attempts: int
+    result_reference: str | None
+    safe_error_code: str | None
+    safe_error_message: str | None
+    cancellation_requested_at: datetime | None
+    status_url: str
+
+    @classmethod
+    def from_record(cls, record: JobRecord) -> JobResponse:
+        return cls(
+            job_id=record.job_id,
+            job_type=record.job_type,
+            status=record.status,
+            created_at=record.created_at,
+            started_at=record.started_at,
+            finished_at=record.finished_at,
+            attempt=record.attempt,
+            max_attempts=record.max_attempts,
+            result_reference=record.result_reference,
+            safe_error_code=record.safe_error_code,
+            safe_error_message=record.safe_error_message,
+            cancellation_requested_at=record.cancellation_requested_at,
+            status_url=f"/api/v2/jobs/{record.job_id}",
+        )
 
 
 class RadarCreateRequest(RadarSpec):

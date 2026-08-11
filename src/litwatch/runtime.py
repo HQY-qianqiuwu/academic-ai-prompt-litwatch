@@ -39,12 +39,16 @@ class ApplicationRuntime:
         database_preflight: Callable[[], None] = lambda: None,
         scheduler_start: Callable[[], None],
         scheduler_stop: Callable[[], None],
+        worker_start: Callable[[], None] = lambda: None,
+        worker_stop: Callable[[], None] = lambda: None,
         startup_hooks: Sequence[Callable[[], None]] = (),
         shutdown_hooks: Sequence[Callable[[], None]] = (),
     ) -> None:
         self._database_preflight = database_preflight
         self._scheduler_start = scheduler_start
         self._scheduler_stop = scheduler_stop
+        self._worker_start = worker_start
+        self._worker_stop = worker_stop
         self._startup_hooks = tuple(startup_hooks)
         self._shutdown_hooks = tuple(shutdown_hooks)
         self._started = False
@@ -57,6 +61,7 @@ class ApplicationRuntime:
             self._database_preflight()
             for hook in self._startup_hooks:
                 hook()
+            self._worker_start()
             self._scheduler_start()
             self._started = True
 
@@ -66,6 +71,7 @@ class ApplicationRuntime:
                 return
             try:
                 self._scheduler_stop()
+                self._worker_stop()
                 for hook in reversed(self._shutdown_hooks):
                     hook()
             finally:
