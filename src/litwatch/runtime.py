@@ -84,22 +84,20 @@ class ApplicationRuntime:
         with self._lock:
             if not self._started:
                 return
-            failures: list[Exception] = []
+            shutdown_failed = False
             try:
                 self._scheduler_stop()
-            except Exception as error:  # noqa: BLE001 - continue shutdown sequence
-                failures.append(error)
+            except Exception:  # noqa: BLE001 - continue shutdown sequence safely
+                shutdown_failed = True
             try:
                 self._worker_stop()
-            except Exception as error:  # noqa: BLE001 - continue shutdown sequence
-                failures.append(error)
+            except Exception:  # noqa: BLE001 - continue shutdown sequence safely
+                shutdown_failed = True
             for hook in reversed(self._shutdown_hooks):
                 try:
                     hook()
-                except Exception as error:  # noqa: BLE001 - continue shutdown sequence
-                    failures.append(error)
+                except Exception:  # noqa: BLE001 - continue shutdown sequence safely
+                    shutdown_failed = True
             self._started = False
-            if failures:
-                raise RuntimeLifecycleError(
-                    "application runtime shutdown failed"
-                ) from failures[0]
+            if shutdown_failed:
+                raise RuntimeLifecycleError("application runtime shutdown failed") from None

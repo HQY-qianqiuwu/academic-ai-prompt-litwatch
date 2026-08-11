@@ -1,4 +1,5 @@
 from pathlib import Path
+from traceback import format_exception
 
 import pytest
 from fastapi.testclient import TestClient
@@ -112,6 +113,8 @@ def test_scheduler_stop_failure_still_stops_worker_and_reports_safe_error():
         runtime.stop()
 
     assert "secret scheduler detail" not in str(error.value)
+    assert error.value.__cause__ is None
+    assert "secret scheduler detail" not in "".join(format_exception(error.value))
     assert calls == [
         "worker-start",
         "scheduler-start",
