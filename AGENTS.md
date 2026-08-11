@@ -12,5 +12,9 @@
 10. External literature metadata must come from real APIs.
 11. The LLM must never fabricate `title`, `authors`, `DOI`, `venue`, `publication date`, or `URL`.
 12. SQLite and LitWatch handle deterministic data logic.
-13. Dify handles workflow orchestration and semantic analysis.
-14. Every stable version must correspond to a Git tag.
+13. Python is the authoritative runtime for workflow orchestration and semantic analysis.
+14. During Stack v2.0, Dify is a legacy migration dependency only; no new
+    business-critical capability may exist only in Dify.
+15. Historical Dify Workflow DSL files are frozen release artifacts and must not be
+    deleted, moved, or overwritten during the Python-native migration.
+16. Every stable version must correspond to a Git tag.
