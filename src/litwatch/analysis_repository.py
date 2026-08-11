@@ -26,11 +26,7 @@ class AnalysisRepository:
                    ) VALUES (?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(
                        canonical_id,analysis_version,evidence_hash,model_config_hash
-                   ) DO UPDATE SET
-                       status=excluded.status,
-                       evidence_scope=excluded.evidence_scope,
-                       analysis_json=excluded.analysis_json,
-                       updated_at=excluded.updated_at""",
+                   ) DO NOTHING""",
                 (
                     validated.canonical_id,
                     validated.analysis_version,
@@ -43,7 +39,20 @@ class AnalysisRepository:
                     timestamp,
                 ),
             )
-        return validated
+            row = connection.execute(
+                """SELECT analysis_json FROM paper_analyses
+                   WHERE canonical_id=? AND analysis_version=?
+                     AND evidence_hash=? AND model_config_hash=?""",
+                (
+                    validated.canonical_id,
+                    validated.analysis_version,
+                    validated.evidence_hash,
+                    validated.model_config_hash,
+                ),
+            ).fetchone()
+        if row is None:  # pragma: no cover - insert/select share one transaction
+            raise RuntimeError("paper analysis upsert did not persist a row")
+        return PaperAnalysis.model_validate_json(str(row[0]))
 
     def get(
         self,

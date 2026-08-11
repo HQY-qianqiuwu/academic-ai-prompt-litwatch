@@ -20,7 +20,7 @@ class AnalysisStatus(StrEnum):
 
 
 class AnalysisEvidence(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
     field: str = Field(min_length=1, max_length=100)
     excerpt: str = Field(min_length=1, max_length=2_000)
@@ -32,12 +32,12 @@ class AnalysisEvidence(BaseModel):
 class PaperAnalysis(BaseModel):
     """Provider-independent analysis facts; canonical paper metadata is excluded."""
 
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
     canonical_id: str = Field(min_length=1, max_length=1_000)
     analysis_version: str = Field(min_length=1, max_length=100)
-    evidence_hash: str = Field(min_length=1, max_length=256)
-    model_config_hash: str = Field(min_length=1, max_length=256)
+    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_config_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     status: AnalysisStatus = Field(strict=False)
     evidence_scope: EvidenceScope = Field(strict=False)
     research_question: str | None = None

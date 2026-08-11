@@ -15,8 +15,8 @@ def _analysis(**overrides) -> PaperAnalysis:
     values = {
         "canonical_id": "doi:10.1000/example",
         "analysis_version": "v1",
-        "evidence_hash": "evidence-sha256",
-        "model_config_hash": "model-sha256",
+        "evidence_hash": "a" * 64,
+        "model_config_hash": "b" * 64,
         "status": "completed",
         "evidence_scope": "abstract",
         "research_question": "How is robust localization achieved?",
@@ -53,8 +53,8 @@ def test_structured_analysis_defaults_missing_facts_to_none_and_empty_lists():
     analysis = PaperAnalysis(
         canonical_id="doi:10.1000/example",
         analysis_version="v1",
-        evidence_hash="evidence-sha256",
-        model_config_hash="model-sha256",
+        evidence_hash="a" * 64,
+        model_config_hash="b" * 64,
         status="skipped",
         evidence_scope=EvidenceScope.METADATA_ONLY,
     )
@@ -119,6 +119,33 @@ def test_models_reject_unknown_fields_and_provider_owned_metadata():
         )
 
 
+def test_analysis_and_evidence_models_are_frozen():
+    analysis = _analysis()
+
+    with pytest.raises(ValidationError):
+        analysis.research_question = "Mutated question"
+    with pytest.raises(ValidationError):
+        analysis.evidence[0].excerpt = "Mutated evidence"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("evidence_hash", "a" * 63),
+        ("evidence_hash", "a" * 65),
+        ("evidence_hash", "A" * 64),
+        ("evidence_hash", " " + "a" * 64),
+        ("evidence_hash", "g" * 64),
+        ("model_config_hash", "b" * 63),
+        ("model_config_hash", "B" * 64),
+        ("model_config_hash", "b" * 64 + " "),
+    ],
+)
+def test_analysis_identity_requires_normalized_sha256_hex(field, value):
+    with pytest.raises(ValidationError):
+        _analysis(**{field: value})
+
+
 def test_evidence_excerpt_is_bounded_and_page_is_positive():
     with pytest.raises(ValidationError):
         AnalysisEvidence(
@@ -178,6 +205,28 @@ def test_repository_upsert_is_idempotent_for_composite_identity(tmp_path):
         model_config_hash=analysis.model_config_hash,
     ) == analysis
     database.connection.close()
+
+
+def test_repository_composite_collision_is_first_writer_wins(tmp_path):
+    path = tmp_path / "first-writer.db"
+    database = _database_with_paper(path)
+    repository = AnalysisRepository(database)
+    first = _analysis(research_question="First grounded result")
+    divergent_retry = _analysis(research_question="Divergent retry result")
+
+    assert repository.upsert(first) == first
+    assert repository.upsert(divergent_retry) == first
+    database.connection.close()
+
+    restarted = Database(path)
+    stored = AnalysisRepository(restarted).get(
+        canonical_id=first.canonical_id,
+        analysis_version=first.analysis_version,
+        evidence_hash=first.evidence_hash,
+        model_config_hash=first.model_config_hash,
+    )
+    assert stored == first
+    restarted.connection.close()
 
 
 def test_repository_retrieves_typed_analysis_after_restart(tmp_path):
