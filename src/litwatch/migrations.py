@@ -159,7 +159,9 @@ class MigrationCoordinator:
         temporary_path = self.database_path.with_name(
             f".{self.database_path.name}.restore-{uuid4().hex}.tmp"
         )
+        recovery_state = self._acquire_recovery_quiescence()
         temporary_connection: sqlite3.Connection | None = None
+        connection_closed = False
         try:
             try:
                 copy2(source, temporary_path)
@@ -184,10 +186,16 @@ class MigrationCoordinator:
                     temporary_connection.close()
 
             self.connection.close()
+            connection_closed = True
             # The temporary file shares the database parent directory, which
             # makes this a same-volume atomic replacement.
-            temporary_path.replace(self.database_path)
+            try:
+                temporary_path.replace(self.database_path)
+            except OSError as error:
+                raise MigrationSafetyError("database is not quiescent") from error
         except Exception:
+            if not connection_closed:
+                self._release_recovery_quiescence(recovery_state)
             if temporary_path.exists():
                 temporary_path.unlink()
             raise
@@ -235,9 +243,46 @@ class MigrationCoordinator:
         destination = sqlite3.connect(backup_path)
         try:
             self.connection.backup(destination)
-        finally:
+        except Exception:
+            destination.close()
+            backup_path.unlink(missing_ok=True)
+            raise
+        else:
             destination.close()
         return backup_path
+
+    def _acquire_recovery_quiescence(self) -> tuple[int, str]:
+        busy_timeout = int(self.connection.execute("PRAGMA busy_timeout").fetchone()[0])
+        journal_mode = str(
+            self.connection.execute("PRAGMA journal_mode").fetchone()[0]
+        ).lower()
+        self.connection.execute("PRAGMA busy_timeout=0")
+        try:
+            delete_mode = str(
+                self.connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+            ).lower()
+            if delete_mode != "delete":
+                raise MigrationSafetyError("database is not quiescent")
+            self.connection.execute("BEGIN EXCLUSIVE")
+        except (sqlite3.Error, MigrationSafetyError) as error:
+            if self.connection.in_transaction:
+                self.connection.rollback()
+            self.connection.execute(f"PRAGMA busy_timeout={busy_timeout}")
+            if journal_mode != "delete":
+                try:
+                    self.connection.execute(f"PRAGMA journal_mode={journal_mode}")
+                except sqlite3.Error:
+                    pass
+            raise MigrationSafetyError("database is not quiescent") from error
+        return busy_timeout, journal_mode
+
+    def _release_recovery_quiescence(self, state: tuple[int, str]) -> None:
+        busy_timeout, journal_mode = state
+        if self.connection.in_transaction:
+            self.connection.rollback()
+        if journal_mode != "delete":
+            self.connection.execute(f"PRAGMA journal_mode={journal_mode}")
+        self.connection.execute(f"PRAGMA busy_timeout={busy_timeout}")
 
     def _applied_rows(self) -> tuple[tuple[int, str], ...]:
         rows = self.connection.execute(

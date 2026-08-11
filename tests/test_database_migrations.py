@@ -178,6 +178,41 @@ def test_pending_migration_creates_sqlite_backup_and_reports_it(tmp_path):
     database.connection.close()
 
 
+def test_failed_sqlite_backup_removes_partial_destination_artifact(tmp_path):
+    class FailingBackupConnection:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def __getattr__(self, name):
+            return getattr(self.connection, name)
+
+        def backup(self, destination):
+            destination.execute("CREATE TABLE incomplete_backup(id INTEGER)")
+            destination.commit()
+            raise sqlite3.OperationalError("injected backup failure")
+
+    database = Database(tmp_path / "backup-failure.db")
+    migration = Migration.from_sql(
+        7,
+        "backup_failure_probe",
+        "CREATE TABLE backup_failure_probe(id INTEGER PRIMARY KEY);",
+    )
+    backup_directory = tmp_path / "failed-backups"
+
+    with pytest.raises(sqlite3.OperationalError, match="injected backup failure"):
+        MigrationCoordinator(
+            FailingBackupConnection(database.connection),
+            (*MIGRATION_REGISTRY, migration),
+            backup_directory=backup_directory,
+        ).migrate()
+
+    assert list(backup_directory.glob("*.db")) == []
+    assert database.connection.execute(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+    ).fetchone()[0] == 0
+    database.connection.close()
+
+
 def test_invalid_pending_migration_keeps_existing_data_and_version_unchanged(tmp_path):
     database = Database(tmp_path / "invalid-backup.db")
     database.connection.execute("INSERT INTO runs(started_at) VALUES ('before-failure')")
@@ -261,6 +296,43 @@ def test_recovery_rejects_unverified_backup_without_replacing_database(tmp_path)
     ).fetchone()[0] == 1
     assert list(tmp_path.glob(".reject-invalid-backup.db.restore-*.tmp")) == []
     database.connection.close()
+
+
+def test_recovery_fails_safely_when_another_connection_holds_write_lock(tmp_path):
+    path = tmp_path / "concurrent-recovery.db"
+    database = Database(path)
+    migration = Migration.from_sql(
+        7,
+        "concurrent_recovery_probe",
+        "CREATE TABLE concurrent_recovery_probe(id INTEGER PRIMARY KEY);",
+    )
+    coordinator = MigrationCoordinator(
+        database.connection,
+        (*MIGRATION_REGISTRY, migration),
+        backup_directory=tmp_path / "backups",
+    )
+    report = coordinator.migrate()
+    assert report.backup_path is not None
+
+    concurrent = sqlite3.connect(path)
+    concurrent.execute("PRAGMA journal_mode=WAL")
+    concurrent.execute("BEGIN IMMEDIATE")
+    concurrent.execute("INSERT INTO runs(started_at) VALUES ('concurrent-writer')")
+
+    with pytest.raises(MigrationSafetyError, match="database is not quiescent"):
+        coordinator.recover(report.backup_path)
+
+    concurrent.rollback()
+    concurrent.close()
+    database.connection.close()
+    reopened = sqlite3.connect(path)
+    assert reopened.execute(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version=7"
+    ).fetchone()[0] == 1
+    assert reopened.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE name='concurrent_recovery_probe'"
+    ).fetchone()[0] == 1
+    reopened.close()
 
 
 def test_no_pending_migration_does_not_create_backup(tmp_path):
