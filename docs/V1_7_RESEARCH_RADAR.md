@@ -1,6 +1,6 @@
 # Stack v1.7 Research Radar and Historical Trend Intelligence
 
-Status: **RELEASE CANDIDATE**
+Status: **STABLE**
 
 Base tag: `dify-v1.6`
 
@@ -49,9 +49,9 @@ receives `LiteratureSearchService`, repositories, and clocks through dependency
 injection. Existing Provider failure isolation, SSRF validation, profile-backed
 BYOK, deduplication, ranking, and metadata truth rules remain authoritative.
 
-## Release Candidate implementation
+## Stable implementation
 
-The release candidate implements validated Radar CRUD, restart-safe SQLite
+The Stable release implements validated Radar CRUD, restart-safe SQLite
 persistence, bounded two-year historical backfill, provider failure isolation,
 global `Paper` metadata reuse, Radar-specific observation history, stale scan
 recovery, deterministic annual and keyword statistics, trend classification,
@@ -63,9 +63,9 @@ analysis without contacting Providers and exposes explicit scan actions for
 external retrieval. Radar and trend actions may prefill `/subscriptions`, but
 the user must explicitly submit the Subscription form.
 
-Automated and real validation evidence is recorded in
-`docs/V1_7_E2E_RESULTS.md`. Stack v1.7 remains a Release Candidate until manual
-acceptance; no `dify-v1.7` tag exists.
+Automated, real, and manual validation evidence is recorded in
+`docs/V1_7_E2E_RESULTS.md`. Stack v1.7 is released through the annotated
+`dify-v1.7` tag.
 
 ## Existing components reused
 
@@ -345,5 +345,9 @@ and automatic citation-quality ranking remain outside v1.7.
 Each implementation stage must independently pass `python -m pytest -q`,
 `ruff check src tests`, and `git diff --check`, then be committed with explicit
 file staging. Stable v1.0/v1.1 DSL files and all historical tags remain frozen.
-The final v1.7 result is a Release Candidate only; no `dify-v1.7` tag is
-created before manual acceptance.
+The final v1.7 gate reached 305 passing tests. Ruff, diff checks, stable
+v1.0/v1.1 DSL protection, real Radar E2E, and manual acceptance passed. Trend
+evidence auto-expands and normalized DOI labels navigate safely to
+`https://doi.org/...`. The final DOI fix is
+`1f821a4 fix(radar): repair evidence DOI navigation`. The Stable release is
+identified by the annotated `dify-v1.7` tag.

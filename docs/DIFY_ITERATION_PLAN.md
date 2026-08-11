@@ -269,7 +269,7 @@ Weekly Digest, historical deduplication, and restart persistence. Stable tag:
 
 ## Stack v1.7 — Research Radar and Historical Trend Intelligence
 
-Status: **Release Candidate**
+Status: **Stable**
 
 Implemented on `feat/v1.7-research-radar`:
 
@@ -281,8 +281,14 @@ Implemented on `feat/v1.7-research-radar`:
 - bilingual Research Radar UI and legacy `/dashboard` redirect; and
 - explicit Radar-to-Subscription prefill without silent creation.
 
-The compatible workflow remains `literature-search-v1.1.yml`. Manual
-acceptance is required before creating `dify-v1.7`.
+The compatible workflow remains `literature-search-v1.1.yml`. The final gate
+reached 305 passing tests with Ruff, diff checks, and stable v1.0/v1.1 DSL
+protection passing. Manual acceptance passed for TDOA and OFDM Radars,
+historical backfill, technical-topic evolution, generic-vocabulary filtering,
+trend semantic quality, topic isolation, representative papers, evidence
+auto-expand, DOI display/navigation, rescans, and restart persistence. Final
+DOI fix: `1f821a4 fix(radar): repair evidence DOI navigation`. Stable tag:
+`dify-v1.7`.
 
 ## Future — Zotero Integration
 

@@ -25,7 +25,7 @@ solely to make version numbers align.
 | v1.4 | Stable | Deterministic deduplication, metadata merge, relevance/quality ranking, additive diagnostics | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.4` |
 | v1.5 | Stable | Local research Web UI, diagnostics, Provider Settings, secret-safe BYOK UX | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.5` |
 | v1.6 | Stable | Research subscriptions, historical novelty, weekly scheduling, Dashboard recommendations and digests | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.6` |
-| v1.7 | Release Candidate | Research Radar, historical backfill, deterministic trends, evidence timeline | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | Not created |
+| v1.7 | Stable | Research Radar, historical backfill, deterministic trends, evidence timeline | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.7` |
 
 ## Provider Capability Matrix
 
@@ -157,15 +157,20 @@ Subscriptions, Run Now, Run History, Weekly Digest, historical duplicate
 suppression, and restart persistence. See `docs/V1_6_E2E_RESULTS.md`. Stack
 v1.6 is Stable at `dify-v1.6`.
 
-## Stack v1.7 Release Candidate Evidence
+## Stack v1.7 Release Evidence
 
 Real 2018-2026 TDOA and OFDM Radar scans completed through OpenAlex, arXiv, and
 Crossref, persisted distinct paper histories, rendered annual trends,
 paper-backed keyword evolution, deterministic trend classifications,
 representative papers, and scan history. Immediate rescans reported zero new
-papers. Browser checks passed in zh-CN and English. Automated tests reached 288
-passing tests with Ruff and diff checks passing. See
-`docs/V1_7_E2E_RESULTS.md`. Manual acceptance and a Stable tag remain pending.
+papers. Browser checks passed in zh-CN and English. Automated tests reached 305
+passing tests with Ruff and diff checks passing. Manual acceptance passed for
+TDOA and OFDM Radars, historical backfill, topic isolation, technical-topic
+evolution, semantic-quality filtering, representative papers, trend evidence,
+evidence auto-expand, normalized DOI display, safe DOI external navigation,
+rescan deduplication, and restart persistence. The final DOI fix is
+`1f821a4 fix(radar): repair evidence DOI navigation`. See
+`docs/V1_7_E2E_RESULTS.md`. Stack v1.7 is Stable at `dify-v1.7`.
 
 ## Recovery Rule
 

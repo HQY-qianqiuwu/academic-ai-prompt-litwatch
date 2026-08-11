@@ -1,23 +1,28 @@
 # Codex Handoff
 
-## Current release candidate
+## Latest stable
 
 - Stack: v1.7 - Research Radar and Historical Trend Intelligence
+- Tag: `dify-v1.7`
 - Branch: `feat/v1.7-research-radar`
 - Base tag: `dify-v1.6`
-- State: Release Candidate; manual acceptance required.
+- State: Stable; automated, real E2E, and final manual acceptance passed.
 - Scope: Radar persistence, bounded historical backfill, deterministic annual
   and keyword statistics, trends, timeline, representative papers, evidence,
   scan history, bilingual Web UI, and Radar-to-Subscription prefill.
-- Validation: 288 tests passed; Ruff and diff checks passed; real 2018-2026
+- Validation: 305 tests passed; Ruff and diff checks passed; real 2018-2026
   TDOA and OFDM scans, immediate rescan suppression, restart persistence,
-  browser rendering, lifecycle, and regression checks passed.
+  browser rendering, lifecycle, topic isolation, technical-topic evolution,
+  semantic-quality filtering, and regression checks passed.
+- Evidence navigation: trend evidence auto-expands, displays normalized DOI
+  labels, and opens `https://doi.org/...` with safe external-link attributes.
+- Final DOI fix: `1f821a4 fix(radar): repair evidence DOI navigation`.
+- Stable DSL protection: v1.0 and v1.1 files unchanged.
+- Release: annotated `dify-v1.7` tag on the Stable release commit.
 - Records: `docs/V1_7_RESEARCH_RADAR.md` and
   `docs/V1_7_E2E_RESULTS.md`.
-- Release restriction: do not create or move `dify-v1.7` until manual
-  acceptance explicitly authorizes Stable Finalization.
 
-## Latest stable
+## Previous stable
 
 - Stack: v1.6 - Research Subscriptions and Weekly Recommendations
 - Tag: `dify-v1.6`

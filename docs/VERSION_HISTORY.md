@@ -328,7 +328,7 @@ Validation record: `docs/V1_6_E2E_RESULTS.md`
 
 ## Stack v1.7
 
-Status: **Release Candidate**
+Status: **Stable**
 
 Capability:
 
@@ -344,13 +344,18 @@ Capability:
   compatibility; and
 - explicit Radar-to-Subscription prefill without silent creation.
 
-Release Candidate validation reached 288 passing tests. Real 2018-2026 TDOA
-and OFDM Radars completed successfully with distinct paper sets and rendered
-analysis. Restart persistence, immediate rescan novelty suppression, browser
-rendering, lifecycle, Dify reachability, and stable DSL protection passed.
+Final validation reached 305 passing tests. Real 2018-2026 TDOA and OFDM
+Radars completed successfully with distinct paper sets and rendered analysis.
+Restart persistence, immediate rescan novelty suppression, browser rendering,
+lifecycle, Dify reachability, topic isolation, technical-topic evolution,
+generic-vocabulary filtering, trend semantic quality, and stable DSL protection
+passed. Final manual acceptance also passed for trend evidence auto-expand,
+normalized DOI display, and safe external `https://doi.org/...` navigation.
+
+Final DOI fix: `1f821a4 fix(radar): repair evidence DOI navigation`
 
 Architecture record: `docs/V1_7_RESEARCH_RADAR.md`
 
 Validation record: `docs/V1_7_E2E_RESULTS.md`
 
-Manual acceptance remains required. No Stable tag has been created.
+Stable tag: `dify-v1.7`

@@ -1,6 +1,6 @@
 # Stack v1.7 Research Radar E2E Results
 
-Status: **RELEASE CANDIDATE**
+Status: **STABLE**
 
 Branch: `feat/v1.7-research-radar`
 
@@ -8,7 +8,7 @@ Base: `dify-v1.6` (`dec49ea2ecc466bfa2f8a71cf8f22b762e0e24c0`)
 
 ## Automated gate
 
-- `python -m pytest -q`: 295 passed with one existing TestClient deprecation warning
+- `python -m pytest -q`: 305 passed with one existing TestClient deprecation warning
 - `ruff check src tests`: pass
 - `git diff --check`: pass
 - v1.0 Workflow DSL: unchanged from `dify-v1.0`
@@ -89,4 +89,24 @@ and deep learning. Radar history remained isolated by Radar ID.
 - Automated partial-provider and all-provider failure tests passed; successful
   Provider evidence remains available for partial scans.
 
-Manual acceptance is still required. No `dify-v1.7` tag was created.
+## Final manual acceptance
+
+- TDOA Radar: pass
+- OFDM Radar: pass
+- Historical Research Radar and bounded backfill: pass
+- Technical Topic Evolution: pass
+- Generic Vocabulary Filtering: pass
+- Trend Semantic Quality: pass
+- Emerging / Sustained Trend Classification: pass
+- Representative Papers and paper-grounded trend evidence: pass
+- Evidence auto-expand: pass
+- DOI display as `doi:10.xxxx/...`: pass
+- DOI external navigation to `https://doi.org/10.xxxx/...`: pass
+- DOI external-link security (`target="_blank"` and
+  `rel="noopener noreferrer"`): pass
+- Rescan duplicate suppression and restart persistence: pass
+- Topic isolation: pass
+- zh-CN and English UI: pass
+
+The final DOI fix is `1f821a4 fix(radar): repair evidence DOI navigation`.
+Stack v1.7 is Stable at the annotated `dify-v1.7` tag.
