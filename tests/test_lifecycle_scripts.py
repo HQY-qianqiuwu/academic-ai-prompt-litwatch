@@ -13,6 +13,7 @@ from uuid import UUID
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 POWERSHELL = shutil.which("powershell.exe")
+BASE_EXECUTABLE = Path(getattr(sys, "_base_executable", sys.executable)).resolve()
 
 
 def _powershell_literal(value: str | Path) -> str:
@@ -36,11 +37,19 @@ def _run_controlled_script(
     identity_capture: str = "normal",
     handle_cleanup: str = "normal",
     start_time_capture: str = "normal",
+    topology: str = "direct",
+    child_pid: int = 4343,
+    lineage_fault: str = "none",
+    stop_cleanup: str = "normal",
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     assert POWERSHELL is not None
     sandbox = tmp_path / "scripts"
     sandbox.mkdir()
     shutil.copy2(SCRIPTS / script_name, sandbox / script_name)
+    shutil.copy2(
+        SCRIPTS / "stack-process-lineage.ps1",
+        sandbox / "stack-process-lineage.ps1",
+    )
     common = (SCRIPTS / "stack-common.ps1").read_text(encoding="utf-8-sig")
     event_log = tmp_path / "events.log"
     data_dir = tmp_path / "data"
@@ -59,6 +68,9 @@ def _run_controlled_script(
         $script:LifecycleEventLog = '{_powershell_literal(event_log)}'
         $script:LifecycleStartedPid = $null
         $script:LifecycleIdentityCaptureAttempts = 0
+        $script:LifecycleChildRechecks = 0
+        $script:LifecycleParentExited = $false
+        $script:LifecycleChildExited = $false
 
         function Add-LifecycleTestEvent {{
             param([string]$Event)
@@ -89,14 +101,29 @@ def _run_controlled_script(
         function Get-PortProcessInfo {{
             param([int]$Port = 8000)
             Add-LifecycleTestEvent "inspect-port:$Port"
-            if ($env:LITWATCH_TEST_MODE -eq 'none') {{ return @() }}
+            if (
+                $env:LITWATCH_TEST_MODE -eq 'none' -and
+                $null -eq $script:LifecycleStartedPid
+            ) {{
+                return @()
+            }}
+            if ($env:LITWATCH_TEST_TOPOLOGY -eq 'launcher_child') {{
+                if (
+                    $script:LifecycleChildExited -or
+                    $env:LITWATCH_TEST_LINEAGE_FAULT -eq 'child-already-exited'
+                ) {{ return @() }}
+                return New-LifecycleTestProcessInfo -ProcessId (
+                    [int]$env:LITWATCH_TEST_CHILD_PID
+                ) -Role 'child'
+            }}
+            if ($script:LifecycleParentExited) {{ return @() }}
             $CommandLine = if ($env:LITWATCH_TEST_MODE -eq 'spoof-source') {{
                 '"' + $script:StackPython + '" -m uvicorn litwatch.web:app --app-dir "' +
                     $script:StackSourceDirectory + '-foreign" --host 127.0.0.1 --port ' + $Port
             }} elseif ($env:LITWATCH_TEST_MODE -eq 'spoof-port') {{
                 '"' + $script:StackPython + '" -m uvicorn litwatch.web:app --app-dir "' +
                     $script:StackSourceDirectory + '" --host 127.0.0.1 --port ' + $Port + '0'
-            }} elseif ($env:LITWATCH_TEST_MODE -in @('owned', 'toctou', 'pid-reused')) {{
+            }} elseif ($env:LITWATCH_TEST_MODE -in @('none', 'owned', 'toctou', 'pid-reused')) {{
                 '"' + $script:StackPython + '" -m uvicorn litwatch.web:app --app-dir "' +
                     $script:StackSourceDirectory + '" --host 127.0.0.1 --port ' + $Port
             }} else {{
@@ -104,13 +131,14 @@ def _run_controlled_script(
             }}
             return [PSCustomObject]@{{
                 PID = [int]$env:LITWATCH_TEST_PID
+                ParentPID = 101
                 CreationDate = if ($env:LITWATCH_TEST_MODE -eq 'pid-reused') {{
                     '2026-08-14T00:00:01.0000000+00:00'
                 }} else {{
                     '2026-08-14T00:00:00.0000000+00:00'
                 }}
                 ExecutablePath = if ($env:LITWATCH_TEST_MODE -in @(
-                    'owned', 'toctou', 'pid-reused', 'spoof-source', 'spoof-port'
+                    'none', 'owned', 'toctou', 'pid-reused', 'spoof-source', 'spoof-port'
                 )) {{
                     $script:StackPython
                 }} else {{
@@ -120,12 +148,134 @@ def _run_controlled_script(
             }}
         }}
 
+        function New-LifecycleTestProcessInfo {{
+            param(
+                [int]$ProcessId,
+                [ValidateSet('parent', 'child', 'extra')][string]$Role
+            )
+            $IsChild = $Role -ne 'parent'
+            $Executable = if ($IsChild) {{
+                $env:LITWATCH_TEST_CHILD_PYTHON
+            }} else {{
+                $script:StackPython
+            }}
+            $ParentPid = if ($Role -eq 'child') {{
+                if ($env:LITWATCH_TEST_LINEAGE_FAULT -eq 'parent-mismatch') {{
+                    9999
+                }} else {{
+                    [int]$env:LITWATCH_TEST_PID
+                }}
+            }} elseif ($Role -eq 'extra') {{
+                [int]$env:LITWATCH_TEST_PID
+            }} else {{
+                101
+            }}
+            $SourceDirectory = if (
+                $Role -eq 'child' -and
+                $env:LITWATCH_TEST_LINEAGE_FAULT -eq 'child-spoof'
+            ) {{
+                $script:StackSourceDirectory + '-foreign'
+            }} else {{
+                $script:StackSourceDirectory
+            }}
+            $CreationDate = if (
+                $Role -eq 'child' -and
+                $env:LITWATCH_TEST_LINEAGE_FAULT -eq 'child-pid-reused'
+            ) {{
+                '2026-08-14T00:00:02.0000000+00:00'
+            }} elseif ($IsChild) {{
+                '2026-08-14T00:00:00.5000000+00:00'
+            }} else {{
+                '2026-08-14T00:00:00.0000000+00:00'
+            }}
+            return [PSCustomObject]@{{
+                PID = $ProcessId
+                ParentPID = $ParentPid
+                CreationDate = $CreationDate
+                ExecutablePath = $Executable
+                CommandLine = '"' + $Executable +
+                    '" -m uvicorn litwatch.web:app --app-dir "' +
+                    $SourceDirectory + '" --host 127.0.0.1 --port ' +
+                    $env:LITWATCH_TEST_PORT
+            }}
+        }}
+
+        function Get-DirectChildProcessInfos {{
+            param([int]$ParentProcessId)
+            Add-LifecycleTestEvent "children:$ParentProcessId"
+            if ($env:LITWATCH_TEST_TOPOLOGY -ne 'launcher_child') {{ return @() }}
+            if ($env:LITWATCH_TEST_LINEAGE_FAULT -eq 'extra-child') {{
+                return @(
+                    (New-LifecycleTestProcessInfo -ProcessId (
+                        [int]$env:LITWATCH_TEST_CHILD_PID
+                    ) -Role 'child'),
+                    (New-LifecycleTestProcessInfo -ProcessId 4444 -Role 'extra')
+                )
+            }}
+            if ($env:LITWATCH_TEST_LINEAGE_FAULT -eq 'child-already-exited') {{
+                return @()
+            }}
+            return @(
+                New-LifecycleTestProcessInfo -ProcessId (
+                    [int]$env:LITWATCH_TEST_CHILD_PID
+                ) -Role 'child'
+            )
+        }}
+
         function Get-ProcessInfoById {{
             param([int]$ProcessId)
+            if (
+                $env:LITWATCH_TEST_TOPOLOGY -eq 'launcher_child' -and
+                $ProcessId -eq [int]$env:LITWATCH_TEST_CHILD_PID
+            ) {{
+                if ($script:LifecycleChildExited) {{ return $null }}
+                if ($env:LITWATCH_TEST_LINEAGE_FAULT -eq 'child-already-exited') {{
+                    return $null
+                }}
+                $script:LifecycleChildRechecks += 1
+                Add-LifecycleTestEvent (
+                    "child-recheck:${{ProcessId}}:$script:LifecycleChildRechecks"
+                )
+                if (
+                    $env:LITWATCH_TEST_LINEAGE_FAULT -eq 'child-toctou' -and
+                    $script:LifecycleChildRechecks -gt 1
+                ) {{
+                    return [PSCustomObject]@{{
+                        PID = $ProcessId
+                        ParentPID = 9999
+                        CreationDate = '2026-08-14T00:00:03.0000000+00:00'
+                        ExecutablePath = 'C:\foreign\python.exe'
+                        CommandLine = '"C:\foreign\python.exe" -m uvicorn other.web:app --port ' +
+                            $env:LITWATCH_TEST_PORT
+                    }}
+                }}
+                return New-LifecycleTestProcessInfo -ProcessId $ProcessId -Role 'child'
+            }}
+            if (
+                $env:LITWATCH_TEST_TOPOLOGY -eq 'launcher_child' -and
+                $ProcessId -eq [int]$env:LITWATCH_TEST_PID
+            ) {{
+                if ($script:LifecycleParentExited) {{ return $null }}
+                if ($env:LITWATCH_TEST_LINEAGE_FAULT -eq 'parent-exit') {{
+                    return $null
+                }}
+                if ($env:LITWATCH_TEST_LINEAGE_FAULT -eq 'parent-spoof') {{
+                    return [PSCustomObject]@{{
+                        PID = $ProcessId
+                        ParentPID = 9999
+                        CreationDate = '2026-08-14T00:00:03.0000000+00:00'
+                        ExecutablePath = 'C:\foreign\python.exe'
+                        CommandLine = '"C:\foreign\python.exe" -m uvicorn other.web:app --port ' +
+                            $env:LITWATCH_TEST_PORT
+                    }}
+                }}
+                return New-LifecycleTestProcessInfo -ProcessId $ProcessId -Role 'parent'
+            }}
             if ($env:LITWATCH_TEST_MODE -eq 'toctou') {{
                 Add-LifecycleTestEvent "recheck:$ProcessId"
                 return [PSCustomObject]@{{
                     PID = $ProcessId
+                    ParentPID = 101
                     CreationDate = '2026-08-14T00:00:01.0000000+00:00'
                     ExecutablePath = 'C:\foreign\python.exe'
                     CommandLine = '"C:\foreign\python.exe" -m uvicorn other.web:app --port ' +
@@ -155,6 +305,7 @@ def _run_controlled_script(
                 }}
                 return [PSCustomObject]@{{
                     PID = $ProcessId
+                    ParentPID = 101
                     CreationDate = '2026-08-14T00:00:00.0000000+00:00'
                     ExecutablePath = $script:StackPython
                     CommandLine = '"' + $script:StackPython +
@@ -165,6 +316,55 @@ def _run_controlled_script(
             }}
             if ($env:LITWATCH_TEST_MODE -eq 'none') {{ return $null }}
             return Get-PortProcessInfo -Port ([int]$env:LITWATCH_TEST_PORT)
+        }}
+
+        function Get-ProcessHandleById {{
+            param([int]$ProcessId)
+            $Role = if ($ProcessId -eq [int]$env:LITWATCH_TEST_CHILD_PID) {{
+                'child'
+            }} else {{
+                'parent'
+            }}
+            $StartTime = if ($Role -eq 'child') {{
+                ([DateTimeOffset]'2026-08-14T00:00:00.5000000+00:00').LocalDateTime
+            }} else {{
+                ([DateTimeOffset]'2026-08-14T00:00:00.0000000+00:00').LocalDateTime
+            }}
+            $Handle = [PSCustomObject]@{{
+                Id = $ProcessId
+                HasExited = $false
+                EventLog = $script:LifecycleEventLog
+                Role = $Role
+                CapturedStartTime = $StartTime
+            }}
+            $Handle | Add-Member -MemberType ScriptProperty -Name StartTime -Value {{
+                return $this.CapturedStartTime
+            }}
+            $Handle | Add-Member -MemberType ScriptMethod -Name Kill -Value {{
+                if (
+                    $env:LITWATCH_TEST_STOP_CLEANUP -eq 'child-kill-failure' -and
+                    $this.Role -eq 'child'
+                ) {{
+                    Add-Content -LiteralPath $this.EventLog -Value (
+                        "handle-stop-failed:$($this.Id)"
+                    ) -Encoding utf8
+                    throw 'CONTROLLED child cleanup failure'
+                }}
+                Add-Content -LiteralPath $this.EventLog -Value (
+                    "handle-stop:$($this.Id)"
+                ) -Encoding utf8
+                $this.HasExited = $true
+                if ($this.Role -eq 'child') {{
+                    $script:LifecycleChildExited = $true
+                }} else {{
+                    $script:LifecycleParentExited = $true
+                }}
+            }}
+            $Handle | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {{
+                param([int]$Milliseconds)
+                return $this.HasExited
+            }}
+            return $Handle
         }}
 
         function Test-HttpReady {{
@@ -258,6 +458,7 @@ def _run_controlled_script(
                 }}
                 Add-Content -LiteralPath $this.EventLog -Value "handle-stop:$($this.Id)" -Encoding utf8
                 $this.HasExited = $true
+                $script:LifecycleParentExited = $true
             }}
             $Handle | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {{
                 param([int]$Milliseconds)
@@ -275,6 +476,7 @@ def _run_controlled_script(
         function Stop-Process {{
             param([int]$Id, [object]$ErrorAction)
             Add-LifecycleTestEvent "stop:$Id"
+            $script:LifecycleParentExited = $true
         }}
         """
     )
@@ -283,23 +485,49 @@ def _run_controlled_script(
     pid_path = data_dir / ("litwatch-stack.pid" if port == 8000 else f"litwatch-stack-{port}.pid")
     assert managed_pid is None or provisional_pid is None
     if managed_pid is not None:
-        fingerprint_fields = (
+        launch_fingerprint_fields = (
             str(Path(sys.executable).resolve()).rstrip("\\/").lower(),
             str((ROOT / "src").resolve()).rstrip("\\/").lower(),
             "127.0.0.1",
             str(port),
         )
-        fingerprint = hashlib.sha256("\n".join(fingerprint_fields).encode()).hexdigest()
-        pid_path.write_text(
-            json.dumps(
-                {
+        launch_fingerprint = hashlib.sha256(
+            "\n".join(launch_fingerprint_fields).encode()
+        ).hexdigest()
+        if topology == "launcher_child":
+            owner_fingerprint_fields = (
+                str(BASE_EXECUTABLE).rstrip("\\/").lower(),
+                str((ROOT / "src").resolve()).rstrip("\\/").lower(),
+                "127.0.0.1",
+                str(port),
+            )
+            owner_fingerprint = hashlib.sha256(
+                "\n".join(owner_fingerprint_fields).encode()
+            ).hexdigest()
+            document = {
+                "version": 2,
+                "state": "final",
+                "topology": "launcher_child",
+                "launch_process": {
+                    "pid": managed_pid,
+                    "creation_time_utc": "2026-08-14T00:00:00.0000000+00:00",
+                    "fingerprint": launch_fingerprint,
+                },
+                "port_owner_process": {
+                    "pid": child_pid,
+                    "creation_time_utc": "2026-08-14T00:00:00.5000000+00:00",
+                    "fingerprint": owner_fingerprint,
+                },
+            }
+        else:
+            document = {
                     "version": 1,
                     "pid": managed_pid,
                     "creation_time_utc": "2026-08-14T00:00:00.0000000+00:00",
-                    "fingerprint": fingerprint,
-                },
-                separators=(",", ":"),
-            ),
+                    "fingerprint": launch_fingerprint,
+            }
+        pid_path.write_text(
+            json.dumps(document, separators=(",", ":")),
             encoding="utf-8",
         )
     elif provisional_pid is not None:
@@ -336,6 +564,11 @@ def _run_controlled_script(
             "LITWATCH_TEST_IDENTITY_CAPTURE": identity_capture,
             "LITWATCH_TEST_HANDLE_CLEANUP": handle_cleanup,
             "LITWATCH_TEST_START_TIME_CAPTURE": start_time_capture,
+            "LITWATCH_TEST_TOPOLOGY": topology,
+            "LITWATCH_TEST_CHILD_PID": str(child_pid),
+            "LITWATCH_TEST_CHILD_PYTHON": str(BASE_EXECUTABLE),
+            "LITWATCH_TEST_LINEAGE_FAULT": lineage_fault,
+            "LITWATCH_TEST_STOP_CLEANUP": stop_cleanup,
         }
     )
     command = [
@@ -577,6 +810,104 @@ def test_successful_capture_atomically_upgrades_provisional_to_final(
     assert not list((tmp_path / "data").glob("*.bak"))
 
 
+def test_launcher_child_start_records_full_logical_stack_identity(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        topology="launcher_child",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert record == {
+        "version": 2,
+        "state": "final",
+        "topology": "launcher_child",
+        "launch_process": {
+            "pid": 4242,
+            "creation_time_utc": "2026-08-14T00:00:00.0000000+00:00",
+            "fingerprint": record["launch_process"]["fingerprint"],
+        },
+        "port_owner_process": {
+            "pid": 4343,
+            "creation_time_utc": "2026-08-14T00:00:00.5000000+00:00",
+            "fingerprint": record["port_owner_process"]["fingerprint"],
+        },
+    }
+    assert len(record["launch_process"]["fingerprint"]) == 64
+    assert len(record["port_owner_process"]["fingerprint"]) == 64
+    assert "children:4242" in events
+
+
+def test_launcher_child_warm_start_reuses_same_logical_stack(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        topology="launcher_child",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "LitWatch: already running (PID 4242)" in result.stdout
+    assert not [event for event in events if event.startswith("start:")]
+
+
+def test_launcher_child_start_rejects_reparented_child_and_keeps_provisional_record(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        topology="launcher_child",
+        lineage_fault="parent-mismatch",
+    )
+
+    assert result.returncode != 0
+    assert "could not be identified safely" in result.stderr
+    assert "handle-stop:4242" in events
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert record["state"] == "provisional"
+
+
+def test_launcher_child_start_rejects_extra_direct_child(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        topology="launcher_child",
+        lineage_fault="extra-child",
+    )
+
+    assert result.returncode != 0
+    assert "could not be identified safely" in result.stderr
+    assert "handle-stop:4242" in events
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert record["state"] == "provisional"
+
+
+def test_launcher_child_start_parent_early_exit_fails_closed(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        topology="launcher_child",
+        lineage_fault="parent-exit",
+    )
+
+    assert result.returncode != 0
+    assert "could not be identified safely" in result.stderr
+    assert "handle-stop:4242" in events
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert record["state"] == "provisional"
+
+
 def test_successful_cleanup_removes_the_provisional_record(tmp_path: Path):
     result, events = _run_controlled_script(
         tmp_path,
@@ -597,10 +928,153 @@ def test_default_stop_stops_only_the_saved_current_repository_pid(tmp_path: Path
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "stop:4242" in events
+    assert "handle-stop:4242" in events
     assert "resolve-python:8000" in events
     assert not [event for event in events if event.startswith("FORBIDDEN:")]
     assert "LitWatch: stopped PID 4242" in result.stdout
+
+
+def test_launcher_child_stop_validates_and_stops_child_then_parent(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "stop-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        topology="launcher_child",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    child_stop = events.index("handle-stop:4343")
+    parent_stop = events.index("handle-stop:4242")
+    assert child_stop < parent_stop
+    assert "LitWatch: stopped PID 4242" in result.stdout
+    assert not (tmp_path / "data" / "litwatch-stack.pid").exists()
+
+
+def test_launcher_child_stop_rejects_spoofed_child_without_stopping_either(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "stop-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        topology="launcher_child",
+        lineage_fault="child-spoof",
+    )
+
+    assert result.returncode != 0
+    assert "handle-stop:4343" not in events
+    assert "handle-stop:4242" not in events
+    assert "stop:4242" not in events
+
+
+def test_launcher_child_stop_rejects_spoofed_parent_without_stopping_child(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "stop-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        topology="launcher_child",
+        lineage_fault="parent-spoof",
+    )
+
+    assert result.returncode != 0
+    assert "handle-stop:4343" not in events
+    assert "handle-stop:4242" not in events
+    assert "stop:4242" not in events
+
+
+def test_launcher_child_stop_rejects_extra_matching_child_without_stopping(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "stop-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        topology="launcher_child",
+        lineage_fault="extra-child",
+    )
+
+    assert result.returncode != 0
+    assert "handle-stop:4343" not in events
+    assert "handle-stop:4242" not in events
+    assert "stop:4242" not in events
+
+
+def test_launcher_child_stop_cleans_exact_parent_when_child_already_exited(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "stop-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        topology="launcher_child",
+        lineage_fault="child-already-exited",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "handle-stop:4242" in events
+    assert "handle-stop:4343" not in events
+    assert not (tmp_path / "data" / "litwatch-stack.pid").exists()
+
+
+def test_launcher_child_stop_rechecks_child_identity_immediately_before_kill(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "stop-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        topology="launcher_child",
+        lineage_fault="child-toctou",
+    )
+
+    assert result.returncode != 0
+    assert "child-recheck:4343:2" in events
+    assert "handle-stop:4343" not in events
+    assert "handle-stop:4242" not in events
+    assert "stop:4242" not in events
+
+
+def test_launcher_child_stop_rejects_child_pid_reuse(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "stop-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        topology="launcher_child",
+        lineage_fault="child-pid-reused",
+    )
+
+    assert result.returncode != 0
+    assert "handle-stop:4343" not in events
+    assert "handle-stop:4242" not in events
+    assert "stop:4242" not in events
+
+
+def test_launcher_child_cleanup_failure_preserves_identity_and_parent(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "stop-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        topology="launcher_child",
+        stop_cleanup="child-kill-failure",
+    )
+
+    assert result.returncode != 0
+    assert "handle-stop-failed:4343" in events
+    assert "handle-stop:4242" not in events
+    assert "stop:4242" not in events
+    assert (tmp_path / "data" / "litwatch-stack.pid").is_file()
 
 
 def test_default_stop_rejects_foreign_owner_even_with_stale_pid_file(tmp_path: Path):

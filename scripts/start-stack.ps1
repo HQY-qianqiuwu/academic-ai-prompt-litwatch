@@ -27,20 +27,26 @@ try {
             $Owner = $PortProcesses | Select-Object -First 1
             throw "[Port $Port] Port has no managed PID for the current repository. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $Owner)"
         }
-        foreach ($PortProcess in $PortProcesses) {
-            if (-not (Test-MatchesManagedStackIdentity -ProcessInfo $PortProcess -Identity $ManagedIdentity -Port $Port)) {
-                throw "[Port $Port] Port is owned by a process outside this managed LitWatch instance. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $PortProcess)"
-            }
+        if (-not (Test-ManagedStackOwnership -Identity $ManagedIdentity -Port $Port -PortProcesses $PortProcesses)) {
+            $Owner = $PortProcesses | Select-Object -First 1
+            throw "[Port $Port] Port is owned by a process outside this managed LitWatch instance. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $Owner)"
         }
         Write-Output "LitWatch: already running (PID $($ManagedIdentity.PID))"
     }
     else {
         if ($null -ne $ManagedIdentity) {
             $SavedProcess = Get-ProcessInfoById -ProcessId ([int]$ManagedIdentity.PID)
-            if ($SavedProcess) {
-                throw "[LitWatch] Managed PID $($ManagedIdentity.PID) is still running but does not own port $Port. Refusing to replace its identity record. $(Format-PortProcessInfo -ProcessInfo $SavedProcess)"
+            $SavedPortOwner = if ([int]$ManagedIdentity.Version -eq 2) {
+                Get-ProcessInfoById -ProcessId ([int]$ManagedIdentity.PortOwnerProcess.PID)
             }
-            Remove-Item -LiteralPath $script:StackPidPath -Force
+            else {
+                $null
+            }
+            if ($SavedProcess -or $SavedPortOwner) {
+                $Remaining = if ($SavedProcess) { $SavedProcess } else { $SavedPortOwner }
+                throw "[LitWatch] Managed PID $($ManagedIdentity.PID) is still running but does not own port $Port. Refusing to replace its identity record. $(Format-PortProcessInfo -ProcessInfo $Remaining)"
+            }
+            Remove-StackOwnershipRecord -ExpectedRecord $ManagedIdentity
         }
 
         Write-Output "LitWatch: starting"
@@ -101,7 +107,21 @@ catch {
     $CleanupError = $null
     if ($null -ne $StartedProcessHandle) {
         try {
-            Stop-StartedProcessHandle -ProcessHandle $StartedProcessHandle -ExpectedStartTimeUtc $StartedProcessStartTimeUtc
+            if (
+                $null -ne $StartedOwnershipRecord -and
+                [int]$StartedOwnershipRecord.Version -eq 2 -and
+                $StartedOwnershipRecord.State -ceq "final"
+            ) {
+                Stop-ManagedLitWatchStack -Identity $StartedOwnershipRecord -Port $Port
+            }
+            else {
+                $UnvalidatedChildren = @(Get-DirectChildProcessInfos -ParentProcessId ([int]$StartedProcessHandle.Id))
+                Stop-StartedProcessHandle -ProcessHandle $StartedProcessHandle -ExpectedStartTimeUtc $StartedProcessStartTimeUtc
+                $RemainingPortProcesses = @(Get-PortProcessInfo -Port $Port)
+                if ($RemainingPortProcesses.Count -ne 0 -or $UnvalidatedChildren.Count -ne 0) {
+                    throw "[LitWatch] Started launch process exited but an unvalidated child or port owner was observed; preserving ownership record."
+                }
+            }
         }
         catch {
             $CleanupError = $_.Exception.Message

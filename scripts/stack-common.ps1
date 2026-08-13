@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 $script:StackProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $script:StackSourceDirectory = Join-Path $script:StackProjectRoot "src"
 $script:StackPython = Join-Path $script:StackProjectRoot ".venv\Scripts\python.exe"
+$script:StackBasePython = $script:StackPython
 $script:StackLitWatchExe = Join-Path $script:StackProjectRoot ".venv\Scripts\litwatch.exe"
 $script:StackDataDirectory = Join-Path $script:StackProjectRoot "data"
 $script:StackPidPath = Join-Path $script:StackDataDirectory "litwatch-stack.pid"
@@ -62,6 +63,28 @@ function Resolve-LitWatchPython {
     return $ConfiguredPython
 }
 
+function Resolve-LitWatchBasePython {
+    if (-not (Test-Path -LiteralPath $script:StackPython -PathType Leaf)) {
+        throw "[Python Runtime] Configured Python executable was not found: $script:StackPython"
+    }
+    $BasePython = & $script:StackPython -c "import pathlib,sys; print(pathlib.Path(getattr(sys, '_base_executable', sys.executable)).resolve())" 2>$null | Select-Object -Last 1
+    if (
+        $LASTEXITCODE -ne 0 -or
+        [string]::IsNullOrWhiteSpace([string]$BasePython) -or
+        -not (Test-Path -LiteralPath ([string]$BasePython) -PathType Leaf)
+    ) {
+        throw "[Python Runtime] The trusted Python base executable could not be resolved safely."
+    }
+    return (Resolve-Path -LiteralPath ([string]$BasePython)).Path
+}
+
+function Set-LitWatchRuntimeExecutables {
+    param([int]$Port = 8000)
+
+    $script:StackPython = Resolve-LitWatchPython -Port $Port
+    $script:StackBasePython = Resolve-LitWatchBasePython
+}
+
 function Get-StackOwnershipRecord {
     if (-not (Test-Path -LiteralPath $script:StackPidPath -PathType Leaf)) {
         return $null
@@ -73,8 +96,66 @@ function Get-StackOwnershipRecord {
         throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
     }
     $ManagedPid = 0
+    if ($Record.version -notin @(1, 2)) {
+        throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
+    }
+
+    if ($Record.version -eq 2) {
+        if (
+            [string]$Record.state -cne "final" -or
+            [string]$Record.topology -cne "launcher_child"
+        ) {
+            throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
+        }
+        $LaunchPid = 0
+        $OwnerPid = 0
+        if (
+            $null -eq $Record.launch_process -or
+            $null -eq $Record.port_owner_process -or
+            -not [int]::TryParse([string]$Record.launch_process.pid, [ref]$LaunchPid) -or
+            -not [int]::TryParse([string]$Record.port_owner_process.pid, [ref]$OwnerPid) -or
+            $LaunchPid -le 0 -or
+            $OwnerPid -le 0 -or
+            $LaunchPid -eq $OwnerPid -or
+            [string]::IsNullOrWhiteSpace([string]$Record.launch_process.creation_time_utc) -or
+            [string]::IsNullOrWhiteSpace([string]$Record.port_owner_process.creation_time_utc) -or
+            [string]$Record.launch_process.fingerprint -notmatch '^[0-9a-f]{64}$' -or
+            [string]$Record.port_owner_process.fingerprint -notmatch '^[0-9a-f]{64}$'
+        ) {
+            throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
+        }
+        try {
+            [void][DateTimeOffset]$Record.launch_process.creation_time_utc
+            [void][DateTimeOffset]$Record.port_owner_process.creation_time_utc
+        }
+        catch {
+            throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
+        }
+        $LaunchIdentity = [PSCustomObject]@{
+            Version = 1
+            PID = $LaunchPid
+            CreationTimeUtc = [string]$Record.launch_process.creation_time_utc
+            Fingerprint = [string]$Record.launch_process.fingerprint
+        }
+        $PortOwnerIdentity = [PSCustomObject]@{
+            Version = 1
+            PID = $OwnerPid
+            CreationTimeUtc = [string]$Record.port_owner_process.creation_time_utc
+            Fingerprint = [string]$Record.port_owner_process.fingerprint
+        }
+        return [PSCustomObject]@{
+            Version = 2
+            State = "final"
+            Topology = "launcher_child"
+            PID = $LaunchPid
+            CreationTimeUtc = $LaunchIdentity.CreationTimeUtc
+            Fingerprint = $LaunchIdentity.Fingerprint
+            LaunchProcess = $LaunchIdentity
+            PortOwnerProcess = $PortOwnerIdentity
+        }
+    }
+
     if (
-        $Record.version -ne 1 -or
         -not [int]::TryParse([string]$Record.pid, [ref]$ManagedPid) -or
         $ManagedPid -le 0
     ) {
@@ -98,6 +179,7 @@ function Get-StackOwnershipRecord {
         return [PSCustomObject]@{
             Version = 1
             State = "final"
+            Topology = "direct"
             PID = $ManagedPid
             CreationTimeUtc = [string]$Record.creation_time_utc
             Fingerprint = [string]$Record.fingerprint
@@ -213,6 +295,16 @@ function Test-StackOwnershipRecordEquals {
         return $false
     }
     if ($Left.State -eq "final") {
+        if ([int]$Left.Version -ne [int]$Right.Version) {
+            return $false
+        }
+        if ([int]$Left.Version -eq 2) {
+            return (
+                $Left.Topology -ceq $Right.Topology -and
+                (Test-StackProcessIdentityEquals -Left $Left.LaunchProcess -Right $Right.LaunchProcess) -and
+                (Test-StackProcessIdentityEquals -Left $Left.PortOwnerProcess -Right $Right.PortOwnerProcess)
+            )
+        }
         return (
             $Left.CreationTimeUtc -ceq $Right.CreationTimeUtc -and
             $Left.Fingerprint -ceq $Right.Fingerprint
@@ -225,6 +317,18 @@ function Test-StackOwnershipRecordEquals {
         $Left.ExpectedAppDirectory -ceq $Right.ExpectedAppDirectory -and
         $Left.ExpectedHost -ceq $Right.ExpectedHost -and
         [int]$Left.ExpectedPort -eq [int]$Right.ExpectedPort
+    )
+}
+
+function Test-StackProcessIdentityEquals {
+    param($Left, $Right)
+
+    return (
+        $null -ne $Left -and
+        $null -ne $Right -and
+        [int]$Left.PID -eq [int]$Right.PID -and
+        [string]$Left.CreationTimeUtc -ceq [string]$Right.CreationTimeUtc -and
+        [string]$Left.Fingerprint -ceq [string]$Right.Fingerprint
     )
 }
 
@@ -282,12 +386,37 @@ function Set-ManagedStackIdentity {
         throw "[LitWatch] Final identity does not match the provisional process creation identity."
     }
 
-    $Document = [ordered]@{
-        version = 1
-        state = "final"
-        pid = [int]$Identity.PID
-        creation_time_utc = [string]$Identity.CreationTimeUtc
-        fingerprint = [string]$Identity.Fingerprint
+    if ([int]$Identity.Version -eq 2) {
+        if (
+            $Identity.Topology -cne "launcher_child" -or
+            [int]$Identity.LaunchProcess.PID -ne [int]$ExpectedProvisional.PID
+        ) {
+            throw "[LitWatch] Final stack identity does not match the provisional launch process."
+        }
+        $Document = [ordered]@{
+            version = 2
+            state = "final"
+            topology = "launcher_child"
+            launch_process = [ordered]@{
+                pid = [int]$Identity.LaunchProcess.PID
+                creation_time_utc = [string]$Identity.LaunchProcess.CreationTimeUtc
+                fingerprint = [string]$Identity.LaunchProcess.Fingerprint
+            }
+            port_owner_process = [ordered]@{
+                pid = [int]$Identity.PortOwnerProcess.PID
+                creation_time_utc = [string]$Identity.PortOwnerProcess.CreationTimeUtc
+                fingerprint = [string]$Identity.PortOwnerProcess.Fingerprint
+            }
+        }
+    }
+    else {
+        $Document = [ordered]@{
+            version = 1
+            state = "final"
+            pid = [int]$Identity.PID
+            creation_time_utc = [string]$Identity.CreationTimeUtc
+            fingerprint = [string]$Identity.Fingerprint
+        }
     }
     Write-StackOwnershipRecordAtomic -Document $Document -ExpectedRecord $ExpectedProvisional
 }
@@ -314,10 +443,32 @@ function Get-ProcessInfoById {
     }
     return [PSCustomObject]@{
         PID = [int]$ProcessInfo.ProcessId
+        ParentPID = [int]$ProcessInfo.ParentProcessId
         CreationDate = $ProcessInfo.CreationDate
         ExecutablePath = [string]$ProcessInfo.ExecutablePath
         CommandLine = [string]$ProcessInfo.CommandLine
     }
+}
+
+function Get-DirectChildProcessInfos {
+    param([Parameter(Mandatory = $true)][int]$ParentProcessId)
+
+    $Children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ParentProcessId" -ErrorAction SilentlyContinue)
+    return @($Children | ForEach-Object {
+        [PSCustomObject]@{
+            PID = [int]$_.ProcessId
+            ParentPID = [int]$_.ParentProcessId
+            CreationDate = $_.CreationDate
+            ExecutablePath = [string]$_.ExecutablePath
+            CommandLine = [string]$_.CommandLine
+        }
+    })
+}
+
+function Get-ProcessHandleById {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    return Get-Process -Id $ProcessId -ErrorAction Stop
 }
 
 function Resolve-DifyDockerDirectory {
@@ -488,6 +639,7 @@ function Get-PortProcessInfo {
         if ($ProcessInfo) {
             $Results += [PSCustomObject]@{
                 PID = [int]$ProcessInfo.ProcessId
+                ParentPID = [int]$ProcessInfo.ParentProcessId
                 CreationDate = $ProcessInfo.CreationDate
                 ExecutablePath = [string]$ProcessInfo.ExecutablePath
                 CommandLine = [string]$ProcessInfo.CommandLine
@@ -586,7 +738,8 @@ function Test-IsCurrentLitWatchProcess {
     param(
         [Parameter(Mandatory = $true)]$ProcessInfo,
         [int]$Port = 8000,
-        [string]$ExpectedHost = "127.0.0.1"
+        [string]$ExpectedHost = "127.0.0.1",
+        [string]$ExpectedExecutable = $script:StackPython
     )
 
     $CommandLine = [string]$ProcessInfo.CommandLine
@@ -607,8 +760,8 @@ function Test-IsCurrentLitWatchProcess {
         return $false
     }
     return (
-        (Test-CanonicalPathEquals -Left $ExecutablePath -Right $script:StackPython) -and
-        (Test-CanonicalPathEquals -Left $Arguments[0] -Right $script:StackPython) -and
+        (Test-CanonicalPathEquals -Left $ExecutablePath -Right $ExpectedExecutable) -and
+        (Test-CanonicalPathEquals -Left $Arguments[0] -Right $ExpectedExecutable) -and
         $Arguments[1] -ceq "-m" -and
         $Arguments[2] -ceq "uvicorn" -and
         $Arguments[3] -ceq "litwatch.web:app" -and
@@ -636,14 +789,15 @@ function Get-LitWatchProcessFingerprint {
     param(
         [Parameter(Mandatory = $true)]$ProcessInfo,
         [int]$Port = 8000,
-        [string]$ExpectedHost = "127.0.0.1"
+        [string]$ExpectedHost = "127.0.0.1",
+        [string]$ExpectedExecutable = $script:StackPython
     )
 
-    if (-not (Test-IsCurrentLitWatchProcess -ProcessInfo $ProcessInfo -Port $Port -ExpectedHost $ExpectedHost)) {
+    if (-not (Test-IsCurrentLitWatchProcess -ProcessInfo $ProcessInfo -Port $Port -ExpectedHost $ExpectedHost -ExpectedExecutable $ExpectedExecutable)) {
         return $null
     }
     $Fields = @(
-        (Get-CanonicalPath -Path ([string]$ProcessInfo.ExecutablePath)).ToLowerInvariant(),
+        (Get-CanonicalPath -Path $ExpectedExecutable).ToLowerInvariant(),
         (Get-CanonicalPath -Path $script:StackSourceDirectory).ToLowerInvariant(),
         $ExpectedHost.ToLowerInvariant(),
         [string]$Port
@@ -662,19 +816,40 @@ function New-ManagedStackIdentity {
     param(
         [Parameter(Mandatory = $true)]$ProcessInfo,
         [int]$Port = 8000,
-        [string]$ExpectedHost = "127.0.0.1"
+        [string]$ExpectedHost = "127.0.0.1",
+        [string]$ExpectedExecutable = $script:StackPython
     )
 
     $CreationTimeUtc = Get-ProcessCreationTimeUtc -ProcessInfo $ProcessInfo
-    $Fingerprint = Get-LitWatchProcessFingerprint -ProcessInfo $ProcessInfo -Port $Port -ExpectedHost $ExpectedHost
+    $Fingerprint = Get-LitWatchProcessFingerprint -ProcessInfo $ProcessInfo -Port $Port -ExpectedHost $ExpectedHost -ExpectedExecutable $ExpectedExecutable
     if (-not $CreationTimeUtc -or -not $Fingerprint) {
         throw "[LitWatch] Process identity does not match the expected current-worktree command."
     }
     return [PSCustomObject]@{
         Version = 1
+        State = "final"
+        Topology = "direct"
         PID = [int]$ProcessInfo.PID
         CreationTimeUtc = $CreationTimeUtc
         Fingerprint = $Fingerprint
+    }
+}
+
+function New-ManagedLauncherChildIdentity {
+    param(
+        [Parameter(Mandatory = $true)]$LaunchIdentity,
+        [Parameter(Mandatory = $true)]$PortOwnerIdentity
+    )
+
+    return [PSCustomObject]@{
+        Version = 2
+        State = "final"
+        Topology = "launcher_child"
+        PID = [int]$LaunchIdentity.PID
+        CreationTimeUtc = [string]$LaunchIdentity.CreationTimeUtc
+        Fingerprint = [string]$LaunchIdentity.Fingerprint
+        LaunchProcess = $LaunchIdentity
+        PortOwnerProcess = $PortOwnerIdentity
     }
 }
 
@@ -705,11 +880,30 @@ function Test-ProcessStartTimeMatches {
     }
 }
 
+function Test-ProcessCreationLineage {
+    param(
+        [Parameter(Mandatory = $true)][string]$ParentCreationTimeUtc,
+        [Parameter(Mandatory = $true)][string]$ChildCreationTimeUtc,
+        [ValidateRange(1, 300)][int]$MaximumDelaySeconds = 30
+    )
+
+    try {
+        $ParentUtc = ([DateTimeOffset]$ParentCreationTimeUtc).ToUniversalTime()
+        $ChildUtc = ([DateTimeOffset]$ChildCreationTimeUtc).ToUniversalTime()
+        $Delay = ($ChildUtc - $ParentUtc).TotalSeconds
+        return $Delay -ge 0 -and $Delay -le $MaximumDelaySeconds
+    }
+    catch {
+        return $false
+    }
+}
+
 function Wait-StartedLitWatchIdentity {
     param(
         [Parameter(Mandatory = $true)]$ProcessHandle,
         [Parameter(Mandatory = $true)][string]$HandleStartTimeUtc,
         [int]$Port = 8000,
+        [string]$ExpectedHost = "127.0.0.1",
         [ValidateRange(1, 100)][int]$MaxAttempts = 20,
         [ValidateRange(0, 5000)][int]$RetryDelayMilliseconds = 100
     )
@@ -721,9 +915,9 @@ function Wait-StartedLitWatchIdentity {
                 $LastFailure = "the process exited before identity capture"
                 break
             }
-            $ProcessInfo = Get-ProcessInfoById -ProcessId ([int]$ProcessHandle.Id)
-            if ($ProcessInfo) {
-                $CimStartTimeUtc = Get-ProcessCreationTimeUtc -ProcessInfo $ProcessInfo
+            $LaunchProcessInfo = Get-ProcessInfoById -ProcessId ([int]$ProcessHandle.Id)
+            if ($LaunchProcessInfo) {
+                $CimStartTimeUtc = Get-ProcessCreationTimeUtc -ProcessInfo $LaunchProcessInfo
                 if (-not $CimStartTimeUtc) {
                     $LastFailure = "the process creation time was unavailable"
                 }
@@ -732,7 +926,43 @@ function Wait-StartedLitWatchIdentity {
                 }
                 else {
                     try {
-                        return New-ManagedStackIdentity -ProcessInfo $ProcessInfo -Port $Port
+                        $LaunchIdentity = New-ManagedStackIdentity -ProcessInfo $LaunchProcessInfo -Port $Port -ExpectedExecutable $script:StackPython
+                        $PortProcesses = @(Get-PortProcessInfo -Port $Port)
+                        if ($PortProcesses.Count -ne 1) {
+                            $LastFailure = "the expected port did not have exactly one owner"
+                            throw $LastFailure
+                        }
+                        $PortOwner = $PortProcesses[0]
+                        if ([int]$PortOwner.PID -eq [int]$LaunchIdentity.PID) {
+                            if (-not (Test-MatchesManagedProcessIdentity -ProcessInfo $PortOwner -Identity $LaunchIdentity -Port $Port -ExpectedExecutable $script:StackPython)) {
+                                $LastFailure = "the launch process did not exactly own the expected port"
+                                throw $LastFailure
+                            }
+                            return $LaunchIdentity
+                        }
+
+                        $Children = @(Get-DirectChildProcessInfos -ParentProcessId ([int]$LaunchIdentity.PID))
+                        $CandidateChildren = @($Children | Where-Object {
+                            Test-IsCurrentLitWatchProcess -ProcessInfo $_ -Port $Port -ExpectedHost $ExpectedHost -ExpectedExecutable $script:StackBasePython
+                        })
+                        if ($CandidateChildren.Count -ne 1 -or [int]$CandidateChildren[0].PID -ne [int]$PortOwner.PID) {
+                            $LastFailure = "the launcher did not have exactly one direct port-owner child"
+                            throw $LastFailure
+                        }
+                        $ChildCreationTimeUtc = Get-ProcessCreationTimeUtc -ProcessInfo $PortOwner
+                        if (
+                            [int]$PortOwner.ParentPID -ne [int]$LaunchIdentity.PID -or
+                            -not (Test-ProcessCreationLineage -ParentCreationTimeUtc $LaunchIdentity.CreationTimeUtc -ChildCreationTimeUtc $ChildCreationTimeUtc)
+                        ) {
+                            $LastFailure = "the port owner did not have the expected launch lineage"
+                            throw $LastFailure
+                        }
+                        $PortOwnerIdentity = New-ManagedStackIdentity -ProcessInfo $PortOwner -Port $Port -ExpectedExecutable $script:StackBasePython
+                        if (-not (Test-MatchesManagedProcessIdentity -ProcessInfo $CandidateChildren[0] -Identity $PortOwnerIdentity -Port $Port -ExpectedExecutable $script:StackBasePython)) {
+                            $LastFailure = "the direct child did not exactly match the port owner"
+                            throw $LastFailure
+                        }
+                        return New-ManagedLauncherChildIdentity -LaunchIdentity $LaunchIdentity -PortOwnerIdentity $PortOwnerIdentity
                     }
                     catch {
                         $LastFailure = $_.Exception.Message
@@ -775,19 +1005,20 @@ function Stop-StartedProcessHandle {
     }
 }
 
-function Test-MatchesManagedStackIdentity {
+function Test-MatchesManagedProcessIdentity {
     param(
         [Parameter(Mandatory = $true)]$ProcessInfo,
         [Parameter(Mandatory = $true)]$Identity,
         [int]$Port = 8000,
-        [string]$ExpectedHost = "127.0.0.1"
+        [string]$ExpectedHost = "127.0.0.1",
+        [string]$ExpectedExecutable = $script:StackPython
     )
 
     if ([int]$ProcessInfo.PID -ne [int]$Identity.PID) {
         return $false
     }
     $CreationTimeUtc = Get-ProcessCreationTimeUtc -ProcessInfo $ProcessInfo
-    $Fingerprint = Get-LitWatchProcessFingerprint -ProcessInfo $ProcessInfo -Port $Port -ExpectedHost $ExpectedHost
+    $Fingerprint = Get-LitWatchProcessFingerprint -ProcessInfo $ProcessInfo -Port $Port -ExpectedHost $ExpectedHost -ExpectedExecutable $ExpectedExecutable
     return (
         $CreationTimeUtc -and
         $Fingerprint -and
@@ -796,21 +1027,18 @@ function Test-MatchesManagedStackIdentity {
     )
 }
 
-function Stop-ManagedLitWatchProcess {
+function Test-MatchesManagedStackIdentity {
     param(
+        [Parameter(Mandatory = $true)]$ProcessInfo,
         [Parameter(Mandatory = $true)]$Identity,
         [int]$Port = 8000,
         [string]$ExpectedHost = "127.0.0.1"
     )
 
-    $CurrentProcess = Get-ProcessInfoById -ProcessId ([int]$Identity.PID)
-    if (
-        -not $CurrentProcess -or
-        -not (Test-MatchesManagedStackIdentity -ProcessInfo $CurrentProcess -Identity $Identity -Port $Port -ExpectedHost $ExpectedHost)
-    ) {
-        throw "[LitWatch] Managed process identity changed before stop. Refusing to stop PID $($Identity.PID)."
+    if ([int]$Identity.Version -eq 2) {
+        return Test-MatchesManagedProcessIdentity -ProcessInfo $ProcessInfo -Identity $Identity.PortOwnerProcess -Port $Port -ExpectedHost $ExpectedHost -ExpectedExecutable $script:StackBasePython
     }
-    Stop-Process -Id ([int]$Identity.PID) -ErrorAction Stop
+    return Test-MatchesManagedProcessIdentity -ProcessInfo $ProcessInfo -Identity $Identity -Port $Port -ExpectedHost $ExpectedHost -ExpectedExecutable $script:StackPython
 }
 
 function Format-PortProcessInfo {
@@ -822,7 +1050,7 @@ function Format-PortProcessInfo {
 function Assert-LitWatchImportPath {
     param([int]$Port = 8000)
 
-    $script:StackPython = Resolve-LitWatchPython -Port $Port
+    Set-LitWatchRuntimeExecutables -Port $Port
 
     $Expected = (Resolve-Path -LiteralPath (Join-Path $script:StackSourceDirectory "litwatch\web.py")).Path
     $PreviousSource = $env:LITWATCH_STACK_SOURCE
@@ -928,3 +1156,5 @@ function Get-OpenAlexRegistryStatus {
         }
     }
 }
+
+. (Join-Path $PSScriptRoot "stack-process-lineage.ps1")

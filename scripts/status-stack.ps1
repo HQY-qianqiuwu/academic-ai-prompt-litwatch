@@ -17,7 +17,7 @@ $Checks = [ordered]@{
 $Details = New-Object System.Collections.Generic.List[string]
 
 try {
-    $script:StackPython = Resolve-LitWatchPython -Port $Port
+    Set-LitWatchRuntimeExecutables -Port $Port
     $ManagedIdentity = Get-ManagedStackIdentity
     $PortProcesses = @(Get-PortProcessInfo -Port $Port)
     if ($PortProcesses.Count -eq 0) {
@@ -29,11 +29,8 @@ try {
         }
     }
     else {
-        $UnexpectedProcesses = @($PortProcesses | Where-Object {
-            -not (Test-MatchesManagedStackIdentity -ProcessInfo $_ -Identity $ManagedIdentity -Port $Port)
-        })
-        if ($UnexpectedProcesses.Count -gt 0) {
-            foreach ($PortProcess in $UnexpectedProcesses) {
+        if (-not (Test-ManagedStackOwnership -Identity $ManagedIdentity -Port $Port -PortProcesses $PortProcesses)) {
+            foreach ($PortProcess in $PortProcesses) {
                 $Details.Add("Port ${Port}: foreign process; $(Format-PortProcessInfo -ProcessInfo $PortProcess)")
             }
         }

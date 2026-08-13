@@ -237,3 +237,83 @@
   PID `37408` on port 8000 remained read-only and unchanged.
 - No virtual environment or dependency was installed. No Dify/DSL, `.env`,
   stable, protected, or `.learnings/` content was changed.
+
+## G2 owner fix round 4 — Windows venv launcher lineage
+
+### Confirmed defect and RED
+
+- The H2 alternate-port rehearsal exposed a real Windows topology that the
+  version-1 final record could not represent. `Start-Process` retained trusted
+  venv launcher PID `54580`, while its exact direct base-interpreter child PID
+  `54336` owned port 18080. Warm start and normal stop therefore failed closed
+  because the saved launch identity and listener identity differed.
+- The first new controlled regression failed with `KeyError: launch_process`:
+  the final JSON contained only the launcher PID/creation/fingerprint. The RED
+  suite then covered exact launcher-child capture, warm reuse, reparenting,
+  parent exit, extra matching child, child and parent spoofing, child PID reuse,
+  immediate-refetch TOCTOU, cleanup failure, child-first stop order, and the
+  safe parent-only remainder state.
+
+### Version-2 logical stack identity and fail-closed validation
+
+- A version-2 final record now stores topology `launcher_child` and two complete
+  immutable process identities: `launch_process` and `port_owner_process`.
+  Each has PID, UTC creation time, and the SHA-256 executable/app-dir/host/port
+  fingerprint. The existing version-1 direct-process record remains readable
+  and stoppable for compatibility.
+- The base interpreter is resolved by the already trusted/configured Python's
+  `sys._base_executable`. Finalization requires exactly one port owner and
+  either direct ownership by the launch process or one exact direct
+  base-interpreter child. The launcher, owner, and matching child are checked
+  against canonical executable paths and the exact ten argv tokens for module,
+  app directory, host, and port. Creation ordering, direct `ParentProcessId`,
+  sole matching child, and sole listener are mandatory. The normal Windows
+  `conhost.exe` child is not treated as an application child; a second matching
+  LitWatch child still fails closed.
+- Warm start and status validate the complete logical topology rather than
+  accepting either PID alone. Parent exit, child reparenting, executable/source/
+  port spoofing, extra matching children, creation mismatch, and PID reuse all
+  return nonzero without terminating any process.
+- Stop captures retained handles for both recorded processes, validates each
+  handle start time, re-fetches the exact listener, parent, child, lineage, and
+  command identities immediately before termination, then stops the child
+  before the parent. Direct-process stop also uses a retained handle after the
+  same creation/command recheck. If child cleanup fails, the parent is not
+  touched and the exact final record remains. If the child is already confirmed
+  absent and the port is free, the exact surviving parent may be stopped through
+  its validated retained handle; a reparented or surviving saved child is never
+  treated as this safe remainder state.
+- Provisional ownership semantics remain fail closed. Startup writes the
+  provisional record before CIM capture and replaces it atomically only after
+  full topology validation. An observed unvalidated child or remaining port
+  owner prevents provisional removal after failed startup cleanup.
+
+### Controlled and real GREEN evidence
+
+- Focused new launcher-child regressions: `13 passed`; complete lifecycle
+  suite: `46 passed`. The pre-existing direct-process, provisional, health,
+  interpreter-policy, spoof, TOCTOU, and PID-reuse contracts remain green.
+- The first bounded real retry exposed one additional Windows fact: the venv
+  launcher also had a direct system `conhost.exe` child. Its provisional record
+  was retained; cleanup verified the exact launcher/direct Python child and
+  used retained handles. After the listener and launcher were confirmed absent,
+  the matching provisional record was removed. This run was not counted as a
+  PASS.
+- The successful bounded smoke on confirmed-free port 18080 used the explicit
+  non-default-port external-Python policy and an isolated database. Cold start
+  produced version-2 `launcher_child` identity (launcher PID `55200`, port-owner
+  PID `54148`). Warm start returned the same two creation identities, status
+  reported all five checks PASS and `System READY`, and normal stop terminated
+  the exact child then parent. Final verification found zero listeners and no
+  identity file. The last TDD hardening then moved the already exact parent stop
+  from an immediate-refetch PID call onto its retained creation-validated handle
+  and added the safe parent-only remainder case. Those final deltas are covered
+  by the controlled regressions; per the bounded-smoke instruction, no further
+  real smoke was run.
+- Full suite: `604 passed` with the one existing Starlette/httpx deprecation
+  warning. Ruff reported `All checks passed!`; all PowerShell scripts parsed;
+  `git diff --check`, `git fsck --no-dangling`, and both stable DSL comparisons
+  exited zero. No H2 evidence document was committed in this owner-fix round.
+- Port 8000 and protected v1.7 PID `37408` were never inspected, signaled, or
+  stopped during the owner fix. No environment file was read, and no Dify/DSL,
+  Stable, protected, or `.learnings/` file was changed.
