@@ -291,3 +291,63 @@ def test_extract_rejects_an_injected_client_that_trusts_environment_proxies():
             FullTextExtractor(resolver=_public_resolver, client=client)
     finally:
         client.close()
+
+
+def test_extract_closes_each_connection_before_redirecting_to_a_shared_address():
+    requests: list[tuple[str, str, str]] = []
+
+    def resolver(hostname: str, _port: int) -> tuple[str, ...]:
+        return {"first.example.test": ("8.8.8.8",), "next.example.test": ("8.8.8.8",)}[
+            hostname
+        ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(
+            (
+                request.url.host or "",
+                request.headers["host"],
+                request.headers["connection"],
+            )
+        )
+        if request.headers["host"] == "first.example.test":
+            return httpx.Response(
+                302,
+                headers={"location": "https://next.example.test/paper.pdf"},
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/pdf"},
+            content=_pdf_bytes(),
+            request=request,
+        )
+
+    extractor = FullTextExtractor(resolver=resolver, transport=httpx.MockTransport(handler))
+
+    assert extractor.extract("https://first.example.test/paper.pdf") == "Public PDF"
+    assert requests == [
+        ("8.8.8.8", "first.example.test", "close"),
+        ("8.8.8.8", "next.example.test", "close"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("url", "expected_host"),
+    [
+        ("https://[2606:4700:4700::1111]/paper.pdf", "[2606:4700:4700::1111]"),
+        ("https://[2606:4700:4700::1111]:8443/paper.pdf", "[2606:4700:4700::1111]:8443"),
+    ],
+)
+def test_extract_formats_public_ipv6_host_header(url: str, expected_host: str):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["host"] == expected_host
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/pdf"},
+            content=_pdf_bytes(),
+            request=request,
+        )
+
+    extractor = FullTextExtractor(transport=httpx.MockTransport(handler))
+
+    assert extractor.extract(url) == "Public PDF"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 from urllib.parse import urljoin
 
 import httpx
@@ -48,7 +49,11 @@ class FullTextExtractor:
             transport=(
                 transport
                 if transport is not None
-                else httpx.HTTPTransport(retries=0, trust_env=False)
+                else httpx.HTTPTransport(
+                    retries=0,
+                    trust_env=False,
+                    limits=httpx.Limits(max_keepalive_connections=0),
+                )
             ),
         )
         self.max_bytes = max_bytes
@@ -98,11 +103,19 @@ class FullTextExtractor:
             raise FullTextSecurityError(str(error)) from None
 
     def _build_request(self, target: ValidatedProviderUrl) -> httpx.Request:
-        host_header = target.hostname if target.port == 443 else f"{target.hostname}:{target.port}"
+        try:
+            hostname = (
+                f"[{target.hostname}]"
+                if ipaddress.ip_address(target.hostname).version == 6
+                else target.hostname
+            )
+        except ValueError:
+            hostname = target.hostname
+        host_header = hostname if target.port == 443 else f"{hostname}:{target.port}"
         return self.client.build_request(
             "GET",
             httpx.URL(target.value).copy_with(host=target.addresses[0]),
-            headers={"Accept": "application/pdf", "Host": host_header},
+            headers={"Accept": "application/pdf", "Connection": "close", "Host": host_header},
             extensions={"sni_hostname": target.hostname},
         )
 
