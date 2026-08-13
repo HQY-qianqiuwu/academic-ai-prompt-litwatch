@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title data-i18n="analysis.pageTitle">LitWatch Python 分析</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/workspace.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
+    <script src="{{ url_for('static', path='/analysis-workspace.js') }}" defer></script>
+  </head>
+  <body class="research-app">
+    <a class="skip-link" href="#main-content" data-i18n="analysis.skip">跳到 Python 分析</a>
+    <header class="research-topbar">
+      <a class="research-brand" href="/" data-i18n-aria-label="brand.home" translate="no"><span>LW</span><strong>LitWatch</strong></a>
+      <p data-i18n="analysis.topbar">Python 分析</p>
+      <nav aria-label="主导航" data-i18n-aria-label="nav.primary">
+        <a href="/" data-i18n="nav.search">文献检索</a><a class="active" href="/analysis" data-i18n="nav.analysis">Python 分析</a><a href="/jobs" data-i18n="nav.jobs">任务</a><a href="/radars" data-i18n="nav.radar">科研雷达</a><a href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a><a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a><a href="/provider-settings" data-i18n="nav.settings">数据源设置</a>
+      </nav>
+      <div class="locale-switch" role="group" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span aria-hidden="true">|</span><button type="button" data-locale="en">EN</button></div>
+    </header>
+    <main id="main-content" class="research-shell workspace-shell">
+      <section class="workspace-hero">
+        <p class="research-kicker" data-i18n="analysis.kicker">本地持久化任务</p>
+        <h1 data-i18n="analysis.title">提交论文分析</h1>
+        <p data-i18n="analysis.intro">提交已由 LitWatch 收录的论文标识符；Python 工作器会执行已审核的分析流程。</p>
+      </section>
+      <form class="workspace-form" data-analysis-form novalidate>
+        <label><span data-i18n="analysis.canonicalId">论文 canonical ID</span><input name="canonical_id" required maxlength="1000" placeholder="doi:10.1000/example"></label>
+        <label><span data-i18n="analysis.topicId">主题 ID</span><input name="topic_id" required maxlength="100"></label>
+        <label><span data-i18n="analysis.evidenceScope">证据范围</span><select name="evidence_scope"><option value="metadata_only" data-i18n="analysis.metadataOnly">仅元数据</option><option value="abstract" selected data-i18n="analysis.abstract">摘要</option><option value="fulltext_excerpt" data-i18n="analysis.fulltextExcerpt">全文节选</option></select></label>
+        <label class="wide"><span data-i18n="analysis.evidence">全文节选（仅在选择全文节选时填写）</span><textarea name="evidence" rows="5" maxlength="36000"></textarea></label>
+        <div class="workspace-actions wide"><button class="research-primary" type="submit" data-i18n="analysis.submit">提交分析任务</button><a href="/jobs" data-i18n="analysis.viewJobs">查看任务</a></div>
+      </form>
+      <section class="workspace-state" data-analysis-state aria-live="polite"></section>
+    </main>
+  </body>
+</html>

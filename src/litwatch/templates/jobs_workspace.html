@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title data-i18n="jobs.pageTitle">LitWatch 任务</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/workspace.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
+    <script src="{{ url_for('static', path='/jobs-workspace.js') }}" defer></script>
+  </head>
+  <body class="research-app">
+    <a class="skip-link" href="#main-content" data-i18n="jobs.skip">跳到任务</a>
+    <header class="research-topbar">
+      <a class="research-brand" href="/" data-i18n-aria-label="brand.home" translate="no"><span>LW</span><strong>LitWatch</strong></a>
+      <p data-i18n="jobs.topbar">任务</p>
+      <nav aria-label="主导航" data-i18n-aria-label="nav.primary">
+        <a href="/" data-i18n="nav.search">文献检索</a><a href="/analysis" data-i18n="nav.analysis">Python 分析</a><a class="active" href="/jobs" data-i18n="nav.jobs">任务</a><a href="/radars" data-i18n="nav.radar">科研雷达</a><a href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a><a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a><a href="/provider-settings" data-i18n="nav.settings">数据源设置</a>
+      </nav>
+      <div class="locale-switch" role="group" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span aria-hidden="true">|</span><button type="button" data-locale="en">EN</button></div>
+    </header>
+    <main id="main-content" class="research-shell workspace-shell">
+      <section class="workspace-hero"><p class="research-kicker" data-i18n="jobs.kicker">已审核的 Python 工作器</p><h1 data-i18n="jobs.title">分析任务</h1><p data-i18n="jobs.intro">刷新以查看安全的任务状态；排队或执行中的任务可取消。</p></section>
+      <div class="workspace-actions"><a class="research-primary" href="/analysis" data-i18n="jobs.newAnalysis">新建分析</a><button class="research-secondary" type="button" data-refresh-jobs data-i18n="jobs.refresh">刷新</button></div>
+      <section class="workspace-state" data-jobs-state aria-live="polite"></section>
+      <section class="jobs-list" data-jobs-list aria-live="polite"></section>
+    </main>
+  </body>
+</html>

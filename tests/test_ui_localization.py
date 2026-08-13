@@ -65,6 +65,16 @@ def test_i18n_layer_defaults_safely_and_persists_only_locale(tmp_path):
     assert '"paper.quality": "Metadata Quality"' in script
 
 
+def test_primary_navigation_labels_name_the_local_python_workspaces(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        script = client.get("/static/i18n.js").text
+
+    assert '"nav.analysis": "Python 分析"' in script
+    assert '"nav.jobs": "任务"' in script
+    assert '"nav.analysis": "Python Analysis"' in script
+    assert '"nav.jobs": "Jobs"' in script
+
+
 def test_provider_brands_are_preserved_and_opt_out_of_auto_translation(tmp_path):
     with TestClient(create_app(settings_for(tmp_path))) as client:
         providers = client.get("/api/v1/providers").json()

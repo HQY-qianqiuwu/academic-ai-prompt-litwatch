@@ -1,0 +1,13 @@
+.workspace-shell { max-width: 1040px; }
+.workspace-hero, .workspace-form, .workspace-state, .jobs-list { margin-top: 24px; }
+.workspace-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 20px; border: 1px solid #d8e2e3; border-radius: 12px; background: #fff; }
+.workspace-form label { display: grid; gap: 6px; font-weight: 700; }
+.workspace-form input, .workspace-form select, .workspace-form textarea { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid #aebfc2; border-radius: 7px; font: inherit; }
+.wide { grid-column: 1 / -1; }
+.workspace-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 18px; }
+.workspace-actions a { color: #0f766e; font-weight: 800; }
+.workspace-state { min-height: 24px; }
+.job-card { display: grid; gap: 8px; padding: 16px; margin-top: 12px; border: 1px solid #d8e2e3; border-radius: 10px; background: #fff; }
+.job-card header, .job-card footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; }
+.job-card code { overflow-wrap: anywhere; }
+@media (max-width: 700px) { .workspace-form { grid-template-columns: 1fr; } }

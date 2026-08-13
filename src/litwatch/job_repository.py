@@ -74,6 +74,17 @@ class JobRepository:
             ).fetchone()
         return self._from_row(row) if row is not None else None
 
+    def list(self, *, limit: int = 100) -> list[JobRecord]:
+        """Return recent durable jobs without exposing their input payloads."""
+
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        with self.database.transaction_lock:
+            rows = self.database.connection.execute(
+                "SELECT * FROM jobs ORDER BY created_at DESC, job_id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [self._from_row(row) for row in rows]
+
     def claim_next(
         self,
         lease_owner: str,

@@ -316,6 +316,22 @@ def create_app(
             context={},
         )
 
+    @app.get("/analysis", response_class=HTMLResponse)
+    async def analysis_workspace(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="analysis_workspace.html",
+            context={},
+        )
+
+    @app.get("/jobs", response_class=HTMLResponse)
+    async def jobs_workspace(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="jobs_workspace.html",
+            context={},
+        )
+
     @app.get("/subscriptions", response_class=HTMLResponse)
     async def subscription_page(request: Request):
         return templates.TemplateResponse(
@@ -461,6 +477,10 @@ def create_app(
             ),
         )
         return JobResponse.from_record(record)
+
+    @app.get("/api/v2/jobs", response_model=list[JobResponse])
+    def list_jobs() -> list[JobResponse]:
+        return [JobResponse.from_record(record) for record in job_repository.list()]
 
     @app.get("/api/v2/jobs/{job_id}", response_model=JobResponse)
     def get_job(job_id: str) -> JobResponse:
