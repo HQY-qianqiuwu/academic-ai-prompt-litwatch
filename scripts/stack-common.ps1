@@ -9,6 +9,61 @@ $script:StackPidPath = Join-Path $script:StackDataDirectory "litwatch-stack.pid"
 $script:StackLogPath = Join-Path $script:StackDataDirectory "litwatch-stack.log"
 $script:StackErrorLogPath = Join-Path $script:StackDataDirectory "litwatch-stack-error.log"
 
+function Set-StackPortPaths {
+    param([int]$Port = 8000)
+
+    if ($Port -eq 8000) {
+        $Suffix = ""
+    }
+    else {
+        $Suffix = "-$Port"
+    }
+    $script:StackPidPath = Join-Path $script:StackDataDirectory "litwatch-stack$Suffix.pid"
+    $script:StackLogPath = Join-Path $script:StackDataDirectory "litwatch-stack$Suffix.log"
+    $script:StackErrorLogPath = Join-Path $script:StackDataDirectory "litwatch-stack$Suffix-error.log"
+}
+
+function Resolve-LitWatchPython {
+    $Candidates = New-Object System.Collections.Generic.List[string]
+    if (-not [string]::IsNullOrWhiteSpace($env:LITWATCH_PYTHON)) {
+        $Candidates.Add($env:LITWATCH_PYTHON)
+    }
+    $Candidates.Add((Join-Path $script:StackProjectRoot ".venv\Scripts\python.exe"))
+
+    foreach ($Candidate in $Candidates | Select-Object -Unique) {
+        if ($Candidate -and (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
+            return (Resolve-Path -LiteralPath $Candidate).Path
+        }
+    }
+    throw "[Python Runtime] No trusted Python executable was found for '$script:StackProjectRoot'. Set LITWATCH_PYTHON to an explicit Python executable or install the current repository virtual environment."
+}
+
+function Get-ManagedStackPid {
+    if (-not (Test-Path -LiteralPath $script:StackPidPath -PathType Leaf)) {
+        return $null
+    }
+    $RawPid = (Get-Content -Raw -LiteralPath $script:StackPidPath).Trim()
+    $ManagedPid = 0
+    if (-not [int]::TryParse($RawPid, [ref]$ManagedPid) -or $ManagedPid -le 0) {
+        throw "[LitWatch] Invalid managed PID file: $script:StackPidPath"
+    }
+    return $ManagedPid
+}
+
+function Get-ProcessInfoById {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    $ProcessInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
+    if (-not $ProcessInfo) {
+        return $null
+    }
+    return [PSCustomObject]@{
+        PID = [int]$ProcessInfo.ProcessId
+        ExecutablePath = [string]$ProcessInfo.ExecutablePath
+        CommandLine = [string]$ProcessInfo.CommandLine
+    }
+}
+
 function Resolve-DifyDockerDirectory {
     $Candidates = @()
     if (-not [string]::IsNullOrWhiteSpace($env:DIFY_DOCKER_DIR)) {
@@ -216,9 +271,7 @@ function Format-PortProcessInfo {
 }
 
 function Assert-LitWatchImportPath {
-    if (-not (Test-Path -LiteralPath $script:StackPython -PathType Leaf)) {
-        throw "[LitWatch] Current virtual environment is missing: $script:StackPython"
-    }
+    $script:StackPython = Resolve-LitWatchPython
 
     $Expected = (Resolve-Path -LiteralPath (Join-Path $script:StackSourceDirectory "litwatch\web.py")).Path
     $PreviousSource = $env:LITWATCH_STACK_SOURCE
@@ -249,15 +302,52 @@ function Assert-LitWatchImportPath {
     return $Expected
 }
 
-function Get-OpenAlexRegistryStatus {
-    param([int]$TimeoutSeconds = 10)
+function Get-PythonRuntimeStatus {
+    param(
+        [int]$Port = 8000,
+        [int]$TimeoutSeconds = 10
+    )
 
     try {
-        $Providers = @(Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/providers" -TimeoutSec $TimeoutSeconds)
-        $OpenAlex = $Providers | Where-Object { $_.provider_type -eq "openalex" } | Select-Object -First 1
+        $Runtime = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/v2/runtime" -TimeoutSec $TimeoutSeconds
+        $Ready = (
+            $Runtime.mode -eq "python_default" -and
+            $Runtime.python_primary -eq $true -and
+            $Runtime.requires_dify -eq $false -and
+            $Runtime.requires_docker -eq $false -and
+            $Runtime.requires_ssrf_proxy -eq $false
+        )
+        return [PSCustomObject]@{
+            Ready = [bool]$Ready
+            Detail = "mode=$($Runtime.mode); python_primary=$($Runtime.python_primary)"
+        }
+    }
+    catch {
+        return [PSCustomObject]@{
+            Ready = $false
+            Detail = $_.Exception.Message
+        }
+    }
+}
+
+function Get-OpenAlexRegistryStatus {
+    param(
+        [int]$Port = 8000,
+        [int]$TimeoutSeconds = 10
+    )
+
+    try {
+        $ProviderResponse = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/v1/providers" -TimeoutSec $TimeoutSeconds
+        $OpenAlex = $null
+        foreach ($Provider in $ProviderResponse) {
+            if ($Provider.provider_type -eq "openalex") {
+                $OpenAlex = $Provider
+                break
+            }
+        }
         return [PSCustomObject]@{
             Ready = [bool]($OpenAlex -and $OpenAlex.runnable -eq $true)
-            Detail = if ($OpenAlex) { "runnable=$($OpenAlex.runnable)" } else { "provider missing" }
+            Detail = if ($OpenAlex) { "OpenAlex runnable=$($OpenAlex.runnable)" } else { "OpenAlex provider missing" }
         }
     }
     catch {

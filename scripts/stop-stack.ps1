@@ -1,46 +1,43 @@
-param([int]$Port = 8000)
+param(
+    [ValidateRange(1, 65535)]
+    [int]$Port = 8000
+)
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "stack-common.ps1")
+Set-StackPortPaths -Port $Port
 
 try {
+    $ManagedPid = Get-ManagedStackPid
     $PortProcesses = @(Get-PortProcessInfo -Port $Port)
     if ($PortProcesses.Count -eq 0) {
-        Write-Output "LitWatch: already stopped"
-    }
-    else {
-        foreach ($PortProcess in $PortProcesses) {
-            if (-not (Test-IsCurrentLitWatchProcess -ProcessInfo $PortProcess -Port $Port)) {
-                throw "[Port $Port] Port is owned by a process outside the current LitWatch repository. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $PortProcess)"
+        if ($null -ne $ManagedPid) {
+            $SavedProcess = Get-ProcessInfoById -ProcessId $ManagedPid
+            if ($SavedProcess) {
+                throw "[LitWatch] Managed PID $ManagedPid is still running but does not own port $Port. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $SavedProcess)"
             }
-        }
-        foreach ($PortProcess in $PortProcesses) {
-            Stop-Process -Id $PortProcess.PID -ErrorAction Stop
-            Write-Output "LitWatch: stopped PID $($PortProcess.PID)"
-        }
-        if (Test-Path -LiteralPath $script:StackPidPath) {
             Remove-Item -LiteralPath $script:StackPidPath -Force
         }
-    }
-
-    $DifyDockerDirectory = Resolve-DifyDockerDirectory
-    $DockerCommand = Get-DockerCommand
-    if (-not (Test-DockerDaemon -DockerCommand $DockerCommand)) {
-        Write-Output "Docker: daemon is not running; Dify containers are already unavailable."
+        Write-Output "LitWatch: already stopped"
         exit 0
     }
 
-    Push-Location $DifyDockerDirectory
-    try {
-        & docker compose stop
-        if ($LASTEXITCODE -ne 0) {
-            throw "[Dify] docker compose stop failed with exit code $LASTEXITCODE."
+    if ($null -eq $ManagedPid) {
+        $Owner = $PortProcesses | Select-Object -First 1
+        throw "[Port $Port] Port has no managed PID for the current repository. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $Owner)"
+    }
+    foreach ($PortProcess in $PortProcesses) {
+        if (
+            $PortProcess.PID -ne $ManagedPid -or
+            -not (Test-IsCurrentLitWatchProcess -ProcessInfo $PortProcess -Port $Port)
+        ) {
+            throw "[Port $Port] Port is owned by a process outside this managed LitWatch instance. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $PortProcess)"
         }
     }
-    finally {
-        Pop-Location
-    }
-    Write-Output "Dify: stopped (volumes preserved)"
+
+    Stop-Process -Id $ManagedPid -ErrorAction Stop
+    Write-Output "LitWatch: stopped PID $ManagedPid"
+    Remove-Item -LiteralPath $script:StackPidPath -Force
 }
 catch {
     Write-Error $_.Exception.Message
