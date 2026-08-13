@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from litwatch.security import allowlisted_safe_error
+from litwatch.security import allowlisted_safe_error, redact_sensitive_text
 
 
 class LLMErrorCode(StrEnum):
@@ -78,8 +79,26 @@ class LLMRequest(BaseModel):
 
     @property
     def payload_chars(self) -> int:
-        """Count all caller-provided text that may leave the local runtime."""
-        return len(self.user_instruction) + len(self.untrusted_evidence)
+        """Count the exact serialized user content sent to the provider."""
+
+        return len(self.user_message_content)
+
+    @property
+    def user_message_content(self) -> str:
+        """Keep trusted instructions and untrusted evidence in separate JSON fields."""
+
+        evidence = redact_sensitive_text(self.untrusted_evidence)
+        return json.dumps(
+            {
+                "trusted_user_instruction": redact_sensitive_text(
+                    self.user_instruction
+                ),
+                "untrusted_evidence_chars": len(evidence),
+                "untrusted_evidence": evidence,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
 
 
 class LLMUsage(BaseModel):

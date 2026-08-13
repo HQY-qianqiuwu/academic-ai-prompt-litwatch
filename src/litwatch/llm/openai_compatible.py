@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -77,7 +75,7 @@ class OpenAICompatibleProvider:
                 },
                 {
                     "role": "user",
-                    "content": self._user_message_content(request),
+                    "content": request.user_message_content,
                 },
             ],
             "max_tokens": request.max_output_tokens,
@@ -158,23 +156,6 @@ class OpenAICompatibleProvider:
             return self._decode_success(response, attempt)
 
         raise AssertionError("finite LLM retry loop exhausted unexpectedly")
-
-    @staticmethod
-    def _user_message_content(request: LLMRequest) -> str:
-        """Encode untrusted text as data so it cannot alter prompt boundaries."""
-
-        evidence = redact_sensitive_text(request.untrusted_evidence).encode("utf-8")
-        return json.dumps(
-            {
-                "trusted_user_instruction": redact_sensitive_text(
-                    request.user_instruction
-                ),
-                "untrusted_evidence_encoding": "base64-utf-8",
-                "untrusted_evidence": base64.b64encode(evidence).decode("ascii"),
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
 
     def _decode_success(self, response: httpx.Response, attempt: int) -> LLMResponse:
         document: object | None = None
