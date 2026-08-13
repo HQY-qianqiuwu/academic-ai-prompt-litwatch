@@ -72,7 +72,7 @@ try {
     $PortProcesses = @(Get-PortProcessInfo -Port 8000)
     if ($PortProcesses.Count -gt 0) {
         foreach ($PortProcess in $PortProcesses) {
-            if (-not (Test-IsCurrentLitWatchProcess -ProcessInfo $PortProcess -Port 8000)) {
+            if (-not (Test-IsCurrentLitWatchProcess -ProcessInfo $PortProcess -Port 8000 -ExpectedHost "0.0.0.0")) {
                 throw "[Port 8000] Port is owned by a process outside the current LitWatch repository. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $PortProcess)"
             }
         }

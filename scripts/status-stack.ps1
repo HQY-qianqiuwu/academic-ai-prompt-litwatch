@@ -8,30 +8,29 @@ $ErrorActionPreference = "Stop"
 Set-StackPortPaths -Port $Port
 
 $Checks = [ordered]@{
-    "Migration Mode" = $true
+    "Migration Verification" = $false
     "Python Runtime" = $false
     "LitWatch" = $false
     "Provider Registry" = $false
     "Job Worker/Scheduler" = $false
 }
 $Details = New-Object System.Collections.Generic.List[string]
-$Details.Add("Migration Mode: python_default")
 
 try {
-    $ManagedPid = Get-ManagedStackPid
+    $script:StackPython = Resolve-LitWatchPython -Port $Port
+    $ManagedIdentity = Get-ManagedStackIdentity
     $PortProcesses = @(Get-PortProcessInfo -Port $Port)
     if ($PortProcesses.Count -eq 0) {
         $Details.Add("LitWatch: port $Port is not listening")
     }
-    elseif ($null -eq $ManagedPid) {
+    elseif ($null -eq $ManagedIdentity) {
         foreach ($PortProcess in $PortProcesses) {
             $Details.Add("Port ${Port}: no managed PID; $(Format-PortProcessInfo -ProcessInfo $PortProcess)")
         }
     }
     else {
         $UnexpectedProcesses = @($PortProcesses | Where-Object {
-            $_.PID -ne $ManagedPid -or
-            -not (Test-IsCurrentLitWatchProcess -ProcessInfo $_ -Port $Port)
+            -not (Test-MatchesManagedStackIdentity -ProcessInfo $_ -Identity $ManagedIdentity -Port $Port)
         })
         if ($UnexpectedProcesses.Count -gt 0) {
             foreach ($PortProcess in $UnexpectedProcesses) {
@@ -52,8 +51,12 @@ catch {
 
 if ($Checks.LitWatch) {
     $RuntimeStatus = Get-PythonRuntimeStatus -Port $Port
-    $Checks["Python Runtime"] = $RuntimeStatus.Ready
-    if (-not $RuntimeStatus.Ready) {
+    $Checks["Migration Verification"] = $RuntimeStatus.MigrationReady
+    if (-not $RuntimeStatus.MigrationReady) {
+        $Details.Add("Migration Verification: $($RuntimeStatus.Detail)")
+    }
+    $Checks["Python Runtime"] = $RuntimeStatus.RuntimeReady
+    if (-not $RuntimeStatus.RuntimeReady) {
         $Details.Add("Python Runtime: $($RuntimeStatus.Detail)")
     }
 
@@ -63,9 +66,11 @@ if ($Checks.LitWatch) {
         $Details.Add("Provider Registry: $($RegistryStatus.Detail)")
     }
 
-    $Checks["Job Worker/Scheduler"] = $RuntimeStatus.Ready
+    $Checks["Job Worker/Scheduler"] = (
+        $RuntimeStatus.WorkerReady -and $RuntimeStatus.SchedulerReady
+    )
     if (-not $Checks["Job Worker/Scheduler"]) {
-        $Details.Add("Job Worker/Scheduler: application runtime validation failed")
+        $Details.Add("Job Worker/Scheduler: $($RuntimeStatus.Detail)")
     }
 }
 

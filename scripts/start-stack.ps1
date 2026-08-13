@@ -10,35 +10,32 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "stack-common.ps1")
 Set-StackPortPaths -Port $Port
 
-$StartedPid = $null
+$StartedIdentity = $null
 try {
-    $ImportPath = Assert-LitWatchImportPath
+    $ImportPath = Assert-LitWatchImportPath -Port $Port
     Write-Output "Migration Mode: python_default"
     Write-Output "Python Runtime: $script:StackPython"
     Write-Output "LitWatch import: $ImportPath"
 
-    $ManagedPid = Get-ManagedStackPid
+    $ManagedIdentity = Get-ManagedStackIdentity
     $PortProcesses = @(Get-PortProcessInfo -Port $Port)
     if ($PortProcesses.Count -gt 0) {
-        if ($null -eq $ManagedPid) {
+        if ($null -eq $ManagedIdentity) {
             $Owner = $PortProcesses | Select-Object -First 1
             throw "[Port $Port] Port has no managed PID for the current repository. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $Owner)"
         }
         foreach ($PortProcess in $PortProcesses) {
-            if (
-                $PortProcess.PID -ne $ManagedPid -or
-                -not (Test-IsCurrentLitWatchProcess -ProcessInfo $PortProcess -Port $Port)
-            ) {
+            if (-not (Test-MatchesManagedStackIdentity -ProcessInfo $PortProcess -Identity $ManagedIdentity -Port $Port)) {
                 throw "[Port $Port] Port is owned by a process outside this managed LitWatch instance. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $PortProcess)"
             }
         }
-        Write-Output "LitWatch: already running (PID $ManagedPid)"
+        Write-Output "LitWatch: already running (PID $($ManagedIdentity.PID))"
     }
     else {
-        if ($null -ne $ManagedPid) {
-            $SavedProcess = Get-ProcessInfoById -ProcessId $ManagedPid
+        if ($null -ne $ManagedIdentity) {
+            $SavedProcess = Get-ProcessInfoById -ProcessId ([int]$ManagedIdentity.PID)
             if ($SavedProcess) {
-                throw "[LitWatch] Managed PID $ManagedPid is still running but does not own port $Port. Refusing to replace its PID record. $(Format-PortProcessInfo -ProcessInfo $SavedProcess)"
+                throw "[LitWatch] Managed PID $($ManagedIdentity.PID) is still running but does not own port $Port. Refusing to replace its identity record. $(Format-PortProcessInfo -ProcessInfo $SavedProcess)"
             }
             Remove-Item -LiteralPath $script:StackPidPath -Force
         }
@@ -57,8 +54,13 @@ try {
         }
         $Process = Start-Process @StartArguments
         $StartedPid = [int]$Process.Id
-        Set-Content -LiteralPath $script:StackPidPath -Value $StartedPid -Encoding ascii
-        Write-Output "LitWatch: started PID $StartedPid"
+        $StartedProcess = Get-ProcessInfoById -ProcessId $StartedPid
+        if (-not $StartedProcess) {
+            throw "[LitWatch] Started PID $StartedPid could not be identified safely."
+        }
+        $StartedIdentity = New-ManagedStackIdentity -ProcessInfo $StartedProcess -Port $Port
+        Set-ManagedStackIdentity -Identity $StartedIdentity
+        Write-Output "LitWatch: started PID $($StartedIdentity.PID)"
     }
 
     $LitWatchReady = Wait-StackCondition -TimeoutSeconds $LitWatchTimeoutSeconds -IntervalSeconds 2 -Condition {
@@ -73,6 +75,7 @@ try {
     if (-not $RuntimeStatus.Ready) {
         throw "[Python Runtime] Validation failed: $($RuntimeStatus.Detail)"
     }
+    Write-Output "Migration Verification: ready"
     Write-Output "Python Runtime: ready ($($RuntimeStatus.Detail))"
 
     $RegistryStatus = Get-OpenAlexRegistryStatus -Port $Port
@@ -80,7 +83,7 @@ try {
         throw "[Provider Registry] Validation failed: $($RegistryStatus.Detail)"
     }
     Write-Output "Provider Registry: ready ($($RegistryStatus.Detail))"
-    Write-Output "Job Worker/Scheduler: ready"
+    Write-Output "Job Worker/Scheduler: ready (active=$($RuntimeStatus.WorkerActive))"
 
     Write-Output "System: READY"
     if (-not $NoBrowser) {
@@ -88,18 +91,15 @@ try {
     }
 }
 catch {
-    if ($null -ne $StartedPid) {
-        $StartedProcess = Get-ProcessInfoById -ProcessId $StartedPid
-        if (
-            $StartedProcess -and
-            $StartedProcess.PID -eq $StartedPid -and
-            (Test-IsCurrentLitWatchProcess -ProcessInfo $StartedProcess -Port $Port)
-        ) {
-            Stop-Process -Id $StartedPid -ErrorAction Stop
-        }
+    if ($null -ne $StartedIdentity) {
+        Stop-ManagedLitWatchProcess -Identity $StartedIdentity -Port $Port
         if (Test-Path -LiteralPath $script:StackPidPath -PathType Leaf) {
-            $RecordedPid = Get-ManagedStackPid
-            if ($RecordedPid -eq $StartedPid) {
+            $RecordedIdentity = Get-ManagedStackIdentity
+            if (
+                $RecordedIdentity.PID -eq $StartedIdentity.PID -and
+                $RecordedIdentity.CreationTimeUtc -ceq $StartedIdentity.CreationTimeUtc -and
+                $RecordedIdentity.Fingerprint -ceq $StartedIdentity.Fingerprint
+            ) {
                 Remove-Item -LiteralPath $script:StackPidPath -Force
             }
         }

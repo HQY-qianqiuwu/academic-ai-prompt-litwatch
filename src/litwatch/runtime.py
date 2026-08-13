@@ -56,6 +56,7 @@ class ApplicationRuntime:
         self._startup_hooks = tuple(startup_hooks)
         self._shutdown_hooks = tuple(shutdown_hooks)
         self._started = False
+        self._migration_verified = False
         self._lock = Lock()
 
     def start(self) -> None:
@@ -63,8 +64,10 @@ class ApplicationRuntime:
             if self._started:
                 return
             worker_started = False
+            self._migration_verified = False
             try:
                 self._database_preflight()
+                self._migration_verified = True
                 for hook in self._startup_hooks:
                     hook()
                 self._worker_start()
@@ -112,3 +115,9 @@ class ApplicationRuntime:
         """Expose lifecycle state without allowing external mutation."""
         with self._lock:
             return self._started
+
+    @property
+    def migration_verified(self) -> bool:
+        """Report whether this runtime completed its migration preflight."""
+        with self._lock:
+            return self._migration_verified

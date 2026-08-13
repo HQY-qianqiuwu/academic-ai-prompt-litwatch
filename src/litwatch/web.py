@@ -437,7 +437,7 @@ def create_app(
         }
 
     @app.get("/api/v2/runtime")
-    def runtime_status() -> dict[str, bool | str]:
+    def runtime_status() -> dict[str, bool | int | str | None]:
         status = RuntimeStatus.from_mode(settings.runtime_mode)
         return {
             "mode": status.mode.value,
@@ -445,6 +445,12 @@ def create_app(
             "requires_dify": status.requires_dify,
             "requires_docker": status.requires_docker,
             "requires_ssrf_proxy": status.requires_ssrf_proxy,
+            "migration_verified": runtime.migration_verified,
+            "runtime_started": runtime.started,
+            "job_worker_running": job_worker.is_running,
+            "job_worker_active": job_worker.active_count,
+            "scheduler_running": scheduler_service.is_running,
+            "scheduler_last_error": scheduler_service.last_error,
         }
 
     @app.post("/api/v2/jobs", response_model=JobResponse, status_code=202)

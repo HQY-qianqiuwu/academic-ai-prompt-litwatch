@@ -24,30 +24,82 @@ function Set-StackPortPaths {
 }
 
 function Resolve-LitWatchPython {
-    $Candidates = New-Object System.Collections.Generic.List[string]
-    if (-not [string]::IsNullOrWhiteSpace($env:LITWATCH_PYTHON)) {
-        $Candidates.Add($env:LITWATCH_PYTHON)
-    }
-    $Candidates.Add((Join-Path $script:StackProjectRoot ".venv\Scripts\python.exe"))
+    param([int]$Port = 8000)
 
-    foreach ($Candidate in $Candidates | Select-Object -Unique) {
-        if ($Candidate -and (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
-            return (Resolve-Path -LiteralPath $Candidate).Path
-        }
+    $WorktreePython = Join-Path $script:StackProjectRoot ".venv\Scripts\python.exe"
+    $ResolvedWorktreePython = if (Test-Path -LiteralPath $WorktreePython -PathType Leaf) {
+        (Resolve-Path -LiteralPath $WorktreePython).Path
     }
-    throw "[Python Runtime] No trusted Python executable was found for '$script:StackProjectRoot'. Set LITWATCH_PYTHON to an explicit Python executable or install the current repository virtual environment."
+    else {
+        $null
+    }
+    if ([string]::IsNullOrWhiteSpace($env:LITWATCH_PYTHON)) {
+        if ($ResolvedWorktreePython) {
+            return $ResolvedWorktreePython
+        }
+        throw "[Python Runtime] The current worktree virtual environment is missing: $WorktreePython"
+    }
+
+    if (-not (Test-Path -LiteralPath $env:LITWATCH_PYTHON -PathType Leaf)) {
+        throw "[Python Runtime] Configured Python executable was not found: $($env:LITWATCH_PYTHON)"
+    }
+    $ConfiguredPython = (Resolve-Path -LiteralPath $env:LITWATCH_PYTHON).Path
+    if (
+        $ResolvedWorktreePython -and
+        $ConfiguredPython.Equals(
+            $ResolvedWorktreePython,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        return $ConfiguredPython
+    }
+    if ($Port -eq 8000) {
+        throw "[Python Runtime] Default port 8000 requires the current worktree interpreter: $WorktreePython"
+    }
+    if ($env:LITWATCH_ALLOW_EXTERNAL_PYTHON -ne "1") {
+        throw "[Python Runtime] External Python is restricted to explicit non-default-port smoke runs. Set LITWATCH_ALLOW_EXTERNAL_PYTHON=1."
+    }
+    return $ConfiguredPython
 }
 
-function Get-ManagedStackPid {
+function Get-ManagedStackIdentity {
     if (-not (Test-Path -LiteralPath $script:StackPidPath -PathType Leaf)) {
         return $null
     }
-    $RawPid = (Get-Content -Raw -LiteralPath $script:StackPidPath).Trim()
-    $ManagedPid = 0
-    if (-not [int]::TryParse($RawPid, [ref]$ManagedPid) -or $ManagedPid -le 0) {
-        throw "[LitWatch] Invalid managed PID file: $script:StackPidPath"
+    try {
+        $Identity = Get-Content -Raw -LiteralPath $script:StackPidPath | ConvertFrom-Json
     }
-    return $ManagedPid
+    catch {
+        throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
+    }
+    $ManagedPid = 0
+    if (
+        $Identity.version -ne 1 -or
+        -not [int]::TryParse([string]$Identity.pid, [ref]$ManagedPid) -or
+        $ManagedPid -le 0 -or
+        [string]::IsNullOrWhiteSpace([string]$Identity.creation_time_utc) -or
+        [string]$Identity.fingerprint -notmatch '^[0-9a-f]{64}$'
+    ) {
+        throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
+    }
+    return [PSCustomObject]@{
+        Version = 1
+        PID = $ManagedPid
+        CreationTimeUtc = [string]$Identity.creation_time_utc
+        Fingerprint = [string]$Identity.fingerprint
+    }
+}
+
+function Set-ManagedStackIdentity {
+    param([Parameter(Mandatory = $true)]$Identity)
+
+    $Document = [ordered]@{
+        version = 1
+        pid = [int]$Identity.PID
+        creation_time_utc = [string]$Identity.CreationTimeUtc
+        fingerprint = [string]$Identity.Fingerprint
+    }
+    $Document | ConvertTo-Json -Compress | Set-Content -LiteralPath $script:StackPidPath -Encoding utf8
 }
 
 function Get-ProcessInfoById {
@@ -59,6 +111,7 @@ function Get-ProcessInfoById {
     }
     return [PSCustomObject]@{
         PID = [int]$ProcessInfo.ProcessId
+        CreationDate = $ProcessInfo.CreationDate
         ExecutablePath = [string]$ProcessInfo.ExecutablePath
         CommandLine = [string]$ProcessInfo.CommandLine
     }
@@ -232,6 +285,7 @@ function Get-PortProcessInfo {
         if ($ProcessInfo) {
             $Results += [PSCustomObject]@{
                 PID = [int]$ProcessInfo.ProcessId
+                CreationDate = $ProcessInfo.CreationDate
                 ExecutablePath = [string]$ProcessInfo.ExecutablePath
                 CommandLine = [string]$ProcessInfo.CommandLine
             }
@@ -240,38 +294,235 @@ function Get-PortProcessInfo {
     return $Results
 }
 
+function ConvertFrom-WindowsCommandLine {
+    param([Parameter(Mandatory = $true)][string]$CommandLine)
+
+    if (-not ("LitWatchCommandLineNative" -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class LitWatchCommandLineNative
+{
+    [DllImport("shell32.dll", SetLastError = true)]
+    private static extern IntPtr CommandLineToArgvW(
+        [MarshalAs(UnmanagedType.LPWStr)] string commandLine,
+        out int argumentCount
+    );
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LocalFree(IntPtr handle);
+
+    public static string[] Split(string commandLine)
+    {
+        int argumentCount;
+        IntPtr argumentVector = CommandLineToArgvW(commandLine, out argumentCount);
+        if (argumentVector == IntPtr.Zero)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+        try
+        {
+            var arguments = new List<string>(argumentCount);
+            for (int index = 0; index < argumentCount; index++)
+            {
+                IntPtr argument = Marshal.ReadIntPtr(
+                    argumentVector,
+                    index * IntPtr.Size
+                );
+                arguments.Add(Marshal.PtrToStringUni(argument));
+            }
+            return arguments.ToArray();
+        }
+        finally
+        {
+            LocalFree(argumentVector);
+        }
+    }
+}
+"@
+    }
+    return [LitWatchCommandLineNative]::Split($CommandLine)
+}
+
+function Get-CanonicalPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    try {
+        return [System.IO.Path]::GetFullPath($Path).TrimEnd(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar
+        )
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-CanonicalPathEquals {
+    param(
+        [Parameter(Mandatory = $true)][string]$Left,
+        [Parameter(Mandatory = $true)][string]$Right
+    )
+
+    $CanonicalLeft = Get-CanonicalPath -Path $Left
+    $CanonicalRight = Get-CanonicalPath -Path $Right
+    return (
+        $CanonicalLeft -and
+        $CanonicalRight -and
+        $CanonicalLeft.Equals(
+            $CanonicalRight,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    )
+}
+
 function Test-IsCurrentLitWatchProcess {
     param(
         [Parameter(Mandatory = $true)]$ProcessInfo,
-        [int]$Port = 8000
+        [int]$Port = 8000,
+        [string]$ExpectedHost = "127.0.0.1"
     )
 
     $CommandLine = [string]$ProcessInfo.CommandLine
-    if ([string]::IsNullOrWhiteSpace($CommandLine)) {
+    $ExecutablePath = [string]$ProcessInfo.ExecutablePath
+    if (
+        [string]::IsNullOrWhiteSpace($CommandLine) -or
+        [string]::IsNullOrWhiteSpace($ExecutablePath)
+    ) {
         return $false
     }
+    try {
+        $Arguments = @(ConvertFrom-WindowsCommandLine -CommandLine $CommandLine)
+    }
+    catch {
+        return $false
+    }
+    if ($Arguments.Count -ne 10) {
+        return $false
+    }
+    return (
+        (Test-CanonicalPathEquals -Left $ExecutablePath -Right $script:StackPython) -and
+        (Test-CanonicalPathEquals -Left $Arguments[0] -Right $script:StackPython) -and
+        $Arguments[1] -ceq "-m" -and
+        $Arguments[2] -ceq "uvicorn" -and
+        $Arguments[3] -ceq "litwatch.web:app" -and
+        $Arguments[4] -ceq "--app-dir" -and
+        (Test-CanonicalPathEquals -Left $Arguments[5] -Right $script:StackSourceDirectory) -and
+        $Arguments[6] -ceq "--host" -and
+        $Arguments[7] -ceq $ExpectedHost -and
+        $Arguments[8] -ceq "--port" -and
+        $Arguments[9] -ceq ([string]$Port)
+    )
+}
 
-    $Comparison = [System.StringComparison]::OrdinalIgnoreCase
-    $UsesManagedServer = (
-        $CommandLine.IndexOf("litwatch.web:app", $Comparison) -ge 0 -and
-        $CommandLine.IndexOf($script:StackSourceDirectory, $Comparison) -ge 0
+function Get-ProcessCreationTimeUtc {
+    param([Parameter(Mandatory = $true)]$ProcessInfo)
+
+    try {
+        return ([DateTimeOffset]$ProcessInfo.CreationDate).ToUniversalTime().ToString("o")
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-LitWatchProcessFingerprint {
+    param(
+        [Parameter(Mandatory = $true)]$ProcessInfo,
+        [int]$Port = 8000,
+        [string]$ExpectedHost = "127.0.0.1"
     )
-    $UsesProjectCli = $CommandLine.IndexOf($script:StackLitWatchExe, $Comparison) -ge 0
-    $UsesRequestedPort = (
-        $CommandLine.IndexOf("--port $Port", $Comparison) -ge 0 -or
-        $CommandLine.IndexOf("--port=$Port", $Comparison) -ge 0
+
+    if (-not (Test-IsCurrentLitWatchProcess -ProcessInfo $ProcessInfo -Port $Port -ExpectedHost $ExpectedHost)) {
+        return $null
+    }
+    $Fields = @(
+        (Get-CanonicalPath -Path ([string]$ProcessInfo.ExecutablePath)).ToLowerInvariant(),
+        (Get-CanonicalPath -Path $script:StackSourceDirectory).ToLowerInvariant(),
+        $ExpectedHost.ToLowerInvariant(),
+        [string]$Port
     )
-    return (($UsesManagedServer -or $UsesProjectCli) -and $UsesRequestedPort)
+    $Bytes = [System.Text.Encoding]::UTF8.GetBytes(($Fields -join "`n"))
+    $Hash = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return (($Hash.ComputeHash($Bytes) | ForEach-Object { $_.ToString("x2") }) -join "")
+    }
+    finally {
+        $Hash.Dispose()
+    }
+}
+
+function New-ManagedStackIdentity {
+    param(
+        [Parameter(Mandatory = $true)]$ProcessInfo,
+        [int]$Port = 8000,
+        [string]$ExpectedHost = "127.0.0.1"
+    )
+
+    $CreationTimeUtc = Get-ProcessCreationTimeUtc -ProcessInfo $ProcessInfo
+    $Fingerprint = Get-LitWatchProcessFingerprint -ProcessInfo $ProcessInfo -Port $Port -ExpectedHost $ExpectedHost
+    if (-not $CreationTimeUtc -or -not $Fingerprint) {
+        throw "[LitWatch] Process identity does not match the expected current-worktree command."
+    }
+    return [PSCustomObject]@{
+        Version = 1
+        PID = [int]$ProcessInfo.PID
+        CreationTimeUtc = $CreationTimeUtc
+        Fingerprint = $Fingerprint
+    }
+}
+
+function Test-MatchesManagedStackIdentity {
+    param(
+        [Parameter(Mandatory = $true)]$ProcessInfo,
+        [Parameter(Mandatory = $true)]$Identity,
+        [int]$Port = 8000,
+        [string]$ExpectedHost = "127.0.0.1"
+    )
+
+    if ([int]$ProcessInfo.PID -ne [int]$Identity.PID) {
+        return $false
+    }
+    $CreationTimeUtc = Get-ProcessCreationTimeUtc -ProcessInfo $ProcessInfo
+    $Fingerprint = Get-LitWatchProcessFingerprint -ProcessInfo $ProcessInfo -Port $Port -ExpectedHost $ExpectedHost
+    return (
+        $CreationTimeUtc -and
+        $Fingerprint -and
+        $CreationTimeUtc -ceq [string]$Identity.CreationTimeUtc -and
+        $Fingerprint -ceq [string]$Identity.Fingerprint
+    )
+}
+
+function Stop-ManagedLitWatchProcess {
+    param(
+        [Parameter(Mandatory = $true)]$Identity,
+        [int]$Port = 8000,
+        [string]$ExpectedHost = "127.0.0.1"
+    )
+
+    $CurrentProcess = Get-ProcessInfoById -ProcessId ([int]$Identity.PID)
+    if (
+        -not $CurrentProcess -or
+        -not (Test-MatchesManagedStackIdentity -ProcessInfo $CurrentProcess -Identity $Identity -Port $Port -ExpectedHost $ExpectedHost)
+    ) {
+        throw "[LitWatch] Managed process identity changed before stop. Refusing to stop PID $($Identity.PID)."
+    }
+    Stop-Process -Id ([int]$Identity.PID) -ErrorAction Stop
 }
 
 function Format-PortProcessInfo {
     param([Parameter(Mandatory = $true)]$ProcessInfo)
 
-    return "PID=$($ProcessInfo.PID); Executable=$($ProcessInfo.ExecutablePath); CommandLine=$($ProcessInfo.CommandLine)"
+    return "PID=$($ProcessInfo.PID); Created=$($ProcessInfo.CreationDate); Executable=$($ProcessInfo.ExecutablePath); CommandLine=$($ProcessInfo.CommandLine)"
 }
 
 function Assert-LitWatchImportPath {
-    $script:StackPython = Resolve-LitWatchPython
+    param([int]$Port = 8000)
+
+    $script:StackPython = Resolve-LitWatchPython -Port $Port
 
     $Expected = (Resolve-Path -LiteralPath (Join-Path $script:StackSourceDirectory "litwatch\web.py")).Path
     $PreviousSource = $env:LITWATCH_STACK_SOURCE
@@ -310,21 +561,41 @@ function Get-PythonRuntimeStatus {
 
     try {
         $Runtime = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/v2/runtime" -TimeoutSec $TimeoutSeconds
-        $Ready = (
+        $DependenciesReady = (
             $Runtime.mode -eq "python_default" -and
             $Runtime.python_primary -eq $true -and
             $Runtime.requires_dify -eq $false -and
             $Runtime.requires_docker -eq $false -and
             $Runtime.requires_ssrf_proxy -eq $false
         )
+        $MigrationReady = $Runtime.migration_verified -eq $true
+        $RuntimeReady = $DependenciesReady -and $Runtime.runtime_started -eq $true
+        $WorkerReady = $RuntimeReady -and $Runtime.job_worker_running -eq $true
+        $SchedulerReady = (
+            $RuntimeReady -and
+            $Runtime.scheduler_running -eq $true -and
+            [string]::IsNullOrWhiteSpace([string]$Runtime.scheduler_last_error)
+        )
         return [PSCustomObject]@{
-            Ready = [bool]$Ready
-            Detail = "mode=$($Runtime.mode); python_primary=$($Runtime.python_primary)"
+            Ready = [bool]($MigrationReady -and $RuntimeReady -and $WorkerReady -and $SchedulerReady)
+            MigrationReady = [bool]$MigrationReady
+            RuntimeReady = [bool]$RuntimeReady
+            WorkerReady = [bool]$WorkerReady
+            SchedulerReady = [bool]$SchedulerReady
+            WorkerActive = [int]$Runtime.job_worker_active
+            SchedulerLastError = [string]$Runtime.scheduler_last_error
+            Detail = "mode=$($Runtime.mode); migration_verified=$($Runtime.migration_verified); runtime_started=$($Runtime.runtime_started); worker_running=$($Runtime.job_worker_running); worker_active=$($Runtime.job_worker_active); scheduler_running=$($Runtime.scheduler_running); scheduler_last_error=$($Runtime.scheduler_last_error)"
         }
     }
     catch {
         return [PSCustomObject]@{
             Ready = $false
+            MigrationReady = $false
+            RuntimeReady = $false
+            WorkerReady = $false
+            SchedulerReady = $false
+            WorkerActive = 0
+            SchedulerLastError = "runtime_status_unavailable"
             Detail = $_.Exception.Message
         }
     }

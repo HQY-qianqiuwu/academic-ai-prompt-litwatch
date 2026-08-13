@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -26,6 +27,10 @@ def _run_controlled_script(
     managed_pid: int | None = None,
     no_browser: bool = True,
     health_ready: bool = True,
+    migration_ready: bool = True,
+    runtime_ready: bool = True,
+    worker_ready: bool = True,
+    scheduler_ready: bool = True,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     assert POWERSHELL is not None
     sandbox = tmp_path / "scripts"
@@ -47,10 +52,17 @@ def _run_controlled_script(
         $script:StackLogPath = Join-Path $script:StackDataDirectory 'litwatch-stack.log'
         $script:StackErrorLogPath = Join-Path $script:StackDataDirectory 'litwatch-stack-error.log'
         $script:LifecycleEventLog = '{_powershell_literal(event_log)}'
+        $script:LifecycleStartedPid = $null
 
         function Add-LifecycleTestEvent {{
             param([string]$Event)
             Add-Content -LiteralPath $script:LifecycleEventLog -Value $Event -Encoding utf8
+        }}
+
+        function Resolve-LitWatchPython {{
+            param([int]$Port = 8000)
+            Add-LifecycleTestEvent "resolve-python:$Port"
+            return $script:StackPython
         }}
 
         function Get-DockerCommand {{
@@ -72,7 +84,13 @@ def _run_controlled_script(
             param([int]$Port = 8000)
             Add-LifecycleTestEvent "inspect-port:$Port"
             if ($env:LITWATCH_TEST_MODE -eq 'none') {{ return @() }}
-            $CommandLine = if ($env:LITWATCH_TEST_MODE -eq 'owned') {{
+            $CommandLine = if ($env:LITWATCH_TEST_MODE -eq 'spoof-source') {{
+                '"' + $script:StackPython + '" -m uvicorn litwatch.web:app --app-dir "' +
+                    $script:StackSourceDirectory + '-foreign" --host 127.0.0.1 --port ' + $Port
+            }} elseif ($env:LITWATCH_TEST_MODE -eq 'spoof-port') {{
+                '"' + $script:StackPython + '" -m uvicorn litwatch.web:app --app-dir "' +
+                    $script:StackSourceDirectory + '" --host 127.0.0.1 --port ' + $Port + '0'
+            }} elseif ($env:LITWATCH_TEST_MODE -in @('owned', 'toctou', 'pid-reused')) {{
                 '"' + $script:StackPython + '" -m uvicorn litwatch.web:app --app-dir "' +
                     $script:StackSourceDirectory + '" --host 127.0.0.1 --port ' + $Port
             }} else {{
@@ -80,7 +98,14 @@ def _run_controlled_script(
             }}
             return [PSCustomObject]@{{
                 PID = [int]$env:LITWATCH_TEST_PID
-                ExecutablePath = if ($env:LITWATCH_TEST_MODE -eq 'owned') {{
+                CreationDate = if ($env:LITWATCH_TEST_MODE -eq 'pid-reused') {{
+                    '2026-08-14T00:00:01.0000000+00:00'
+                }} else {{
+                    '2026-08-14T00:00:00.0000000+00:00'
+                }}
+                ExecutablePath = if ($env:LITWATCH_TEST_MODE -in @(
+                    'owned', 'toctou', 'pid-reused', 'spoof-source', 'spoof-port'
+                )) {{
                     $script:StackPython
                 }} else {{
                     'C:\foreign\python.exe'
@@ -91,9 +116,20 @@ def _run_controlled_script(
 
         function Get-ProcessInfoById {{
             param([int]$ProcessId)
+            if ($env:LITWATCH_TEST_MODE -eq 'toctou') {{
+                Add-LifecycleTestEvent "recheck:$ProcessId"
+                return [PSCustomObject]@{{
+                    PID = $ProcessId
+                    CreationDate = '2026-08-14T00:00:01.0000000+00:00'
+                    ExecutablePath = 'C:\foreign\python.exe'
+                    CommandLine = '"C:\foreign\python.exe" -m uvicorn other.web:app --port ' +
+                        $env:LITWATCH_TEST_PORT
+                }}
+            }}
             if ($script:LifecycleStartedPid -eq $ProcessId) {{
                 return [PSCustomObject]@{{
                     PID = $ProcessId
+                    CreationDate = '2026-08-14T00:00:00.0000000+00:00'
                     ExecutablePath = $script:StackPython
                     CommandLine = '"' + $script:StackPython +
                         '" -m uvicorn litwatch.web:app --app-dir "' +
@@ -119,7 +155,20 @@ def _run_controlled_script(
         function Get-PythonRuntimeStatus {{
             param([int]$Port = 8000, [int]$TimeoutSeconds = 10)
             Add-LifecycleTestEvent "runtime:$Port"
-            return [PSCustomObject]@{{ Ready = $true; Detail = 'mode=python_default' }}
+            $MigrationReady = $env:LITWATCH_TEST_MIGRATION_READY -eq 'true'
+            $RuntimeReady = $env:LITWATCH_TEST_RUNTIME_READY -eq 'true'
+            $WorkerReady = $env:LITWATCH_TEST_WORKER_READY -eq 'true'
+            $SchedulerReady = $env:LITWATCH_TEST_SCHEDULER_READY -eq 'true'
+            return [PSCustomObject]@{{
+                Ready = $MigrationReady -and $RuntimeReady -and $WorkerReady -and $SchedulerReady
+                MigrationReady = $MigrationReady
+                RuntimeReady = $RuntimeReady
+                WorkerReady = $WorkerReady
+                SchedulerReady = $SchedulerReady
+                WorkerActive = 0
+                SchedulerLastError = ''
+                Detail = 'mode=python_default'
+            }}
         }}
 
         function Get-OpenAlexRegistryStatus {{
@@ -158,7 +207,25 @@ def _run_controlled_script(
 
     pid_path = data_dir / ("litwatch-stack.pid" if port == 8000 else f"litwatch-stack-{port}.pid")
     if managed_pid is not None:
-        pid_path.write_text(str(managed_pid), encoding="ascii")
+        fingerprint_fields = (
+            str(Path(sys.executable).resolve()).rstrip("\\/").lower(),
+            str((ROOT / "src").resolve()).rstrip("\\/").lower(),
+            "127.0.0.1",
+            str(port),
+        )
+        fingerprint = hashlib.sha256("\n".join(fingerprint_fields).encode()).hexdigest()
+        pid_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "pid": managed_pid,
+                    "creation_time_utc": "2026-08-14T00:00:00.0000000+00:00",
+                    "fingerprint": fingerprint,
+                },
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
 
     env = os.environ.copy()
     env.update(
@@ -168,6 +235,10 @@ def _run_controlled_script(
             "LITWATCH_TEST_PID": str(managed_pid or 4242),
             "LITWATCH_TEST_PORT": str(port),
             "LITWATCH_TEST_HEALTH_READY": str(health_ready).lower(),
+            "LITWATCH_TEST_MIGRATION_READY": str(migration_ready).lower(),
+            "LITWATCH_TEST_RUNTIME_READY": str(runtime_ready).lower(),
+            "LITWATCH_TEST_WORKER_READY": str(worker_ready).lower(),
+            "LITWATCH_TEST_SCHEDULER_READY": str(scheduler_ready).lower(),
         }
     )
     command = [
@@ -268,6 +339,7 @@ def test_default_stop_stops_only_the_saved_current_repository_pid(tmp_path: Path
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "stop:4242" in events
+    assert "resolve-python:8000" in events
     assert not [event for event in events if event.startswith("FORBIDDEN:")]
     assert "LitWatch: stopped PID 4242" in result.stdout
 
@@ -275,6 +347,46 @@ def test_default_stop_stops_only_the_saved_current_repository_pid(tmp_path: Path
 def test_default_stop_rejects_foreign_owner_even_with_stale_pid_file(tmp_path: Path):
     result, events = _run_controlled_script(
         tmp_path, "stop-stack.ps1", mode="foreign", managed_pid=4242
+    )
+
+    assert result.returncode != 0
+    assert "Refusing to stop it" in result.stderr
+    assert "stop:4242" not in events
+
+
+def test_default_stop_rejects_source_path_substring_spoof(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path, "stop-stack.ps1", mode="spoof-source", managed_pid=4242
+    )
+
+    assert result.returncode != 0
+    assert "Refusing to stop it" in result.stderr
+    assert "stop:4242" not in events
+
+
+def test_default_stop_rejects_port_prefix_spoof(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path, "stop-stack.ps1", mode="spoof-port", managed_pid=4242
+    )
+
+    assert result.returncode != 0
+    assert "Refusing to stop it" in result.stderr
+    assert "stop:4242" not in events
+
+
+def test_default_stop_rechecks_identity_immediately_before_stop(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path, "stop-stack.ps1", mode="toctou", managed_pid=4242
+    )
+
+    assert result.returncode != 0
+    assert "recheck:4242" in events
+    assert "stop:4242" not in events
+
+
+def test_default_stop_rejects_reused_pid_with_same_command(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path, "stop-stack.ps1", mode="pid-reused", managed_pid=4242
     )
 
     assert result.returncode != 0
@@ -309,7 +421,7 @@ def test_default_status_reports_python_runtime_components_without_legacy_probes(
 
     assert result.returncode == 0, result.stdout + result.stderr
     for label in (
-        "Migration Mode",
+        "Migration Verification",
         "Python Runtime",
         "LitWatch",
         "Provider Registry",
@@ -319,6 +431,54 @@ def test_default_status_reports_python_runtime_components_without_legacy_probes(
     ):
         assert label in result.stdout
     assert not [event for event in events if event.startswith("FORBIDDEN:")]
+    assert "resolve-python:8000" in events
+
+
+def test_default_status_rejects_failed_migration_verification(tmp_path: Path):
+    result, _ = _run_controlled_script(
+        tmp_path,
+        "status-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        migration_ready=False,
+    )
+
+    assert result.returncode != 0
+    assert "Migration Verification  FAIL" in result.stdout
+    assert "Python Runtime          PASS" in result.stdout
+    assert "System                  NOT READY" in result.stdout
+
+
+def test_default_status_rejects_stopped_job_worker(tmp_path: Path):
+    result, _ = _run_controlled_script(
+        tmp_path,
+        "status-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        worker_ready=False,
+    )
+
+    assert result.returncode != 0
+    assert "Migration Verification  PASS" in result.stdout
+    assert "Python Runtime          PASS" in result.stdout
+    assert "Job Worker/Scheduler    FAIL" in result.stdout
+    assert "System                  NOT READY" in result.stdout
+
+
+def test_default_status_rejects_stopped_scheduler(tmp_path: Path):
+    result, _ = _run_controlled_script(
+        tmp_path,
+        "status-stack.ps1",
+        mode="owned",
+        managed_pid=4242,
+        scheduler_ready=False,
+    )
+
+    assert result.returncode != 0
+    assert "Migration Verification  PASS" in result.stdout
+    assert "Python Runtime          PASS" in result.stdout
+    assert "Job Worker/Scheduler    FAIL" in result.stdout
+    assert "System                  NOT READY" in result.stdout
 
 
 def test_provider_registry_status_selects_only_openalex_from_rest_array(tmp_path: Path):
@@ -366,6 +526,68 @@ def test_provider_registry_status_selects_only_openalex_from_rest_array(tmp_path
     }
 
 
+def _run_python_resolution_probe(
+    tmp_path: Path, *, port: int, allow_external: bool
+) -> subprocess.CompletedProcess[str]:
+    assert POWERSHELL is not None
+    probe = tmp_path / f"python-resolution-{port}.ps1"
+    probe.write_text(
+        textwrap.dedent(
+            rf"""
+            . '{_powershell_literal(SCRIPTS / 'stack-common.ps1')}'
+            $env:LITWATCH_PYTHON = '{_powershell_literal(sys.executable)}'
+            $env:LITWATCH_ALLOW_EXTERNAL_PYTHON = '{int(allow_external)}'
+            try {{
+                Resolve-LitWatchPython -Port {port}
+                exit 0
+            }} catch {{
+                Write-Output $_.Exception.Message
+                exit 1
+            }}
+            """
+        ),
+        encoding="utf-8-sig",
+    )
+    return subprocess.run(
+        [
+            POWERSHELL,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(probe),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
+def test_default_port_rejects_external_python_even_with_smoke_switch(tmp_path: Path):
+    result = _run_python_resolution_probe(tmp_path, port=8000, allow_external=True)
+
+    assert result.returncode != 0
+    assert "current worktree" in result.stdout
+
+
+def test_nondefault_port_rejects_external_python_without_smoke_switch(tmp_path: Path):
+    result = _run_python_resolution_probe(tmp_path, port=18080, allow_external=False)
+
+    assert result.returncode != 0
+    assert "smoke" in result.stdout.lower()
+
+
+def test_nondefault_port_allows_explicit_external_python_for_smoke(tmp_path: Path):
+    result = _run_python_resolution_probe(tmp_path, port=18080, allow_external=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert str(Path(sys.executable).resolve()) in result.stdout
+
+
 def test_legacy_full_stack_scripts_remain_explicit_and_volume_preserving():
     start = _script_text("start-legacy-dify-stack.ps1").lower()
     stop = _script_text("stop-legacy-dify-stack.ps1").lower()
@@ -376,6 +598,9 @@ def test_legacy_full_stack_scripts_remain_explicit_and_volume_preserving():
     assert "docker compose up -d" in start
     assert "docker compose stop" in stop
     assert "down -v" not in stop
+    assert "resolve-litwatchpython" in stop
+    assert "stop-managedlitwatchprocess" in stop
+    assert "stop-process" not in stop
 
 
 def test_root_launchers_make_python_default_and_legacy_dify_explicit():

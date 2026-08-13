@@ -72,6 +72,10 @@ class SchedulerService:
         self._thread: threading.Thread | None = None
         self.last_error: str | None = None
 
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
@@ -140,6 +144,8 @@ class SchedulerService:
                 self.tick()
             except Exception as error:  # noqa: BLE001 - keep later polls alive
                 self.last_error = type(error).__name__
+            else:
+                self.last_error = None
 
 
 def _aware_utc(value: datetime) -> datetime:

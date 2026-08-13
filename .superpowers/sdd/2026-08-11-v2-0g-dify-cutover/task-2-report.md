@@ -77,3 +77,63 @@
   protected v1.7 process owns it. A real v2.0 default-port cold start can be run
   only after that process is stopped by its owner through an authorized v1.7
   lifecycle action.
+
+## G2 review fix round 1
+
+### RED / GREEN evidence
+
+- Exact ownership, TOCTOU, and interpreter-policy regressions first produced
+  `5 failed, 1 passed`. After the implementation, the lifecycle suite passed.
+  The cases cover a foreign `src` path that merely contains the expected path,
+  a port-prefix spoof, an owner that changes between inspection and stop, a
+  default-port external interpreter, and a non-default external interpreter
+  without the explicit smoke switch. A same-command/reused-PID regression also
+  verifies that a different creation time is rejected.
+- Live component-health regressions first produced `7 failed`. GREEN exposes
+  and consumes `migration_verified`, `runtime_started`,
+  `job_worker_running`, `job_worker_active`, `scheduler_running`, and the safe
+  `scheduler_last_error`. Simulated migration failure, stopped worker, and
+  stopped scheduler all keep `System` at `NOT READY`.
+- Stand-alone status/stop interpreter resolution first produced `2 failed`,
+  then `2 passed` after both scripts resolved the authorized interpreter before
+  ownership checks. The explicit legacy stop hardening test also went RED then
+  GREEN, and legacy stop now performs the same immediate identity recheck while
+  retaining `docker compose stop` and volume preservation.
+
+### Hardened lifecycle behavior
+
+- The managed process record is now a versioned JSON identity containing PID,
+  normalized creation time, and a SHA-256 fingerprint of the exact validated
+  executable/app-directory/host/port contract. Windows arguments are parsed
+  with `CommandLineToArgvW`; exact token count, module, canonical source path,
+  host, and port are required. Substring and port-prefix matches are rejected.
+- Immediately before every managed stop, the process is fetched again and its
+  PID, creation time, executable, exact arguments, and fingerprint are
+  revalidated. A missing, stale, changed, or reused PID fails closed.
+- Port 8000 accepts only this worktree's `.venv\Scripts\python.exe`. An external
+  `LITWATCH_PYTHON` is permitted only when both
+  `LITWATCH_ALLOW_EXTERNAL_PYTHON=1` and a non-default port are explicit. Exact
+  `litwatch.web` import-path validation remains mandatory.
+- Scheduler health uses the service's public `is_running` property backed by
+  its owned thread, plus the sanitized exception type in `last_error`; it does
+  not inspect private thread state from the API or scripts. Worker health and
+  active count come from the live `JobWorker` instance. Migration health comes
+  from the completed application database preflight, and runtime health comes
+  from `ApplicationRuntime.started`.
+
+### Guarded smoke and final verification
+
+- No virtual environment or dependency was created or installed. With
+  `LITWATCH_ALLOW_EXTERNAL_PYTHON=1` on alternate port 18080, cold start PID
+  `50028`, warm start on the same PID, live status, stop, restart PID `48276`,
+  and final stop all passed. Every real component-health field was healthy;
+  the final port had zero listeners and no identity file.
+- Port 8000 remained owned by protected v1.7 PID `37408`, created
+  `2026-08-13 23:22:43`, throughout the work. Its executable and command still
+  point to the protected main checkout. It was never stopped or modified, so a
+  real v2 default-port smoke remains **BLOCKED SMOKE** by design.
+- Focused lifecycle/runtime/scheduler/job tests: `55 passed` (one pre-existing
+  Starlette/httpx deprecation warning). Full suite: `576 passed` with the same
+  single warning. Ruff, all six PowerShell parser checks, and
+  `git diff --check` passed. Port 18080 was clear and its identity file absent
+  after verification.

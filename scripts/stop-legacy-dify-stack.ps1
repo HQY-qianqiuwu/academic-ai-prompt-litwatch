@@ -9,14 +9,17 @@ try {
         Write-Output "LitWatch: already stopped"
     }
     else {
+        $script:StackPython = Resolve-LitWatchPython -Port $Port
+        $ManagedIdentities = @()
         foreach ($PortProcess in $PortProcesses) {
-            if (-not (Test-IsCurrentLitWatchProcess -ProcessInfo $PortProcess -Port $Port)) {
+            if (-not (Test-IsCurrentLitWatchProcess -ProcessInfo $PortProcess -Port $Port -ExpectedHost "0.0.0.0")) {
                 throw "[Port $Port] Port is owned by a process outside the current LitWatch repository. Refusing to stop it. $(Format-PortProcessInfo -ProcessInfo $PortProcess)"
             }
+            $ManagedIdentities += New-ManagedStackIdentity -ProcessInfo $PortProcess -Port $Port -ExpectedHost "0.0.0.0"
         }
-        foreach ($PortProcess in $PortProcesses) {
-            Stop-Process -Id $PortProcess.PID -ErrorAction Stop
-            Write-Output "LitWatch: stopped PID $($PortProcess.PID)"
+        foreach ($ManagedIdentity in $ManagedIdentities) {
+            Stop-ManagedLitWatchProcess -Identity $ManagedIdentity -Port $Port -ExpectedHost "0.0.0.0"
+            Write-Output "LitWatch: stopped PID $($ManagedIdentity.PID)"
         }
         if (Test-Path -LiteralPath $script:StackPidPath) {
             Remove-Item -LiteralPath $script:StackPidPath -Force

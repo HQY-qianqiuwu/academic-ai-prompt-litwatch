@@ -238,3 +238,14 @@ def test_fastapi_lifespan_starts_and_stops_scheduler(tmp_path):
         assert scheduler.started == 1
 
     assert scheduler.stopped == 1
+
+
+def test_scheduler_exposes_actual_background_thread_health(tmp_path):
+    database, _, _, _, scheduler = scheduler_stack(tmp_path)
+
+    assert scheduler.is_running is False
+    scheduler.start()
+    assert scheduler.is_running is True
+    scheduler.stop()
+    assert scheduler.is_running is False
+    database.connection.close()

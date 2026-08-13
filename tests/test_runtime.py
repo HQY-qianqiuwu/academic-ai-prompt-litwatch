@@ -32,7 +32,9 @@ def test_application_runtime_starts_and_stops_scheduler_once():
         scheduler_stop=lambda: calls.append("scheduler-stop"),
     )
 
+    assert runtime.migration_verified is False
     runtime.start()
+    assert runtime.migration_verified is True
     runtime.start()
     runtime.stop()
     runtime.stop()
@@ -62,6 +64,8 @@ def test_application_runtime_fails_closed_before_services_start():
         runtime.start()
 
     assert calls == ["database-verify"]
+    assert runtime.started is False
+    assert runtime.migration_verified is False
 
 
 def test_application_runtime_unwinds_worker_when_scheduler_start_fails():
@@ -153,7 +157,7 @@ def test_scheduler_stop_failure_still_stops_worker_and_reports_safe_error():
     ]
 
 
-def test_runtime_status_api_returns_only_dependency_flags(tmp_path):
+def test_runtime_status_api_returns_safe_live_component_health(tmp_path):
     topics = tmp_path / "topics.yaml"
     topics.write_text("topics: []\n", encoding="utf-8")
     settings = Settings(
@@ -173,4 +177,54 @@ def test_runtime_status_api_returns_only_dependency_flags(tmp_path):
         "requires_dify": False,
         "requires_docker": False,
         "requires_ssrf_proxy": False,
+        "migration_verified": True,
+        "runtime_started": True,
+        "job_worker_running": True,
+        "job_worker_active": 0,
+        "scheduler_running": True,
+        "scheduler_last_error": None,
     }
+
+
+def test_runtime_status_api_detects_a_stopped_job_worker(tmp_path):
+    topics = tmp_path / "topics.yaml"
+    topics.write_text("topics: []\n", encoding="utf-8")
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "worker-health.db",
+        topics_path=topics,
+        analysis_modes_path=Path("config/analysis_modes.yaml").resolve(),
+    )
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        app.state.job_worker.stop()
+        document = client.get("/api/v2/runtime").json()
+
+    assert document["runtime_started"] is True
+    assert document["migration_verified"] is True
+    assert document["job_worker_running"] is False
+    assert document["scheduler_running"] is True
+
+
+def test_runtime_status_api_detects_stopped_scheduler_and_safe_error(tmp_path):
+    topics = tmp_path / "topics.yaml"
+    topics.write_text("topics: []\n", encoding="utf-8")
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "scheduler-health.db",
+        topics_path=topics,
+        analysis_modes_path=Path("config/analysis_modes.yaml").resolve(),
+    )
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        app.state.scheduler_service.last_error = "ValueError"
+        app.state.scheduler_service.stop()
+        document = client.get("/api/v2/runtime").json()
+
+    assert document["runtime_started"] is True
+    assert document["migration_verified"] is True
+    assert document["job_worker_running"] is True
+    assert document["scheduler_running"] is False
+    assert document["scheduler_last_error"] == "ValueError"
