@@ -17,12 +17,17 @@ tag.
 
 1. A real FastAPI lifespan starts in `dify_free` mode and exposes live
    migration, runtime, JobWorker, and Scheduler health. The same application
-   serves Manual Search, safe Provider Settings data, and zh-CN/English
-   navigation.
+   serves Manual Search through the production registry/profile-backed
+   `LiteratureSearchService`, stores a write-only Provider Settings credential,
+   and serves zh-CN/English navigation. Multi-provider results exercise
+   aggregation, DOI deduplication, deterministic ranking, and HTTP 429 failure
+   isolation.
 2. Real subscription, historical-paper, run, scheduler, dashboard-delivery,
-   and Radar services share one isolated SQLite database. Repeated and
-   scheduled runs remove historical duplicates, generate a weekly digest,
-   and survive a database reopen alongside Radar history.
+   and Radar services share one isolated SQLite database and the exact same
+   production `LiteratureSearchService` instance/configuration path used by
+   the Manual Search API. Repeated and scheduled runs remove historical
+   duplicates, generate a weekly digest, and survive a database reopen
+   alongside Radar history.
 3. Structured Paper Analysis passes through the real `LLMGateway`,
    `PaperAnalyzer`, `PaperAnalysisService`, usage ledger, and
    `AnalysisRepository`, then reuses the persisted analysis on an identical
@@ -44,6 +49,14 @@ field `requires_api_key`. The response structure matched the existing focused
 contract; the assertion was corrected to reject only an exact raw `api_key`
 key. The final acceptance run returned `5 passed`. This was not a production
 failure and no runtime behavior was weakened or changed.
+
+Review then identified that the original literature fixture replaced the
+whole search service and therefore did not prove its internal seams. A new
+regression requiring FastAPI, Subscription, Scheduler, and Radar to hold a
+real shared `LiteratureSearchService` failed against that fixture, as expected.
+The fixture was replaced at the injectable `PaperSource`/Provider factory
+boundary only. The production search implementation now remains in every
+acceptance path; no production change was required.
 
 ## Runtime health contract
 
@@ -70,20 +83,33 @@ constants fabricated by the acceptance fixture.
 ## Real and deterministic boundaries
 
 The automated gate uses the production FastAPI routes and lifespan, SQLite
-schema and migrations, repositories, subscription and Radar services,
-scheduler, weekly digest delivery, structured-analysis gateway/service,
-usage ledger, durable job worker, templates, static localization, backup, and
-recovery implementation.
+schema and migrations, Provider registry/profile/credential selection,
+`LiteratureSearchService`, aggregation, deduplication, ranking, failure
+classification, repositories, subscription and Radar services, scheduler,
+weekly digest delivery, structured-analysis gateway/service, usage ledger,
+durable job worker, templates, static localization, backup, and recovery
+implementation.
 
 Only external nondeterminism is replaced:
 
-- literature-provider responses use a scripted normalized
-  `LiteratureSearchResult`; no provider adapter opens the network;
+- deterministic `PaperSource` objects replace only external Provider I/O and
+  return source-native `Paper` lists or a controlled Provider exception. The
+  real registry builds those sources from the active profile, the real
+  `LiteratureSearchService` invokes them and constructs
+  `LiteratureSearchResult`, and no provider adapter opens the network;
 - the structured LLM provider returns deterministic schema-valid JSON while
   the real gateway, policy, ledger, analyzer, service, and repository remain
   in the path; and
-- clocks and generated identifiers are fixed where scheduling or persisted
-  ordering would otherwise depend on wall time or randomness.
+- a fixed current date and explicit scheduler due time remove date-dependent
+  nondeterminism without replacing scheduling behavior.
+
+Provider Settings posts a test-only sentinel credential through the real
+write-only API into the process-local `InMemoryCredentialStore`. The active
+profile is then used to build the Semantic Scholar fake source, proving
+credential resolution. API responses, the server-rendered Provider Settings
+page and navigation pages, and the Provider Settings/localization JavaScript
+are all asserted not to contain the sentinel or a raw `api_key` response
+field. No `.env` file is used.
 
 The job acceptance handler is deterministic and secret-free. The acceptance
 timeout path raises `TimeoutError` through the real worker normalization path;
@@ -140,13 +166,33 @@ Initial result: `5 passed, 1 warning in 1.68s`.
 Final result after the exact Provider Settings response-key assertion:
 `5 passed, 1 warning in 1.35s`.
 
+Review-fix RED:
+
+```powershell
+python -m pytest -q tests/test_v2_acceptance.py -x
+```
+
+Result: `1 failed`; FastAPI held the whole-service `ScriptedSearch` fixture,
+not a production `LiteratureSearchService`. This was the intended review
+regression failure.
+
+Review-fix focused GREEN:
+
+```powershell
+python -m pytest -q tests/test_v2_acceptance.py tests/test_literature_search_service.py tests/test_literature_search_api.py tests/test_provider_config.py tests/test_provider_registry.py tests/test_provider_settings_ui.py tests/test_subscription_runs.py tests/test_scheduler.py tests/test_radar_backfill.py tests/test_radar_web.py
+```
+
+Result: `117 passed, 1 warning in 7.76s`.
+
+Final revised acceptance result: `5 passed, 1 warning in 1.48s`.
+
 Full suite:
 
 ```powershell
 python -m pytest -q
 ```
 
-Final result: `591 passed, 1 warning in 104.87s`.
+Final review-fix result: `591 passed, 1 warning in 92.44s`.
 
 Static and repository gates:
 

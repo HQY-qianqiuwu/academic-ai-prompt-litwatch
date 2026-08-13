@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import UTC, date, datetime, timedelta
-from itertools import count
 from pathlib import Path
 from time import monotonic, sleep
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -23,30 +23,25 @@ from litwatch.llm import LLMBudget, LLMGateway, LLMResponse, LLMUsage
 from litwatch.llm.security import CostGuard, DataEgressPolicy, LLMUsageLedger
 from litwatch.migrations import Migration, MigrationCoordinator, MigrationSafetyError
 from litwatch.models import Author, Paper
-from litwatch.provider_config import ProviderProfileStore, default_provider_profile
+from litwatch.provider_config import (
+    ProviderProfileStore,
+    ProviderType,
+    default_provider_profile,
+)
 from litwatch.radar_repository import RadarRepository
-from litwatch.radars import RadarSpec
-from litwatch.services.delivery import DeliveryService
 from litwatch.services.jobs import JobWorker
 from litwatch.services.literature_search import (
-    LiteratureSearchDiagnostics,
-    LiteratureSearchResult,
-    ProviderExecutionStatus,
-    ProviderSearchStatus,
+    LiteratureSearchService,
 )
 from litwatch.services.paper_analysis import AnalysisContext, PaperAnalysisService
-from litwatch.services.radars import ResearchRadarService
-from litwatch.services.scheduler import SchedulerService
-from litwatch.services.subscription_runs import SubscriptionRunService
-from litwatch.services.subscriptions import SubscriptionService
-from litwatch.sources.registry import ProviderRegistry
+from litwatch.sources.registry import InMemoryCredentialStore, ProviderRegistry
 from litwatch.subscription_repository import SubscriptionRepository
 from litwatch.subscription_run_repository import SubscriptionRunRepository
 from litwatch.subscription_runs import SubscriptionRunTrigger
-from litwatch.subscriptions import SubscriptionSpec
 from litwatch.web import create_app
 
 NOW = datetime(2026, 8, 14, 8, 0, tzinfo=UTC)
+PROVIDER_SECRET = "acceptance-provider-secret-must-not-leak"
 
 
 def _settings(tmp_path: Path, *, name: str = "acceptance.db") -> Settings:
@@ -93,89 +88,149 @@ def _paper(identifier: str, *, year: int = 2026, score: float = 0.9) -> Paper:
     )
 
 
-def _search_result(papers: list[Paper]) -> LiteratureSearchResult:
-    return LiteratureSearchResult(
-        query="underwater acoustic TDOA localization",
-        papers=papers,
-        provider_status=[
-            ProviderSearchStatus(
-                provider="openalex",
-                status=ProviderExecutionStatus.SUCCESS,
-                fetched_count=len(papers),
-                returned_count=len(papers),
-            )
-        ],
-        diagnostics=LiteratureSearchDiagnostics(
-            raw_count=len(papers),
-            dedup_count=len(papers),
-            duplicates_removed=0,
-        ),
-    )
+class DeterministicPaperSource:
+    """Deterministic fake at the external PaperSource boundary only."""
 
-
-class ScriptedSearch:
-    """Replace only external provider nondeterminism, not LitWatch services."""
-
-    def __init__(self, outcomes: list[LiteratureSearchResult]) -> None:
+    def __init__(self, name: str, outcomes: list[list[Paper] | Exception]) -> None:
+        self.name = name
         self.outcomes = list(outcomes)
-        self.calls: list[dict[str, object]] = []
+        self.calls: list[tuple[Topic, date, date, int]] = []
 
     def search(
         self,
-        *,
-        topic: str,
+        topic: Topic,
+        start_date: date,
+        end_date: date,
         limit: int,
-        providers: list[str] | None = None,
-        start_date: date | None = None,
-        end_date: date | None = None,
-    ) -> LiteratureSearchResult:
-        self.calls.append(
-            {
-                "topic": topic,
-                "limit": limit,
-                "providers": providers,
-                "start_date": start_date,
-                "end_date": end_date,
-            }
-        )
-        return self.outcomes.pop(0)
+    ) -> list[Paper]:
+        self.calls.append((topic, start_date, end_date, limit))
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return [paper.model_copy(deep=True) for paper in outcome]
 
 
-def _provider_components(
+def _rate_limit_error() -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://provider.invalid/search")
+    response = httpx.Response(429, request=request)
+    return httpx.HTTPStatusError(
+        "deterministic rate limit", request=request, response=response
+    )
+
+
+def _production_search_stack(
     settings: Settings,
-) -> tuple[ProviderRegistry, ProviderProfileStore]:
+    sources: dict[ProviderType, DeterministicPaperSource],
+) -> tuple[
+    LiteratureSearchService,
+    ProviderRegistry,
+    ProviderProfileStore,
+    InMemoryCredentialStore,
+    list[tuple[str, str | None]],
+]:
+    credentials = InMemoryCredentialStore()
+    factory_calls: list[tuple[str, str | None]] = []
+
+    def factory_for(source: DeterministicPaperSource):
+        def build(config, credential):
+            factory_calls.append((config.provider_id, credential))
+            return source
+
+        return build
+
+    registry = ProviderRegistry(
+        factories={
+            provider_type: factory_for(source)
+            for provider_type, source in sources.items()
+        },
+        credential_store=credentials,
+    )
     profile = default_provider_profile(
         openalex_base_url=settings.openalex_base_url,
         semantic_scholar_base_url=settings.semantic_scholar_base_url,
         arxiv_base_url=settings.arxiv_base_url,
         crossref_base_url=settings.crossref_base_url,
     )
-    return ProviderRegistry.from_settings(settings), ProviderProfileStore([profile])
+    profiles = ProviderProfileStore([profile])
+    search = LiteratureSearchService(
+        registry=registry,
+        profile_store=profiles,
+        current_date=lambda: NOW.date(),
+    )
+    return search, registry, profiles, credentials, factory_calls
 
 
 def test_dify_free_runtime_serves_search_settings_and_bilingual_navigation(tmp_path):
-    search = ScriptedSearch([_search_result([_paper("manual")])])
-    app = create_app(_settings(tmp_path), literature_search_service=search)
+    settings = _settings(tmp_path)
+    duplicate_openalex = _paper("duplicate")
+    duplicate_semantic = _paper("duplicate")
+    duplicate_semantic.sources = ["semantic_scholar"]
+    duplicate_semantic.source_ids = {"semantic_scholar": "duplicate"}
+    openalex = DeterministicPaperSource(
+        "openalex",
+        [
+            [duplicate_openalex, _paper("unique")],
+            [_paper("partial")],
+        ],
+    )
+    semantic = DeterministicPaperSource(
+        "semantic_scholar",
+        [[duplicate_semantic], _rate_limit_error()],
+    )
+    search, registry, profiles, credentials, factory_calls = _production_search_stack(
+        settings,
+        {
+            ProviderType.OPENALEX: openalex,
+            ProviderType.SEMANTIC_SCHOLAR: semantic,
+        },
+    )
+    app = create_app(
+        settings,
+        literature_search_service=search,
+        provider_registry=registry,
+        provider_profile_store=profiles,
+        credential_store=credentials,
+    )
+
+    assert isinstance(app.state.literature_search_service, LiteratureSearchService)
+    assert app.state.subscription_run_service.search_service is search
+    assert app.state.scheduler_service.run_service.search_service is search
+    assert app.state.research_radar_service.search_service is search
 
     with TestClient(app) as client:
         runtime = client.get("/api/v2/runtime")
-        result = client.post(
-            "/api/v1/literature/search",
-            json={
-                "topic": "underwater acoustic TDOA localization",
-                "limit": 5,
-                "providers": ["openalex"],
-            },
-        )
-        capabilities = client.get("/api/v1/providers")
-        profiles = client.get("/api/v1/provider-profiles")
         updated_profile = client.post(
             "/api/v1/provider-profiles",
             json={
                 "profile_id": "default",
-                "providers": [{"provider_id": "openalex", "enabled": True}],
+                "providers": [
+                    {
+                        "provider_id": "semantic_scholar",
+                        "requires_api_key": True,
+                        "credential_reference": "semantic_scholar_default",
+                        "api_key": PROVIDER_SECRET,
+                    }
+                ],
             },
         )
+        aggregated = client.post(
+            "/api/v1/literature/search",
+            json={
+                "topic": "underwater acoustic TDOA localization",
+                "limit": 5,
+                "providers": ["openalex", "semantic_scholar"],
+            },
+        )
+        partial = client.post(
+            "/api/v1/literature/search",
+            json={
+                "topic": "underwater acoustic TDOA localization",
+                "limit": 5,
+                "providers": ["openalex", "semantic_scholar"],
+            },
+        )
+        capabilities = client.get("/api/v1/providers")
+        profile_response = client.get("/api/v1/provider-profiles")
         pages = [
             client.get(path)
             for path in (
@@ -189,6 +244,7 @@ def test_dify_free_runtime_serves_search_settings_and_bilingual_navigation(tmp_p
             )
         ]
         i18n = client.get("/static/i18n.js")
+        provider_script = client.get("/static/provider-settings.js")
 
     assert runtime.status_code == 200
     assert runtime.json() == {
@@ -204,21 +260,64 @@ def test_dify_free_runtime_serves_search_settings_and_bilingual_navigation(tmp_p
         "scheduler_running": True,
         "scheduler_last_error": None,
     }
-    assert result.status_code == 200
-    assert result.json()["papers"][0]["canonical_id"] == "doi:10.1000/manual"
-    assert result.json()["provider_status"][0]["status"] == "success"
-    assert search.calls[0]["providers"] == ["openalex"]
-    assert capabilities.status_code == profiles.status_code == 200
+    assert aggregated.status_code == 200
+    assert aggregated.json()["diagnostics"]["raw_count"] == 3
+    assert aggregated.json()["diagnostics"]["dedup_count"] == 2
+    assert aggregated.json()["diagnostics"]["duplicates_removed"] == 1
+    merged = next(
+        paper
+        for paper in aggregated.json()["papers"]
+        if paper["canonical_id"] == "doi:10.1000/duplicate"
+    )
+    assert merged["sources"] == ["openalex", "semantic_scholar"]
+    assert len(aggregated.json()["diagnostics"]["ranking"]) == 2
+    assert [paper["canonical_id"] for paper in aggregated.json()["papers"]] == [
+        item["canonical_id"] for item in aggregated.json()["diagnostics"]["ranking"]
+    ]
+    rank_scores = [
+        item["rank_score"] for item in aggregated.json()["diagnostics"]["ranking"]
+    ]
+    assert rank_scores == sorted(rank_scores, reverse=True)
+    assert partial.status_code == 200
+    assert partial.json()["papers"][0]["canonical_id"] == "doi:10.1000/partial"
+    assert [item["status"] for item in partial.json()["provider_status"]] == [
+        "success",
+        "rate_limited",
+    ]
+    assert partial.json()["provider_status"][1]["error_code"] == "upstream_429"
+    assert all(call[0].query == "underwater acoustic TDOA localization" for call in openalex.calls)
+    assert all(call[3] == 10 for call in [*openalex.calls, *semantic.calls])
+    assert factory_calls == [
+        ("openalex", None),
+        ("semantic_scholar", PROVIDER_SECRET),
+        ("openalex", None),
+        ("semantic_scholar", PROVIDER_SECRET),
+    ]
+    assert credentials.source("semantic_scholar_default") == "profile"
+    assert credentials.resolve("semantic_scholar_default") == PROVIDER_SECRET
+    stored_semantic = profiles.get("default").provider("semantic_scholar")
+    assert stored_semantic.requires_api_key is True
+    assert stored_semantic.credential_reference == "semantic_scholar_default"
+    assert capabilities.status_code == profile_response.status_code == 200
     assert {item["provider_type"] for item in capabilities.json()} >= {
         "openalex",
         "semantic_scholar",
         "arxiv",
         "crossref",
     }
-    assert profiles.json()[0]["profile_id"] == "default"
-    assert all("api_key" not in item for item in profiles.json()[0]["providers"])
+    assert profile_response.json()[0]["profile_id"] == "default"
+    semantic_projection = next(
+        item
+        for item in profile_response.json()[0]["providers"]
+        if item["provider_id"] == "semantic_scholar"
+    )
+    assert semantic_projection["configured"] is True
+    assert semantic_projection["credential_configured"] is True
+    assert all(
+        "api_key" not in item
+        for item in profile_response.json()[0]["providers"]
+    )
     assert updated_profile.status_code == 200
-    assert updated_profile.json()["providers"][0]["enabled"] is True
     assert all(
         "api_key" not in item for item in updated_profile.json()["providers"]
     )
@@ -230,123 +329,113 @@ def test_dify_free_runtime_serves_search_settings_and_bilingual_navigation(tmp_p
     assert "\u6587\u732e\u68c0\u7d22" in pages[0].text
     assert "Python Analysis" in i18n.text
     assert "Provider Settings" in i18n.text
-
-
-class MutableClock:
-    def __init__(self, value: datetime) -> None:
-        self.value = value
-
-    def __call__(self) -> datetime:
-        return self.value
+    projected_content = [
+        updated_profile.text,
+        profile_response.text,
+        aggregated.text,
+        partial.text,
+        capabilities.text,
+        i18n.text,
+        provider_script.text,
+        *(page.text for page in pages),
+    ]
+    assert all(PROVIDER_SECRET not in content for content in projected_content)
 
 
 def test_radar_subscription_scheduler_digest_dedup_and_restart_share_sqlite(tmp_path):
     settings = _settings(tmp_path, name="features.db")
-    database = Database(settings.database_path)
-    registry, profiles = _provider_components(settings)
-    subscriptions = SubscriptionRepository(database)
-    runs = SubscriptionRunRepository(database)
-    history = HistoricalPaperRepository(database)
-    deliveries = DeliveryRepository(database)
-    clock = MutableClock(NOW)
-    subscription_service = SubscriptionService(
-        subscriptions,
-        registry,
-        profiles,
-        clock=clock,
-        id_factory=lambda: "subscription-acceptance",
-    )
-    search = ScriptedSearch(
+    openalex = DeterministicPaperSource(
+        "openalex",
         [
-            _search_result([_paper("a"), _paper("b", score=0.8)]),
-            _search_result(
-                [_paper("a"), _paper("b", score=0.8), _paper("c", score=0.7)]
-            ),
-            _search_result(
-                [
-                    _paper("a"),
-                    _paper("b", score=0.8),
-                    _paper("c", score=0.7),
-                    _paper("d", score=0.6),
-                ]
-            ),
-        ]
+            [_paper("manual")],
+            [_paper("a"), _paper("b", score=0.8)],
+            [_paper("a"), _paper("b", score=0.8), _paper("c", score=0.7)],
+            [
+                _paper("a"),
+                _paper("b", score=0.8),
+                _paper("c", score=0.7),
+                _paper("d", score=0.6),
+            ],
+            [_paper("radar", year=2026)],
+        ],
     )
-    run_ids = count(1)
-    delivery_ids = count(1)
-    delivery_service = DeliveryService(
-        deliveries,
-        history,
-        clock=clock,
-        id_factory=lambda: f"delivery-{next(delivery_ids)}",
+    search, registry, profiles, credentials, _ = _production_search_stack(
+        settings, {ProviderType.OPENALEX: openalex}
     )
-    run_service = SubscriptionRunService(
-        search,
-        subscriptions,
-        runs,
-        history,
-        delivery_service,
-        clock=clock,
-        id_factory=lambda: f"run-object-{next(run_ids)}",
+    app = create_app(
+        settings,
+        literature_search_service=search,
+        provider_registry=registry,
+        provider_profile_store=profiles,
+        credential_store=credentials,
     )
-    subscription = subscription_service.create(
-        SubscriptionSpec(
-            name="TDOA Weekly",
-            topic="underwater acoustic TDOA localization",
-            providers=["openalex"],
-            search_limit=10,
-            recommendation_limit=5,
-            weekday=4,
-            local_time="16:00",
-            timezone="Asia/Shanghai",
+
+    assert app.state.literature_search_service is search
+    assert app.state.subscription_run_service.search_service is search
+    assert app.state.scheduler_service.run_service.search_service is search
+    assert app.state.research_radar_service.search_service is search
+
+    with TestClient(app) as client:
+        manual = client.post(
+            "/api/v1/literature/search",
+            json={
+                "topic": "underwater acoustic TDOA localization",
+                "limit": 5,
+                "providers": ["openalex"],
+            },
         )
-    )
-
-    first = run_service.run_now(subscription.id)
-    second = run_service.run_now(subscription.id)
-    due = NOW + timedelta(days=7)
-    clock.value = due
-    subscriptions.set_next_run_at(subscription.id, due)
-    scheduler = SchedulerService(
-        subscriptions,
-        runs,
-        run_service,
-        clock=clock,
-        owner="acceptance-scheduler",
-    )
-    [scheduled_id] = scheduler.tick(due)
-    scheduled = runs.get(scheduled_id)
-    scheduled_delivery = deliveries.get_for_run(scheduled_id)
-
-    radar_search = ScriptedSearch(
-        [_search_result([_paper("radar", year=2026)])]
-    )
-    radar_ids = iter(("radar-acceptance", "radar-scan-acceptance"))
-    radar_service = ResearchRadarService(
-        RadarRepository(database),
-        registry,
-        profiles,
-        search_service=radar_search,
-        clock=clock,
-        id_factory=lambda: next(radar_ids),
-    )
-    radar = radar_service.create(
-        RadarSpec(
-            name="TDOA Evolution",
-            topic="underwater acoustic TDOA localization",
-            keywords=["TDOA"],
-            providers=["openalex"],
-            start_year=2026,
-            end_year=2026,
-            recent_window_years=1,
-            search_limit_per_period=10,
+        created = client.post(
+            "/api/v1/subscriptions",
+            json={
+                "name": "TDOA Weekly",
+                "topic": "underwater acoustic TDOA localization",
+                "providers": ["openalex"],
+                "search_limit": 10,
+                "recommendation_limit": 5,
+                "frequency": "weekly",
+                "weekday": 4,
+                "local_time": "16:00",
+                "timezone": "Asia/Shanghai",
+                "enabled": True,
+            },
         )
-    )
-    radar_scan = radar_service.scan(radar.id)
+        subscription_id = created.json()["id"]
+        first = client.post(f"/api/v1/subscriptions/{subscription_id}/run")
+        second = client.post(f"/api/v1/subscriptions/{subscription_id}/run")
+        due = NOW + timedelta(days=7)
+        app.state.subscription_service.repository.set_next_run_at(
+            subscription_id, due
+        )
+        [scheduled_id] = app.state.scheduler_service.tick(due)
+        scheduled = app.state.subscription_run_repository.get(scheduled_id)
+        scheduled_delivery = app.state.delivery_repository.get_for_run(scheduled_id)
+        radar = client.post(
+            "/api/v1/radars",
+            json={
+                "name": "TDOA Evolution",
+                "topic": "underwater acoustic TDOA localization",
+                "keywords": ["TDOA"],
+                "exclude_keywords": [],
+                "providers": ["openalex"],
+                "start_year": 2026,
+                "end_year": 2026,
+                "recent_window_years": 1,
+                "search_limit_per_period": 10,
+                "enabled": True,
+            },
+        )
+        radar_id = radar.json()["id"]
+        accepted_scan = client.post(f"/api/v1/radars/{radar_id}/scan")
+        radar_scans = client.get(f"/api/v1/radars/{radar_id}/scans")
+        radar_papers = client.get(f"/api/v1/radars/{radar_id}/papers")
 
-    assert first.run.recommended_count == 2
-    assert second.run.historical_duplicates_removed == 2
-    assert [item.canonical_id for item in second.recommendations] == [
+    assert manual.status_code == 200
+    assert manual.json()["papers"][0]["canonical_id"] == "doi:10.1000/manual"
+    assert created.status_code == 201
+    assert first.status_code == second.status_code == 200
+    assert first.json()["run"]["recommended_count"] == 2
+    assert second.json()["run"]["historical_duplicates_removed"] == 2
+    assert [item["canonical_id"] for item in second.json()["recommendations"]] == [
         "doi:10.1000/c"
     ]
     assert scheduled is not None
@@ -356,22 +445,29 @@ def test_radar_subscription_scheduler_digest_dedup_and_restart_share_sqlite(tmp_
     assert [item["canonical_id"] for item in scheduled_delivery.digest["papers"]] == [
         "doi:10.1000/d"
     ]
-    assert radar_scan.scan.status.value == "success"
-    assert radar_scan.new_canonical_ids == ["doi:10.1000/radar"]
-    assert radar_scan.scan.analysis["annual_counts"] == [{"year": 2026, "count": 1}]
-    database.connection.close()
+    assert radar.status_code == 201
+    assert accepted_scan.status_code == 202
+    assert radar_scans.json()[0]["status"] == "success"
+    assert radar_scans.json()[0]["analysis"]["annual_counts"] == [
+        {"year": 2026, "count": 1}
+    ]
+    assert [paper["canonical_id"] for paper in radar_papers.json()] == [
+        "doi:10.1000/radar"
+    ]
+    assert len(openalex.calls) == 5
+    assert [call[3] for call in openalex.calls] == [10, 20, 20, 20, 20]
 
     restarted = Database(settings.database_path)
-    assert SubscriptionRepository(restarted).get(subscription.id) is not None
-    assert len(SubscriptionRunRepository(restarted).list_for_subscription(subscription.id)) == 3
-    assert len(DeliveryRepository(restarted).list(subscription.id)) == 3
+    assert SubscriptionRepository(restarted).get(subscription_id) is not None
+    assert len(SubscriptionRunRepository(restarted).list_for_subscription(subscription_id)) == 3
+    assert len(DeliveryRepository(restarted).list(subscription_id)) == 3
     assert (
         HistoricalPaperRepository(restarted)
-        .get_subscription_paper(subscription.id, "doi:10.1000/d")
+        .get_subscription_paper(subscription_id, "doi:10.1000/d")
         .recommendation_count
         == 1
     )
-    assert RadarRepository(restarted).latest_successful_scan(radar.id) is not None
+    assert RadarRepository(restarted).latest_successful_scan(radar_id) is not None
     restarted.connection.close()
 
 

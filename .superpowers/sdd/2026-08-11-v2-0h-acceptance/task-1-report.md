@@ -67,3 +67,41 @@ Real lifecycle, port, provider-network, copied-v1.7 migration, and restart
 smoke remain Task 2/manual acceptance work. They must preserve the protected
 v1.7 owner, retain the frozen legacy rollback assets, and keep v2.0 Not Stable
 until acceptance is complete.
+
+## Review fix: real search composition
+
+The review correctly identified that the first `ScriptedSearch` fixture
+replaced the complete search service. Although downstream services were real,
+that fixture bypassed Provider registry/profile selection and the production
+aggregation, deduplication, ranking, and failure-isolation path.
+
+TDD evidence:
+
+- RED: `python -m pytest -q tests/test_v2_acceptance.py -x` failed because
+  `app.state.literature_search_service` was `ScriptedSearch`, not
+  `LiteratureSearchService`.
+- GREEN: the fake moved to the injectable `PaperSource`/Provider factory
+  boundary. FastAPI Manual Search, SubscriptionRunService, SchedulerService,
+  and ResearchRadarService now reference the same real
+  `LiteratureSearchService` and active Provider profile.
+- Focused search/config/feature gate: `117 passed`, with the existing warning.
+- Final revised acceptance gate: `5 passed`, with the existing warning.
+- Final full suite: `591 passed`, with the existing warning.
+
+While strengthening the stored-profile assertion, one intermediate run errored
+because the test reused `profiles` for an HTTP response and shadowed the real
+`ProviderProfileStore`. Renaming the response variable fixed that test-only
+setup error; it did not expose or require a product change.
+
+The revised acceptance test also:
+
+- proves three raw multi-provider papers deduplicate to two ranked results;
+- proves a Semantic Scholar HTTP 429 is isolated while OpenAlex results remain;
+- posts a sentinel credential through the real Provider Settings API, resolves
+  it from the process-local profile credential store during Provider source
+  construction, and asserts it is absent from API, rendered HTML, and static
+  UI projections; and
+- uses no `.env`, network, process, port, or production-code change.
+
+The review fix will be committed separately with only the acceptance test,
+evidence document, and this appended report staged explicitly.
