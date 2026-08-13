@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +19,7 @@ from litwatch.analysis import PaperAnalyzer
 from litwatch.analysis_repository import AnalysisRepository
 from litwatch.api_models import (
     JobCreateRequest,
+    JobListResponse,
     JobResponse,
     LiteratureSearchRequest,
     LiteratureSearchResponse,
@@ -478,9 +479,19 @@ def create_app(
         )
         return JobResponse.from_record(record)
 
-    @app.get("/api/v2/jobs", response_model=list[JobResponse])
-    def list_jobs() -> list[JobResponse]:
-        return [JobResponse.from_record(record) for record in job_repository.list()]
+    @app.get("/api/v2/jobs", response_model=JobListResponse)
+    def list_jobs(
+        limit: int = Query(default=25, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+    ) -> JobListResponse:
+        records, total = job_repository.list(limit=limit, offset=offset)
+        return JobListResponse(
+            items=[JobResponse.from_record(record) for record in records],
+            limit=limit,
+            offset=offset,
+            total=total,
+            has_more=offset + len(records) < total,
+        )
 
     @app.get("/api/v2/jobs/{job_id}", response_model=JobResponse)
     def get_job(job_id: str) -> JobResponse:

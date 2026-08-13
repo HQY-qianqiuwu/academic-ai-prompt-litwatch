@@ -45,3 +45,36 @@ workflow editor or move business logic into the browser.
   from staging.
 - The analysis workspace intentionally accepts existing identifiers as text;
   the application has no reviewed general paper/topic picker API to expose.
+
+## G1 reliability fix — round 1/5
+
+### RED / GREEN evidence
+
+- RED: focused tests demonstrated that `GET /api/v2/jobs` returned an
+  unbounded array (with a fixed repository cap), accepted invalid pagination,
+  the analysis form bypassed native required validation, and a second submit
+  could start another request while the first was pending.
+- GREEN: pagination, submission, and cancellation focused tests passed after
+  the minimal changes. The final focused command passed with 35 tests; the full
+  test suite passed with 549 tests.
+
+### Delivered reliability changes
+
+- `GET /api/v2/jobs` now accepts validated `limit` (1–100, default 25) and
+  non-negative `offset`, returning deterministic `created_at DESC, job_id DESC`
+  pages with `items`, `total`, and `has_more`. Older jobs remain reachable and
+  every item remains a safe `JobResponse` projection.
+- The Jobs workspace loads pages and exposes previous/next controls.
+- Analysis submission uses a normalized submission fingerprint to retain one
+  idempotency key for retries. It disables the submit control while in flight,
+  clears the retained key after confirmed success or input changes, and uses
+  browser-native required-field validation.
+- A pending cancellation is shown as requested and has no repeat cancel
+  control; the cancel button disables immediately on the first action.
+
+### Verification
+
+- `pytest tests/test_job_api.py tests/test_analysis_workspace.py tests/test_local_ui_navigation.py tests/test_ui_localization.py tests/test_paper_analysis_api.py tests/test_web_static.py -q` — 35 passed.
+- `pytest -q` — 549 passed (one TestClient deprecation warning).
+- `ruff check src tests` — passed.
+- `git diff --check` — passed.

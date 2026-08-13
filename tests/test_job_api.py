@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -129,6 +130,51 @@ def test_get_job_returns_safe_projection(tmp_path):
     assert "payload" not in response.json()
     assert "idempotency_key" not in response.json()
     assert "lease_owner" not in response.json()
+
+
+def test_job_list_paginates_in_deterministic_order_and_reaches_older_jobs(tmp_path):
+    app = _app(tmp_path)
+    created_ids: list[str] = []
+    for index in range(101):
+        record = app.state.job_repository.enqueue(
+            job_type="paper_analysis",
+            idempotency_key=f"pagination:{index:03}",
+            input_hash=f"pagination-hash:{index:03}",
+            payload={"paper_id": f"doi:10.1000/{index:03}"},
+            max_attempts=1,
+            timeout_seconds=60,
+            now=datetime(2024, 1, 1, tzinfo=UTC) + timedelta(seconds=index),
+        )
+        created_ids.append(record.job_id)
+
+    with TestClient(app) as client:
+        default_page = client.get("/api/v2/jobs")
+        first_page = client.get("/api/v2/jobs?limit=25&offset=0")
+        older_page = client.get("/api/v2/jobs?limit=25&offset=100")
+
+    assert default_page.status_code == first_page.status_code == older_page.status_code == 200
+    assert default_page.json()["limit"] == 25
+    assert default_page.json()["offset"] == 0
+    assert first_page.json()["total"] == 101
+    assert first_page.json()["has_more"] is True
+    assert [item["job_id"] for item in first_page.json()["items"]] == list(
+        reversed(created_ids[-25:])
+    )
+    assert older_page.json()["offset"] == 100
+    assert older_page.json()["has_more"] is False
+    assert [item["job_id"] for item in older_page.json()["items"]] == [created_ids[0]]
+    assert "payload" not in older_page.json()["items"][0]
+
+
+def test_job_list_rejects_unbounded_or_negative_pagination(tmp_path):
+    app = _app(tmp_path)
+
+    with TestClient(app) as client:
+        zero_limit = client.get("/api/v2/jobs?limit=0")
+        excessive_limit = client.get("/api/v2/jobs?limit=101")
+        negative_offset = client.get("/api/v2/jobs?offset=-1")
+
+    assert zero_limit.status_code == excessive_limit.status_code == negative_offset.status_code == 422
 
 
 def test_cancel_is_idempotent_and_returns_safe_projection(tmp_path):

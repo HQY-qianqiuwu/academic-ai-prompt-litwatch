@@ -159,6 +159,16 @@ class JobResponse(BaseModel):
         )
 
 
+class JobListResponse(BaseModel):
+    """Bounded page of safe job projections."""
+
+    items: list[JobResponse]
+    limit: int
+    offset: int
+    total: int
+    has_more: bool
+
+
 class RadarCreateRequest(RadarSpec):
     """Validated, secret-free Research Radar configuration."""
 

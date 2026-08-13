@@ -26,12 +26,12 @@
         <h1 data-i18n="analysis.title">提交论文分析</h1>
         <p data-i18n="analysis.intro">提交已由 LitWatch 收录的论文标识符；Python 工作器会执行已审核的分析流程。</p>
       </section>
-      <form class="workspace-form" data-analysis-form novalidate>
+      <form class="workspace-form" data-analysis-form>
         <label><span data-i18n="analysis.canonicalId">论文 canonical ID</span><input name="canonical_id" required maxlength="1000" placeholder="doi:10.1000/example"></label>
         <label><span data-i18n="analysis.topicId">主题 ID</span><input name="topic_id" required maxlength="100"></label>
         <label><span data-i18n="analysis.evidenceScope">证据范围</span><select name="evidence_scope"><option value="metadata_only" data-i18n="analysis.metadataOnly">仅元数据</option><option value="abstract" selected data-i18n="analysis.abstract">摘要</option><option value="fulltext_excerpt" data-i18n="analysis.fulltextExcerpt">全文节选</option></select></label>
         <label class="wide"><span data-i18n="analysis.evidence">全文节选（仅在选择全文节选时填写）</span><textarea name="evidence" rows="5" maxlength="36000"></textarea></label>
-        <div class="workspace-actions wide"><button class="research-primary" type="submit" data-i18n="analysis.submit">提交分析任务</button><a href="/jobs" data-i18n="analysis.viewJobs">查看任务</a></div>
+        <div class="workspace-actions wide"><button class="research-primary" type="submit" data-analysis-submit data-i18n="analysis.submit">提交分析任务</button><a href="/jobs" data-i18n="analysis.viewJobs">查看任务</a></div>
       </form>
       <section class="workspace-state" data-analysis-state aria-live="polite"></section>
     </main>

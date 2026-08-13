@@ -74,16 +74,20 @@ class JobRepository:
             ).fetchone()
         return self._from_row(row) if row is not None else None
 
-    def list(self, *, limit: int = 100) -> list[JobRecord]:
-        """Return recent durable jobs without exposing their input payloads."""
+    def list(self, *, limit: int = 25, offset: int = 0) -> tuple[list[JobRecord], int]:
+        """Return a bounded, deterministic page of durable jobs and its total."""
 
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
+        if offset < 0:
+            raise ValueError("offset must not be negative")
         with self.database.transaction_lock:
             rows = self.database.connection.execute(
-                "SELECT * FROM jobs ORDER BY created_at DESC, job_id DESC LIMIT ?", (limit,)
+                "SELECT * FROM jobs ORDER BY created_at DESC, job_id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
             ).fetchall()
-        return [self._from_row(row) for row in rows]
+            total = int(self.database.connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0])
+        return [self._from_row(row) for row in rows], total
 
     def claim_next(
         self,

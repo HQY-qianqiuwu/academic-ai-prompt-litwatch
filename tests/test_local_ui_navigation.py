@@ -68,10 +68,13 @@ def test_job_workspace_lists_safe_records_created_by_the_paper_analysis_api(tmp_
 
     assert created.status_code == 202
     assert listed.status_code == 200
-    assert listed.json()[0]["job_id"] == created.json()["job_id"]
-    assert listed.json()[0]["status_url"] == created.json()["status_url"]
-    assert "payload" not in listed.json()[0]
-    assert "idempotency_key" not in listed.json()[0]
+    assert listed.json()["limit"] == 25
+    assert listed.json()["offset"] == 0
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["job_id"] == created.json()["job_id"]
+    assert listed.json()["items"][0]["status_url"] == created.json()["status_url"]
+    assert "payload" not in listed.json()["items"][0]
+    assert "idempotency_key" not in listed.json()["items"][0]
 
 
 def test_local_launcher_opens_new_root_search_page():
