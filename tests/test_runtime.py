@@ -18,6 +18,18 @@ def test_runtime_defaults_to_python():
     assert RuntimeStatus.from_mode(settings.runtime_mode).requires_dify is False
 
 
+def test_dify_free_runtime_contract_has_no_legacy_dependencies():
+    settings = Settings(_env_file=None, runtime_mode="dify_free")
+
+    assert RuntimeStatus.from_mode(settings.runtime_mode) == RuntimeStatus(
+        mode=RuntimeMode.DIFY_FREE,
+        python_primary=True,
+        requires_dify=False,
+        requires_docker=False,
+        requires_ssrf_proxy=False,
+    )
+
+
 def test_unknown_runtime_mode_is_rejected():
     with pytest.raises(ValidationError):
         Settings(_env_file=None, runtime_mode="unknown")

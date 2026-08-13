@@ -6,6 +6,36 @@
 
 > 原则：**API 找论文，AI 读论文；不让 AI 凭记忆编造论文清单。**
 
+## v2.0 默认运行方式（实现 / RC 准备阶段）
+
+当前 v2.0 尚处于实现与 Release Candidate 准备阶段，**不是 Stable
+版本，也没有 v2.0 Stable 标签**。默认运行路径已经切换为纯 Python
+LitWatch：FastAPI、SQLite、Scheduler、JobWorker 和 Python LLM Gateway
+共同提供检索、雷达、订阅、周报、任务与论文分析。
+
+Windows 默认入口只管理 Python LitWatch：
+
+```text
+启动科研文献系统.cmd
+停止科研文献系统.cmd
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\status-stack.ps1
+```
+
+这些默认入口不会探测、启动或要求 Docker Desktop、Dify、Dify Compose
+或 Dify SSRF proxy；启动失败时也**不会自动回退到 Dify**。
+
+需要在人工验收期间显式回滚时，才使用旧版入口：
+
+```text
+启动旧版 Dify 科研文献系统.cmd
+停止旧版 Dify 科研文献系统.cmd
+```
+
+旧 Dify 仓库、Docker 数据卷以及
+`dify/workflows/literature-search-v1.0.yml`、
+`dify/workflows/literature-search-v1.1.yml` 继续保留为只读兼容与回滚材料。
+在 v2.0 人工验收完成、并获得单独删除授权之前，不删除、不迁移、不改写这些材料。
+
 ## LitWatch 能做什么
 
 - OpenAlex + arXiv 多源检索，可选 Semantic Scholar
@@ -36,7 +66,8 @@
 
 ## 快速启动（Windows）
 
-建议先安装 [uv](https://docs.astral.sh/uv/)，然后执行：
+默认的本地启动不需要 Docker 或 Dify。建议先安装
+[uv](https://docs.astral.sh/uv/)，然后执行：
 
 ```powershell
 Copy-Item .env.example .env

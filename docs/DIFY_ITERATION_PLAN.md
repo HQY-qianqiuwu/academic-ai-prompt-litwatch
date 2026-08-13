@@ -16,6 +16,11 @@ Stack and Workflow versions are not required to match. A backend-only Stack
 release may reuse an older compatible DSL. See `docs/RELEASE_MATRIX.md` for the
 authoritative mapping.
 
+For v2.0, the default Stack no longer includes Dify: Python LitWatch is the only
+default runtime, and no Dify Workflow DSL is required for normal operation.
+The old Dify deployment and DSL remain frozen, explicit rollback assets during
+manual acceptance; their presence does not make them a v2.0 runtime dependency.
+
 ## Stack v1.0 — Direct OpenAlex
 
 Status: Stable
@@ -307,10 +312,32 @@ limitations, and keywords. Every analysis must declare `metadata_only` or
 Add PDF retrieval, parsing, section extraction, and `fulltext_excerpt` /
 `fulltext` evidence scopes.
 
-## Stack v2.0 — Cross-Paper Synthesis
+## Stack v2.0 — Python-Native Research Workspace
 
-Add method comparison, research landscape, representative work, shared
-limitations, research gaps, and future directions with paper-level evidence.
+Status: **Implementation / RC preparation — Not Stable**
+
+The v2.0 implementation combines the previously delivered Search, Provider
+Settings, Subscriptions, Weekly Digest, and Research Radar capabilities with
+durable Python jobs, paper analysis, and cross-paper synthesis foundations.
+Its default architecture is:
+
+```text
+Windows default launcher
+    -> Python lifecycle
+    -> FastAPI + SQLite + Scheduler + JobWorker + LLMGateway
+    -> Search / Radar / Subscriptions / Digest / Jobs / Paper Analysis
+```
+
+Default start, stop, and status never probe, start, or require Docker, Dify,
+Compose, or the Dify SSRF proxy, and they do not automatically fall back to
+Dify. Rollback is a separate operator choice through
+`启动旧版 Dify 科研文献系统.cmd` and
+`停止旧版 Dify 科研文献系统.cmd` only.
+
+The historical Dify repository, Docker volumes, integration patch, and stable
+v1.0/v1.1 workflow DSL files remain retained and frozen until v2.0 manual
+acceptance completes and separate deletion authorization is given. No v2.0
+Stable tag may be created during this implementation / RC preparation stage.
 
 ## Future — Sustainable Personal Research System
 
@@ -332,6 +359,10 @@ Every Stable Stack release requires tests, Ruff, manual E2E, a release commit,
 an annotated tag, and non-force pushes of the release branch and tag to the
 private backup. The next feature branch starts from the preceding Stable tag;
 development must not accumulate indefinitely on an older feature branch.
+
+v2.0 remains outside that Stable set until Python-only manual acceptance is
+complete. Retaining a working legacy Dify rollback does not itself satisfy the
+v2.0 acceptance gate and does not authorize a Stable tag.
 
 Secrets, `.env`, API keys, tokens, and passwords are never committed. Stable
 tags and stable DSL files are immutable.
