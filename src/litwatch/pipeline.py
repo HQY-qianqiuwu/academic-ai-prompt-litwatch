@@ -12,6 +12,7 @@ from litwatch.db import Database
 from litwatch.fulltext import FullTextExtractor
 from litwatch.llm.factory import LLMRuntime, build_llm_runtime
 from litwatch.models import Paper, RunSummary
+from litwatch.ranking import score_paper
 from litwatch.services.literature_search import (
     AllProvidersFailedError,
     LiteratureSearchService,
@@ -20,6 +21,7 @@ from litwatch.services.paper_analysis import AnalysisContext, PaperAnalysisServi
 
 
 def merge_papers(existing: Paper, incoming: Paper) -> Paper:
+    """Preserve the legacy merge helper while retrieval owns deduplication."""
     existing.sources = sorted(set(existing.sources + incoming.sources))
     existing.source_ids.update(incoming.source_ids)
     if len(incoming.abstract) > len(existing.abstract):
@@ -109,15 +111,7 @@ class Pipeline:
 
             fetched += search_result.diagnostics.raw_count
             deduplicated += search_result.diagnostics.dedup_count
-            ranked = [
-                paper
-                for paper in search_result.papers
-                if float(paper.score) >= topic.min_score
-            ]
-            for paper in ranked:
-                paper.topic_id = topic.id
-                paper.topic_name = topic.name
-                self.database.upsert(paper, run_id)
+            ranked = self._rank_topic(search_result.papers, topic)
 
             for index, paper in enumerate(ranked[: self.settings.analyze_top_n]):
                 fulltext = ""
@@ -159,6 +153,8 @@ class Pipeline:
                     errors.append(
                         f"{topic.id}/analysis/{paper.canonical_id}: analysis_failed"
                     )
+            for paper in ranked:
+                self.database.upsert(paper, run_id)
             accepted_papers.extend(ranked)
 
         finished = datetime.now(UTC)
@@ -181,3 +177,14 @@ class Pipeline:
             errors=errors,
         )
         return summary, sorted(accepted_papers, key=lambda item: item.score, reverse=True)
+
+    @staticmethod
+    def _rank_topic(papers: list[Paper], topic: Topic) -> list[Paper]:
+        ranked: list[Paper] = []
+        for paper in papers:
+            paper.topic_id = topic.id
+            paper.topic_name = topic.name
+            score_paper(paper, topic)
+            if paper.score >= topic.min_score:
+                ranked.append(paper)
+        return sorted(ranked, key=lambda item: (item.score, item.citation_count), reverse=True)

@@ -7,8 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 import litwatch.pipeline as pipeline_module
+from litwatch.analysis import PaperAnalyzer
 from litwatch.analysis_models import EvidenceScope, PaperAnalysis
-from litwatch.config import Settings, Topic
+from litwatch.config import AnalysisMode, Settings, Topic
 from litwatch.db import Database
 from litwatch.models import Paper
 from litwatch.pipeline import Pipeline
@@ -52,6 +53,34 @@ class RecordingRepository:
 
     def upsert(self, analysis: PaperAnalysis) -> PaperAnalysis:
         self.persisted.append(analysis)
+        return analysis
+
+
+class CachingRepository(RecordingRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: dict[tuple[str, str, str, str], PaperAnalysis] = {}
+
+    def get(self, **identity):
+        return self.records.get(
+            (
+                identity["canonical_id"],
+                identity["analysis_version"],
+                identity["evidence_hash"],
+                identity["model_config_hash"],
+            )
+        )
+
+    def upsert(self, analysis: PaperAnalysis) -> PaperAnalysis:
+        self.persisted.append(analysis)
+        self.records[
+            (
+                analysis.canonical_id,
+                analysis.analysis_version,
+                analysis.evidence_hash,
+                analysis.model_config_hash,
+            )
+        ] = analysis
         return analysis
 
 
@@ -158,6 +187,28 @@ def test_service_uses_extractive_fallback_without_credentials():
     assert "analyze_with_gateway" not in [entry.step for entry in context.trace]
 
 
+def test_extractive_analysis_keeps_missing_facts_none_or_empty():
+    repository = RecordingRepository()
+    analyzer = PaperAnalyzer(Settings(llm_api_key="", _env_file=None))
+    context = AnalysisContext(
+        paper=_paper(abstract="A neutral abstract sentence."),
+        topic=_topic(),
+        evidence="A neutral abstract sentence.",
+        evidence_scope=EvidenceScope.ABSTRACT,
+    )
+
+    result = PaperAnalysisService(analyzer=analyzer, repository=repository).analyze(
+        context
+    )
+
+    assert result.status.value == "extractive"
+    assert result.methods == []
+    assert result.main_results == []
+    assert result.limitations == []
+    assert result.research_question is None
+    assert repository.persisted == [result]
+
+
 def test_analysis_failure_trace_is_safe_and_does_not_persist_raw_error():
     repository = RecordingRepository()
     analyzer = FakeAnalyzer(RuntimeError("Authorization=secret-value"), enabled=True)
@@ -205,6 +256,100 @@ def test_invalid_analyzer_output_becomes_safe_failed_analysis_and_persists_once(
     assert repository.persisted == [result]
     assert context.trace[-3].safe_error == "analysis_failed"
     assert "not typed evidence" not in repr(context.trace)
+
+
+def test_invalid_context_adds_safe_failed_validation_trace():
+    paper = _paper()
+    paper.canonical_id = ""
+    context = AnalysisContext(
+        paper=paper,
+        topic=_topic(),
+        evidence="Evidence.",
+        evidence_scope=EvidenceScope.ABSTRACT,
+    )
+    service = PaperAnalysisService(
+        analyzer=FakeAnalyzer({}, enabled=True), repository=RecordingRepository()
+    )
+
+    with pytest.raises(ValueError, match="canonical_id"):
+        service.analyze(context)
+
+    assert context.trace[-1].step == "validate_paper"
+    assert context.trace[-1].status == "failed"
+    assert context.trace[-1].safe_error == "invalid_paper"
+
+
+def test_persistence_failure_adds_safe_failed_trace():
+    class FailingRepository:
+        def get(self, **_identity):
+            return None
+
+        def upsert(self, _analysis):
+            raise RuntimeError("Authorization=secret-value")
+
+    context = AnalysisContext(
+        paper=_paper(),
+        topic=_topic(),
+        evidence="Evidence.",
+        evidence_scope=EvidenceScope.ABSTRACT,
+    )
+    service = PaperAnalysisService(
+        analyzer=FakeAnalyzer({"status": "ok"}, enabled=True),
+        repository=FailingRepository(),
+    )
+
+    with pytest.raises(RuntimeError, match="secret-value"):
+        service.analyze(context)
+
+    assert context.trace[-1].step == "persist_paper_analysis"
+    assert context.trace[-1].status == "failed"
+    assert context.trace[-1].safe_error == "persistence_failed"
+    assert "secret-value" not in repr(context.trace)
+
+
+def test_analysis_cache_identity_includes_request_affecting_configuration(monkeypatch):
+    repository = CachingRepository()
+    analyzer = FakeAnalyzer(
+        {"status": "ok", "methods": [], "results": [], "limitations": []},
+        enabled=True,
+    )
+    analyzer.settings = Settings(
+        llm_api_key="configured",
+        llm_max_output_tokens=128,
+        _env_file=None,
+    )
+    mode = AnalysisMode(
+        id="quick_scan",
+        name="Initial mode name",
+        description="A test mode",
+        instruction="Initial mode instruction",
+    )
+    monkeypatch.setattr(Settings, "load_analysis_modes", lambda _settings: [mode])
+    service = PaperAnalysisService(analyzer=analyzer, repository=repository)
+    context = AnalysisContext(
+        paper=_paper(),
+        topic=_topic(),
+        evidence="Evidence.",
+        evidence_scope=EvidenceScope.ABSTRACT,
+    )
+
+    service.analyze(context)
+    service.analyze(
+        AnalysisContext(
+            paper=_paper(),
+            topic=_topic().model_copy(update={"name": "Changed topic name"}),
+            evidence="Evidence.",
+            evidence_scope=EvidenceScope.ABSTRACT,
+        )
+    )
+    analyzer.settings = analyzer.settings.model_copy(update={"llm_max_output_tokens": 256})
+    service.analyze(context)
+    mode = mode.model_copy(
+        update={"name": "Changed mode name", "instruction": "Changed instruction"}
+    )
+    service.analyze(context)
+
+    assert analyzer.calls == 4
 
 
 class FakeSearchService:
@@ -276,6 +421,64 @@ def test_pipeline_uses_injected_search_service_and_preserves_compatibility_retur
     assert search.calls[0]["topic"] == _topic().query
     assert len(analysis.contexts) == 2
     assert all(paper.analysis["status"] == "extractive" for paper in returned)
+    pipeline.close()
+    database.connection.close()
+
+
+def test_pipeline_persists_typed_analysis_for_restart_consumers(tmp_path):
+    database = Database(tmp_path / "pipeline.db")
+    search = FakeSearchService([_paper(canonical_id="paper:persisted")])
+    analysis = FakeAnalysisService()
+    pipeline = Pipeline(
+        Settings(
+            llm_api_key="",
+            analyze_top_n=1,
+            fulltext_top_n=0,
+            _env_file=None,
+        ),
+        database,
+        literature_search_service=search,
+        paper_analysis_service=analysis,
+    )
+
+    pipeline.run(days=7, topics=[_topic()])
+
+    assert database.list_papers(topic_id=_topic().id)[0]["analysis"]["status"] == "extractive"
+    pipeline.close()
+    database.connection.close()
+
+
+def test_pipeline_restores_topic_exclusions_and_domain_gate(tmp_path):
+    database = Database(tmp_path / "pipeline.db")
+    accepted = _paper(canonical_id="paper:accepted")
+    accepted.title = "Underwater acoustic channel estimation"
+    accepted.abstract = "A channel estimation method for a hydrophone array."
+    excluded = _paper(canonical_id="paper:excluded")
+    excluded.title = "Underwater acoustic channel estimation for medical ultrasound"
+    excluded.abstract = "A channel estimation method."
+    off_domain = _paper(canonical_id="paper:off-domain")
+    off_domain.title = "mmWave channel estimation"
+    off_domain.abstract = "A channel estimation method."
+    topic = Topic(
+        id="gated",
+        name="Underwater acoustics",
+        query="underwater acoustic channel estimation",
+        include=["underwater acoustic", "channel estimation"],
+        exclude=["medical ultrasound"],
+        domain_anchors=["underwater acoustic", "hydrophone"],
+        method_terms=["channel estimation"],
+        require_domain_anchor=True,
+        min_score=0.1,
+    )
+    pipeline = Pipeline(
+        Settings(llm_api_key="", analyze_top_n=0, _env_file=None),
+        database,
+        literature_search_service=FakeSearchService([accepted, excluded, off_domain]),
+    )
+
+    _summary, returned = pipeline.run(days=7, topics=[topic])
+
+    assert [paper.canonical_id for paper in returned] == ["paper:accepted"]
     pipeline.close()
     database.connection.close()
 

@@ -66,7 +66,13 @@ class PaperAnalysisService:
         self.repository = repository
 
     def analyze(self, context: AnalysisContext) -> PaperAnalysis:
-        self._validate_context(context)
+        try:
+            self._validate_context(context)
+        except ValueError:
+            context.trace.append(
+                AnalysisTraceEntry("validate_paper", "failed", safe_error="invalid_paper")
+            )
+            raise
         context.trace.append(AnalysisTraceEntry("validate_paper", "completed"))
 
         evidence = context.evidence.strip()
@@ -126,7 +132,15 @@ class PaperAnalysisService:
         context.trace.append(
             AnalysisTraceEntry("validate_paper_analysis", "completed")
         )
-        stored = self.repository.upsert(validated)
+        try:
+            stored = self.repository.upsert(validated)
+        except Exception:
+            context.trace.append(
+                AnalysisTraceEntry(
+                    "persist_paper_analysis", "failed", safe_error="persistence_failed"
+                )
+            )
+            raise
         context.trace.append(
             AnalysisTraceEntry("persist_paper_analysis", "completed")
         )
@@ -141,18 +155,26 @@ class PaperAnalysisService:
 
     def _model_config_hash(self, context: AnalysisContext) -> str:
         settings = self.analyzer.settings
+        modes = {mode.id: mode for mode in settings.load_analysis_modes()}
+        mode = modes.get(context.topic.analysis_mode) or modes["quick_scan"]
         document = {
             "analysis_version": self.ANALYSIS_VERSION,
-            "analysis_mode": context.topic.analysis_mode,
+            "analysis_mode": {
+                "id": mode.id,
+                "name": mode.name,
+                "instruction": mode.instruction,
+            },
             "evidence_scope": context.evidence_scope.value,
             "llm_enabled": self.analyzer.enabled,
             "llm_model": settings.llm_model if self.analyzer.enabled else None,
+            "llm_max_output_tokens": settings.llm_max_output_tokens,
             "provider_kind": (
                 self.analyzer.gateway.provider_kind
                 if self.analyzer.enabled and self.analyzer.gateway is not None
                 else "extractive"
             ),
             "topic_id": context.topic.id,
+            "topic_name": context.topic.name,
             "topic_query": context.topic.query,
             "topic_include": list(context.topic.include),
         }
