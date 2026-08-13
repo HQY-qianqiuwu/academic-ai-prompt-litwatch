@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from types import SimpleNamespace
-
 import httpx
 import pymupdf
 import pytest
@@ -23,23 +20,6 @@ def _pdf_bytes(text: str = "Public PDF") -> bytes:
     return data
 
 
-def _mock_client_factory(
-    handler: Callable[[httpx.Request], httpx.Response],
-    created_clients: list[httpx.Client] | None = None,
-) -> Callable[[], httpx.Client]:
-    def factory() -> httpx.Client:
-        client = httpx.Client(
-            follow_redirects=False,
-            trust_env=False,
-            transport=httpx.MockTransport(handler),
-        )
-        if created_clients is not None:
-            created_clients.append(client)
-        return client
-
-    return factory
-
-
 @pytest.mark.parametrize(
     "url",
     [
@@ -56,7 +36,7 @@ def test_extract_rejects_unsafe_url_before_request(url: str):
 
     extractor = FullTextExtractor(
         resolver=_public_resolver,
-        client_factory=_mock_client_factory(handler),
+        request_handler=handler,
     )
 
     with pytest.raises(ValueError) as error:
@@ -79,7 +59,7 @@ def test_extract_rejects_loopback_or_private_dns_before_request(address: str):
 
     extractor = FullTextExtractor(
         resolver=private_resolver,
-        client_factory=_mock_client_factory(handler),
+        request_handler=handler,
     )
 
     with pytest.raises(ValueError, match="non-public"):
@@ -104,7 +84,7 @@ def test_extract_rejects_redirect_to_private_host_without_following_it():
 
     extractor = FullTextExtractor(
         resolver=_public_resolver,
-        client_factory=_mock_client_factory(handler),
+        request_handler=handler,
     )
 
     with pytest.raises(ValueError, match="non-public"):
@@ -127,7 +107,7 @@ def test_extract_enforces_manual_redirect_limit():
     extractor = FullTextExtractor(
         max_redirects=1,
         resolver=_public_resolver,
-        client_factory=_mock_client_factory(handler),
+        request_handler=handler,
     )
 
     with pytest.raises(ValueError, match="redirect limit"):
@@ -150,7 +130,7 @@ def test_extract_rejects_non_pdf_content_without_pdf_signature():
 
     extractor = FullTextExtractor(
         resolver=_public_resolver,
-        client_factory=_mock_client_factory(handler),
+        request_handler=handler,
     )
 
     with pytest.raises(ValueError, match="not a PDF"):
@@ -169,7 +149,7 @@ def test_extract_rejects_stream_that_exceeds_max_bytes():
     extractor = FullTextExtractor(
         max_bytes=16,
         resolver=_public_resolver,
-        client_factory=_mock_client_factory(handler),
+        request_handler=handler,
     )
 
     with pytest.raises(ValueError, match="too large"):
@@ -182,7 +162,7 @@ def test_extract_normalizes_timeout_without_network_details():
 
     extractor = FullTextExtractor(
         resolver=_public_resolver,
-        client_factory=_mock_client_factory(handler),
+        request_handler=handler,
     )
 
     with pytest.raises(ValueError) as error:
@@ -203,7 +183,7 @@ def test_extract_accepts_public_pdf_with_signature_and_bounded_text():
 
     extractor = FullTextExtractor(
         resolver=_public_resolver,
-        client_factory=_mock_client_factory(handler),
+        request_handler=handler,
     )
 
     assert extractor.extract("https://public.example.test/paper.pdf", max_chars=10) == "Public PDF"
@@ -231,7 +211,7 @@ def test_extract_binds_the_validated_address_without_re_resolving_it():
 
     extractor = FullTextExtractor(
         resolver=rebinding_resolver,
-        client_factory=_mock_client_factory(handler),
+        request_handler=handler,
     )
 
     assert extractor.extract("https://public.example.test/paper.pdf") == "Public PDF"
@@ -270,7 +250,7 @@ def test_extract_binds_each_redirect_hop_to_its_validated_address():
             request=request,
         )
 
-    extractor = FullTextExtractor(resolver=resolver, client_factory=_mock_client_factory(handler))
+    extractor = FullTextExtractor(resolver=resolver, request_handler=handler)
 
     assert extractor.extract("https://first.example.test/paper.pdf") == "Public PDF"
     assert resolved_hosts == [("first.example.test", 443), ("next.example.test", 443)]
@@ -280,8 +260,15 @@ def test_extract_binds_each_redirect_hop_to_its_validated_address():
     ]
 
 
-def test_extract_closes_each_factory_client_after_its_request():
-    created_clients: list[httpx.Client] = []
+def test_extract_closes_internal_client_after_its_request(monkeypatch):
+    closed_clients: list[httpx.Client] = []
+    original_close = httpx.Client.close
+
+    def tracking_close(client: httpx.Client) -> None:
+        original_close(client)
+        closed_clients.append(client)
+
+    monkeypatch.setattr(httpx.Client, "close", tracking_close)
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -293,38 +280,30 @@ def test_extract_closes_each_factory_client_after_its_request():
 
     extractor = FullTextExtractor(
         resolver=_public_resolver,
-        client_factory=_mock_client_factory(handler, created_clients),
+        request_handler=handler,
     )
 
     assert extractor.extract("https://public.example.test/paper.pdf") == "Public PDF"
 
-    assert len(created_clients) == 1
-    assert created_clients[0].is_closed
+    assert len(closed_clients) == 1
+    assert closed_clients[0].is_closed
 
 
-def test_extract_rejects_shared_client_injection_even_when_proxy_safe():
-    client = httpx.Client(
-        trust_env=False,
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
-    )
-    try:
-        with pytest.raises(ValueError, match="client injection"):
-            FullTextExtractor(resolver=_public_resolver, client=client)
-    finally:
-        client.close()
-
-
-def test_extract_rejects_shared_transport_injection():
-    with pytest.raises(ValueError, match="transport injection"):
-        FullTextExtractor(
-            resolver=_public_resolver,
-            transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
-        )
-
-
-def test_extract_uses_fresh_factory_clients_for_shared_address_redirect_hops():
+def test_extract_owns_fresh_transport_for_each_shared_address_redirect_hop(monkeypatch):
     requests: list[tuple[str, str]] = []
-    created_clients: list[httpx.Client] = []
+    created_transports: list[httpx.MockTransport] = []
+
+    class TrackingMockTransport(httpx.MockTransport):
+        def __init__(self, handler):
+            super().__init__(handler)
+            self.is_closed = False
+            created_transports.append(self)
+
+        def close(self) -> None:
+            self.is_closed = True
+            super().close()
+
+    monkeypatch.setattr(httpx, "MockTransport", TrackingMockTransport)
 
     def resolver(hostname: str, _port: int) -> tuple[str, ...]:
         return {"first.example.test": ("8.8.8.8",), "next.example.test": ("8.8.8.8",)}[
@@ -353,7 +332,7 @@ def test_extract_uses_fresh_factory_clients_for_shared_address_redirect_hops():
 
     extractor = FullTextExtractor(
         resolver=resolver,
-        client_factory=_mock_client_factory(handler, created_clients),
+        request_handler=handler,
     )
 
     assert extractor.extract("https://first.example.test/paper.pdf") == "Public PDF"
@@ -361,8 +340,9 @@ def test_extract_uses_fresh_factory_clients_for_shared_address_redirect_hops():
         ("8.8.8.8", "first.example.test"),
         ("8.8.8.8", "next.example.test"),
     ]
-    assert len(created_clients) == 2
-    assert all(client.is_closed for client in created_clients)
+    assert len(created_transports) == 2
+    assert created_transports[0] is not created_transports[1]
+    assert all(transport.is_closed for transport in created_transports)
 
 
 @pytest.mark.parametrize(
@@ -382,54 +362,37 @@ def test_extract_formats_public_ipv6_host_header(url: str, expected_host: str):
             request=request,
         )
 
-    extractor = FullTextExtractor(client_factory=_mock_client_factory(handler))
+    extractor = FullTextExtractor(request_handler=handler)
 
     assert extractor.extract(url) == "Public PDF"
 
 
-def test_extract_rejects_factory_that_reuses_a_previously_issued_client():
-    client = httpx.Client(
-        follow_redirects=False,
-        trust_env=False,
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(
-                302,
-                headers={"location": "https://next.example.test/paper.pdf"},
-                request=request,
-            )
-        ),
+@pytest.mark.parametrize("argument", ["client", "client_factory", "transport"])
+def test_extractor_rejects_connection_owning_injection(argument: str):
+    with pytest.raises(TypeError, match=f"unexpected keyword argument '{argument}'"):
+        FullTextExtractor(**{argument: object()})
+
+
+def test_extract_closes_internally_owned_client_on_request_exception(monkeypatch):
+    closed_clients: list[httpx.Client] = []
+    original_close = httpx.Client.close
+
+    def tracking_close(client: httpx.Client) -> None:
+        original_close(client)
+        closed_clients.append(client)
+
+    monkeypatch.setattr(httpx.Client, "close", tracking_close)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("credential=secret", request=request)
+
+    extractor = FullTextExtractor(
+        resolver=_public_resolver,
+        request_handler=handler,
     )
-    try:
-        extractor = FullTextExtractor(
-            resolver=lambda _hostname, _port: ("8.8.8.8",),
-            client_factory=lambda: client,
-        )
 
-        with pytest.raises(ValueError, match="fresh"):
-            extractor.extract("https://first.example.test/paper.pdf")
-    finally:
-        client.close()
+    with pytest.raises(ValueError, match="PDF download failed"):
+        extractor.extract("https://public.example.test/paper.pdf")
 
-
-def test_extract_rejects_factory_client_with_http2_enabled():
-    class Http2MockTransport(httpx.MockTransport):
-        def __init__(self) -> None:
-            super().__init__(lambda request: httpx.Response(200, request=request))
-            self._pool = SimpleNamespace(_http2=True)
-
-    client = httpx.Client(
-        follow_redirects=False,
-        trust_env=False,
-        transport=Http2MockTransport(),
-    )
-    try:
-        extractor = FullTextExtractor(
-            resolver=_public_resolver,
-            client_factory=lambda: client,
-        )
-
-        with pytest.raises(ValueError, match="HTTP/1.1"):
-            extractor.extract("https://public.example.test/paper.pdf")
-        assert client.is_closed
-    finally:
-        client.close()
+    assert len(closed_clients) == 1
+    assert closed_clients[0].is_closed

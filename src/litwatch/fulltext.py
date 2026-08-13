@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ipaddress
-import weakref
 from collections.abc import Callable
 from urllib.parse import urljoin
 
@@ -22,7 +21,7 @@ class FullTextSecurityError(ValueError):
 
 
 _REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
-ClientFactory = Callable[[], httpx.Client]
+RequestHandler = Callable[[httpx.Request], httpx.Response]
 
 
 class FullTextExtractor:
@@ -33,24 +32,17 @@ class FullTextExtractor:
         max_bytes: int = 20_000_000,
         max_redirects: int = 3,
         resolver: AddressResolver = resolve_host_addresses,
-        transport: httpx.BaseTransport | None = None,
-        client: httpx.Client | None = None,
-        client_factory: ClientFactory | None = None,
+        request_handler: RequestHandler | None = None,
     ) -> None:
         if max_bytes < 1:
             raise ValueError("max_bytes must be positive")
         if max_redirects < 0:
             raise ValueError("max_redirects must not be negative")
-        if client is not None:
-            raise ValueError("shared client injection is not supported")
-        if transport is not None:
-            raise ValueError("shared transport injection is not supported")
         self.timeout = timeout
         self.max_bytes = max_bytes
         self.max_redirects = max_redirects
         self.resolver = resolver
-        self._client_factory = client_factory or self._create_isolated_client
-        self._issued_clients: weakref.WeakSet[httpx.Client] = weakref.WeakSet()
+        self._request_handler = request_handler
         self._closed = False
 
     def extract(self, pdf_url: str, *, max_chars: int = 36_000) -> str:
@@ -69,7 +61,7 @@ class FullTextExtractor:
         while True:
             target = self._validated_url(current_url)
             try:
-                client = self._new_isolated_client()
+                client = self._create_isolated_client()
                 try:
                     request = self._build_request(client, target)
                     response = client.send(request, stream=True, follow_redirects=False)
@@ -102,39 +94,25 @@ class FullTextExtractor:
             raise FullTextSecurityError(str(error)) from None
 
     def _create_isolated_client(self) -> httpx.Client:
+        transport: httpx.BaseTransport
+        if self._request_handler is None:
+            transport = httpx.HTTPTransport(
+                retries=0,
+                trust_env=False,
+                http1=True,
+                http2=False,
+                limits=httpx.Limits(max_keepalive_connections=0),
+            )
+        else:
+            transport = httpx.MockTransport(self._request_handler)
         return httpx.Client(
             timeout=self.timeout,
             follow_redirects=False,
             trust_env=False,
+            http1=True,
             http2=False,
-            transport=httpx.HTTPTransport(
-                retries=0,
-                trust_env=False,
-                limits=httpx.Limits(max_keepalive_connections=0),
-            ),
+            transport=transport,
         )
-
-    def _new_isolated_client(self) -> httpx.Client:
-        client = self._client_factory()
-        try:
-            if (
-                client.is_closed
-                or client._state.name != "UNOPENED"
-                or client in self._issued_clients
-            ):
-                raise FullTextSecurityError("PDF client factory must return a fresh client")
-            if client._trust_env:
-                raise FullTextSecurityError("PDF client factory must disable trust_env")
-            if client.follow_redirects:
-                raise FullTextSecurityError("PDF client factory must disable redirects")
-            pool = getattr(client._transport, "_pool", None)
-            if getattr(pool, "_http2", False):
-                raise FullTextSecurityError("PDF client factory must use HTTP/1.1")
-        except FullTextSecurityError:
-            client.close()
-            raise
-        self._issued_clients.add(client)
-        return client
 
     def _build_request(self, client: httpx.Client, target: ValidatedProviderUrl) -> httpx.Request:
         try:
