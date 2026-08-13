@@ -15,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from litwatch.analysis_models import EvidenceScope
 from litwatch.deliveries import Delivery
 from litwatch.jobs import JobPayload, JobRecord, JobStatus
 from litwatch.models import Paper
@@ -88,6 +89,26 @@ class JobCreateRequest(BaseModel):
         cls, value: dict[str, JsonValue]
     ) -> dict[str, JsonValue]:
         return JobPayload.model_validate(value).root
+
+
+class PaperAnalysisJobRequest(BaseModel):
+    """Public payload shape for a durable typed paper-analysis job."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    canonical_id: str = Field(min_length=1, max_length=1_000)
+    topic_id: str = Field(min_length=1, max_length=100)
+    evidence_scope: EvidenceScope = Field(strict=False)
+    evidence: str | None = Field(default=None, max_length=36_000)
+
+    @model_validator(mode="after")
+    def evidence_matches_declared_scope(self) -> PaperAnalysisJobRequest:
+        fulltext_scopes = {EvidenceScope.FULLTEXT_EXCERPT, EvidenceScope.FULLTEXT}
+        if self.evidence_scope in fulltext_scopes and not (self.evidence or "").strip():
+            raise ValueError("full-text evidence is required for the declared scope")
+        if self.evidence_scope not in fulltext_scopes and self.evidence is not None:
+            raise ValueError("evidence is only accepted for a full-text scope")
+        return self
 
 
 class JobResponse(BaseModel):

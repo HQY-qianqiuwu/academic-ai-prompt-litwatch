@@ -15,11 +15,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
+from litwatch.analysis import PaperAnalyzer
+from litwatch.analysis_repository import AnalysisRepository
 from litwatch.api_models import (
     JobCreateRequest,
     JobResponse,
     LiteratureSearchRequest,
     LiteratureSearchResponse,
+    PaperAnalysisJobRequest,
     ProviderCapabilityResponse,
     ProviderProfileResponse,
     ProviderProfileWrite,
@@ -36,6 +39,7 @@ from litwatch.delivery_repository import DeliveryRepository
 from litwatch.export import rows_to_bibtex
 from litwatch.historical_paper_repository import HistoricalPaperRepository
 from litwatch.job_repository import JobRepository
+from litwatch.llm.factory import build_llm_runtime
 from litwatch.pipeline import Pipeline
 from litwatch.provider_config import ProviderProfileStore, default_provider_profile
 from litwatch.provider_security import ProviderBaseUrlError, validate_provider_base_url
@@ -51,6 +55,10 @@ from litwatch.services import (
 )
 from litwatch.services.delivery import DeliveryService
 from litwatch.services.jobs import JobHandler, JobWorker
+from litwatch.services.paper_analysis import (
+    PaperAnalysisJobHandler,
+    PaperAnalysisService,
+)
 from litwatch.services.radars import (
     RadarNotFoundError,
     RadarProviderError,
@@ -160,6 +168,27 @@ def create_app(
         default_timeout_seconds=settings.job_default_timeout_seconds,
     )
 
+    analysis_llm_runtime = build_llm_runtime(settings, database=database)
+    analysis_service = PaperAnalysisService(
+        analyzer=PaperAnalyzer(
+            settings,
+            gateway=(analysis_llm_runtime.gateway if analysis_llm_runtime else None),
+            budget_factory=(
+                analysis_llm_runtime.budget_factory if analysis_llm_runtime else None
+            ),
+        ),
+        repository=AnalysisRepository(database),
+    )
+    job_worker.register(
+        "paper_analysis",
+        PaperAnalysisJobHandler(
+            database=database,
+            topics=settings.load_topics,
+            service=analysis_service,
+        ),
+    )
+
+    custom_job_types = frozenset((job_handlers or {}).keys())
     for job_type, handler in (job_handlers or {}).items():
         job_worker.register(job_type, handler)
     runtime = ApplicationRuntime(
@@ -169,6 +198,7 @@ def create_app(
         worker_start=job_worker.start,
         worker_stop=job_worker.stop,
         startup_hooks=(research_radar_service.recover_stale_scans,),
+        shutdown_hooks=((analysis_llm_runtime.close,) if analysis_llm_runtime else ()),
     )
 
     @asynccontextmanager
@@ -195,6 +225,7 @@ def create_app(
     app.state.runtime = runtime
     app.state.job_repository = job_repository
     app.state.job_worker = job_worker
+    app.state.paper_analysis_service = analysis_service
     app.state.research_radar_service = research_radar_service
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
@@ -377,6 +408,13 @@ def create_app(
     def create_job(payload: JobCreateRequest) -> JobResponse:
         if payload.job_type not in job_worker.registered_job_types:
             raise HTTPException(status_code=422, detail="unsupported job type")
+        if payload.job_type == "paper_analysis" and "paper_analysis" not in custom_job_types:
+            try:
+                PaperAnalysisJobRequest.model_validate(payload.payload)
+            except ValidationError:
+                raise HTTPException(
+                    status_code=422, detail="invalid paper analysis request"
+                ) from None
         canonical_payload = json.dumps(
             payload.payload,
             ensure_ascii=False,

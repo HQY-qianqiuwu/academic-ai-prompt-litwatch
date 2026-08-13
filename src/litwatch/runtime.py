@@ -101,3 +101,9 @@ class ApplicationRuntime:
             self._started = False
             if shutdown_failed:
                 raise RuntimeLifecycleError("application runtime shutdown failed") from None
+
+    @property
+    def started(self) -> bool:
+        """Expose lifecycle state without allowing external mutation."""
+        with self._lock:
+            return self._started

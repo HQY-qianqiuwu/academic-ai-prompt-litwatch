@@ -155,12 +155,12 @@ def test_application_lifespan_starts_and_stops_job_worker(tmp_path):
     assert worker.is_running is False
 
 
-def test_production_app_does_not_advertise_unregistered_placeholder_jobs(tmp_path):
+def test_production_app_advertises_only_the_runnable_paper_analysis_job(tmp_path):
     app = create_app(_settings(tmp_path))
 
     with TestClient(app) as client:
         response = _create_job(client)
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "unsupported job type"}
-    assert app.state.job_worker.registered_job_types == frozenset()
+    assert response.json() == {"detail": "invalid paper analysis request"}
+    assert app.state.job_worker.registered_job_types == frozenset({"paper_analysis"})

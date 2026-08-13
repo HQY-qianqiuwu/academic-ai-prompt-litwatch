@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from litwatch.analysis import PaperAnalyzer
 from litwatch.analysis_models import EvidenceScope, PaperAnalysis
 from litwatch.analysis_repository import AnalysisRepository
 from litwatch.config import Topic
+from litwatch.db import Database
+from litwatch.jobs import JobRecord
 from litwatch.models import Paper
+
+if TYPE_CHECKING:
+    from litwatch.services.jobs import JobContext
 
 AnalysisStep = Literal[
     "validate_paper",
@@ -38,6 +46,34 @@ class AnalysisContext:
     evidence: str
     evidence_scope: EvidenceScope
     trace: list[AnalysisTraceEntry] = field(default_factory=list)
+
+
+class PaperAnalysisJobPayload(BaseModel):
+    """Secret-free job input that references persisted provider-owned paper data."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    canonical_id: str = Field(min_length=1, max_length=1_000)
+    topic_id: str = Field(min_length=1, max_length=100)
+    evidence_scope: EvidenceScope = Field(strict=False)
+    evidence: str | None = Field(default=None, max_length=36_000)
+
+    @field_validator("canonical_id", "topic_id", mode="before")
+    @classmethod
+    def strip_identifiers(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def evidence_matches_declared_scope(self) -> PaperAnalysisJobPayload:
+        fulltext_scope = {
+            EvidenceScope.FULLTEXT_EXCERPT,
+            EvidenceScope.FULLTEXT,
+        }
+        if self.evidence_scope in fulltext_scope and not (self.evidence or "").strip():
+            raise ValueError("full-text evidence is required for the declared scope")
+        if self.evidence_scope not in fulltext_scope and self.evidence is not None:
+            raise ValueError("evidence is only accepted for a full-text scope")
+        return self
 
 
 class AnalysisStore(Protocol):
@@ -231,4 +267,84 @@ class PaperAnalysisService:
                 "future_work": items("future_work"),
                 "evidence": raw.get("evidence", []),
             }
+        )
+
+
+@dataclass(slots=True)
+class PaperAnalysisJobHandler:
+    """Execute a typed analysis from immutable persisted paper metadata."""
+
+    database: Database
+    topics: Callable[[], list[Topic]]
+    service: PaperAnalysisService
+
+    def __call__(self, context: JobContext, record: JobRecord) -> str | None:
+        payload = PaperAnalysisJobPayload.model_validate(record.payload)
+        if context.cancelled():
+            return None
+        paper = self._load_paper(payload.canonical_id, payload.topic_id)
+        topic = self._load_topic(payload.topic_id)
+        evidence = (
+            payload.evidence or ""
+            if payload.evidence_scope
+            in {EvidenceScope.FULLTEXT_EXCERPT, EvidenceScope.FULLTEXT}
+            else paper.abstract
+            if payload.evidence_scope is EvidenceScope.ABSTRACT
+            else ""
+        )
+        analysis = self.service.analyze(
+            AnalysisContext(
+                paper=paper,
+                topic=topic,
+                evidence=evidence,
+                evidence_scope=payload.evidence_scope,
+            )
+        )
+        return self.result_reference(analysis)
+
+    def _load_topic(self, topic_id: str) -> Topic:
+        for topic in self.topics():
+            if topic.id == topic_id:
+                return topic
+        raise ValueError("analysis topic is not configured")
+
+    def _load_paper(self, canonical_id: str, topic_id: str) -> Paper:
+        with self.database.transaction_lock:
+            row = self.database.connection.execute(
+                """SELECT p.*, pt.topic_id, pt.topic_name, pt.score,
+                          pt.score_detail_json, pt.analysis_json
+                   FROM papers AS p JOIN paper_topics AS pt USING(canonical_id)
+                   WHERE p.canonical_id=? AND pt.topic_id=?""",
+                (canonical_id, topic_id),
+            ).fetchone()
+        if row is None:
+            raise ValueError("canonical paper is not available for the selected topic")
+        return Paper.model_validate(
+            {
+                "canonical_id": row["canonical_id"],
+                "source_ids": json.loads(row["source_ids_json"]),
+                "sources": json.loads(row["sources_json"]),
+                "title": row["title"],
+                "abstract": row["abstract"],
+                "authors": json.loads(row["authors_json"]),
+                "publication_date": row["publication_date"],
+                "venue": row["venue"],
+                "doi": row["doi"],
+                "url": row["url"],
+                "pdf_url": row["pdf_url"],
+                "is_open_access": bool(row["is_open_access"]),
+                "citation_count": row["citation_count"],
+                "topic_id": row["topic_id"],
+                "topic_name": row["topic_name"],
+                "score": row["score"],
+                "score_detail": json.loads(row["score_detail_json"]),
+                "analysis": json.loads(row["analysis_json"]),
+            }
+        )
+
+    @staticmethod
+    def result_reference(analysis: PaperAnalysis) -> str:
+        return (
+            f"paper_analysis:{analysis.canonical_id}:{analysis.analysis_version}:"
+            f"{analysis.evidence_hash}:{analysis.model_config_hash}"
         )
