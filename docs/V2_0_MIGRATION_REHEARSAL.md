@@ -60,6 +60,7 @@ if (Test-Path -LiteralPath (Join-Path $Repo '.env')) {
 
 $env:LITWATCH_PYTHON = $TrustedPython
 $env:LITWATCH_ALLOW_EXTERNAL_PYTHON = '1' # permitted only because Port is not 8000
+$env:PYTHONPATH = Join-Path $Repo 'src'
 $env:LITWATCH_RUNTIME_MODE = 'python_default'
 $env:LITWATCH_DATABASE_PATH = $RuntimeDb
 $env:LITWATCH_DATABASE_BACKUP_PATH = Join-Path $TaskTemp 'runtime-backups'
@@ -72,8 +73,10 @@ $env:LITWATCH_JOB_POLL_SECONDS = '1'
 ```
 
 The interpreter must already be trusted. Do not create a virtual environment
-or install dependencies for this procedure. `start-stack.ps1` must print an
-import path under `<v2.0-worktree>/src`; its external-interpreter switch cannot
+or install dependencies for this procedure. `PYTHONPATH` fixes module lookup
+to the v2.0 source tree; it does not change or relax the executable selected by
+`LITWATCH_PYTHON`. `start-stack.ps1` must still print the exact import path
+under `<v2.0-worktree>/src`, and its external-interpreter switch cannot
 authorize default port 8000.
 
 ### 2. Create a read-only SQLite snapshot and exercise migrations
@@ -88,13 +91,25 @@ import json
 from pathlib import Path
 from shutil import copy2
 import sqlite3
+import sys
 
+expected_src = Path("<v2.0-worktree>/src").resolve()
+sys.path.insert(0, str(expected_src))
+import litwatch.migrations as migration_module
+import litwatch.web as web_module
 from litwatch.db import MIGRATION_REGISTRY
 from litwatch.migrations import Migration, MigrationCoordinator
+
+assert Path(web_module.__file__).resolve() == expected_src / "litwatch" / "web.py"
+assert (
+    Path(migration_module.__file__).resolve()
+    == expected_src / "litwatch" / "migrations.py"
+)
 
 source_path = Path("<v1.7-repo>/data/litwatch.db").resolve()
 task = Path("<new-task-temp>").resolve()
 snapshot = task / "v1_7-consistent-snapshot.db"
+runtime_db = task / "runtime-h2.db"
 failure_db = task / "failure-disposable.db"
 recovery_db = task / "recovery-disposable.db"
 tables = (
@@ -137,7 +152,39 @@ assert verification.ok and verification.current_version == 10
 assert safe_counts(connection) == source_counts
 real_backup = report.backup_path
 assert real_backup is not None
+connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+connection.commit()
 connection.close()
+
+# The lifecycle target is an explicit SQLite-consistent backup of the exact
+# closed/checkpointed v10 database above; it is not a fresh or empty DB.
+migrated_readonly = sqlite3.connect(snapshot.as_uri() + "?mode=ro", uri=True)
+migrated_readonly.execute("PRAGMA query_only=1")
+runtime_connection = sqlite3.connect(runtime_db)
+migrated_readonly.backup(runtime_connection)
+runtime_connection.close()
+migrated_readonly.close()
+
+runtime_hash_before = digest(runtime_db)
+runtime_readonly = sqlite3.connect(runtime_db.as_uri() + "?mode=ro", uri=True)
+runtime_readonly.execute("PRAGMA query_only=1")
+runtime_integrity_before = runtime_readonly.execute(
+    "PRAGMA integrity_check"
+).fetchone()[0]
+runtime_foreign_keys_before = runtime_readonly.execute(
+    "PRAGMA foreign_key_check"
+).fetchall()
+runtime_version_before = runtime_readonly.execute(
+    "SELECT MAX(version) FROM schema_migrations"
+).fetchone()[0]
+runtime_counts_before = safe_counts(runtime_readonly)
+runtime_readonly.close()
+assert runtime_version_before == 10
+assert runtime_integrity_before == "ok"
+assert runtime_foreign_keys_before == []
+assert runtime_counts_before == source_counts
+assert runtime_counts_before["subscriptions"] == 3
+assert runtime_counts_before["research_radars"] == 2
 
 # Start the failure fixture from v6, migrate it normally, then add only the
 # approved invalid v11. The invalid CREATE and audit/version row must roll back.
@@ -195,6 +242,11 @@ print(json.dumps({
     "source_sha256_after": source_hash_after,
     "snapshot_v6_sha256": snapshot_hash_v6,
     "migrated_v10_sha256": digest(snapshot),
+    "runtime_v10_sha256_before": runtime_hash_before,
+    "runtime_v10_integrity_before": runtime_integrity_before,
+    "runtime_v10_version_before": runtime_version_before,
+    "runtime_subscription_count_before": runtime_counts_before["subscriptions"],
+    "runtime_radar_count_before": runtime_counts_before["research_radars"],
     "backup_name": real_backup.name,
     "migration_ok": verification.ok,
     "migration_version": verification.current_version,
@@ -211,8 +263,11 @@ Observed sanitized summary: source hashes matched before/after; source and
 snapshot were v6 with integrity `ok`; migration applied versions 7–10 and
 verified at v10 with zero foreign-key errors; invalid v11 left no schema,
 audit, or partial-table commit; recovery verified at v6 and was byte-identical
-to the coordinator backup. Exact hashes and counts appear in the evidence
-sections below.
+to the coordinator backup. Before the runtime started, its explicit v10 backup
+copy had integrity `ok`, zero foreign-key errors, 3 subscriptions, and 2
+radars. Its observed pre-runtime SHA-256 was
+`fe64b8b3df43e40f49b38330eb9fed52c9b826bbdcebb28693f926f850a55a3c`.
+Exact migration hashes and counts appear in the evidence sections below.
 
 ### 3. Run lifecycle commands without anonymous capture pipes
 
@@ -497,6 +552,8 @@ _, subscriptions = http_json(
 _, radars = http_json("GET", "http://127.0.0.1:18080/api/v1/radars")
 assert any(item.get("id") == subscription_id for item in subscriptions)
 assert any(item.get("id") == radar_id for item in radars)
+assert len(subscriptions) == 4  # exact v10 copy began with 3
+assert len(radars) == 3         # exact v10 copy began with 2
 print({
     "subscription_persisted": True,
     "subscription_count": len(subscriptions),
@@ -506,7 +563,7 @@ print({
 ```
 
 Observed safe projection: create HTTP 201/201, suffixes `42aff916` and
-`8052e1c1`, persistence true/true, subscription total 4, radar total 3.
+`8052e1c1`, persistence true/true, subscription count 3→4, radar count 2→3.
 
 ### 7. Always perform production cleanup and fail closed
 

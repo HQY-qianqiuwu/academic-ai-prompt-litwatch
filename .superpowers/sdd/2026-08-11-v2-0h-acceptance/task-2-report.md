@@ -46,6 +46,7 @@ if `<v2.0-worktree>/.env` exists. The isolated child receives only:
 ```text
 LITWATCH_PYTHON=<already-trusted-python>
 LITWATCH_ALLOW_EXTERNAL_PYTHON=1       # port 18080 only; never port 8000
+PYTHONPATH=<v2.0-worktree>/src
 LITWATCH_RUNTIME_MODE=python_default
 LITWATCH_DATABASE_PATH=<task-temp>/runtime-h2.db
 LITWATCH_DATABASE_BACKUP_PATH=<task-temp>/runtime-backups
@@ -57,14 +58,32 @@ LITWATCH_SCHEDULER_POLL_SECONDS=3600
 LITWATCH_JOB_POLL_SECONDS=1
 ```
 
-The start script must resolve `litwatch.web` under `<v2.0-worktree>/src`.
-No environment, dependency, or package installation is part of the procedure.
+Before importing any LitWatch module, the migration harness inserts the exact
+resolved `<v2.0-worktree>/src` at `sys.path[0]`, imports `litwatch.web` and
+`litwatch.migrations`, and requires their resolved `__file__` paths to equal
+`<v2.0-worktree>/src/litwatch/web.py` and
+`<v2.0-worktree>/src/litwatch/migrations.py`. The same source directory is the
+child's exact `PYTHONPATH`, and the start script must independently resolve
+`litwatch.web` there. `PYTHONPATH` controls source lookup only: it does not
+relax the trusted executable decision or the rule that an external interpreter
+is permitted only with the explicit switch on a non-default port. No
+environment, dependency, or package installation is part of the procedure.
 
 ### SQLite snapshot, migration, failure, and recovery
 
 The pseudoharness uses these production calls:
 
 ```python
+expected_src = Path("<v2.0-worktree>/src").resolve()
+sys.path.insert(0, str(expected_src))
+import litwatch.migrations as migration_module
+import litwatch.web as web_module
+assert Path(web_module.__file__).resolve() == expected_src / "litwatch" / "web.py"
+assert (
+    Path(migration_module.__file__).resolve()
+    == expected_src / "litwatch" / "migrations.py"
+)
+
 source = sqlite3.connect(source_path.as_uri() + "?mode=ro", uri=True)
 source.execute("PRAGMA query_only=1")
 snapshot = sqlite3.connect(snapshot_path)
@@ -79,6 +98,33 @@ coordinator = MigrationCoordinator(
 state_before = coordinator.inspect()       # require v6
 report = coordinator.migrate()             # require applied (7, 8, 9, 10)
 verification = coordinator.verify()        # require ok, v10, integrity ok, FK 0
+coordinator.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+coordinator.connection.commit()
+coordinator.connection.close()
+
+# The configured RuntimeDb is an explicit SQLite backup of that exact closed
+# v10 snapshot, followed by read-only hash/integrity/version/count checks.
+migrated = sqlite3.connect(snapshot_path.as_uri() + "?mode=ro", uri=True)
+migrated.execute("PRAGMA query_only=1")
+runtime = sqlite3.connect(runtime_db)
+migrated.backup(runtime)
+runtime.close()
+migrated.close()
+runtime_sha256_before = sha256(runtime_db.read_bytes()).hexdigest()
+runtime_check = sqlite3.connect(runtime_db.as_uri() + "?mode=ro", uri=True)
+runtime_check.execute("PRAGMA query_only=1")
+assert runtime_check.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+assert runtime_check.execute("PRAGMA foreign_key_check").fetchall() == []
+assert runtime_check.execute(
+    "SELECT MAX(version) FROM schema_migrations"
+).fetchone()[0] == 10
+assert runtime_check.execute(
+    "SELECT COUNT(*) FROM subscriptions"
+).fetchone()[0] == 3
+assert runtime_check.execute(
+    "SELECT COUNT(*) FROM research_radars"
+).fetchone()[0] == 2
+runtime_check.close()
 ```
 
 Hashes and the approved non-sensitive table counts are captured before and
@@ -120,7 +166,10 @@ recorded before `backup()`.
 Observed safe summary: source hash unchanged; v6 snapshot integrity `ok`;
 versions 7–10 applied; v10 verification true with zero foreign-key errors;
 invalid v11 fully rolled back; recovery verified at v6 and was byte-identical
-to its real backup.
+to its real backup. The isolated runtime copy was verified before startup at
+v10 with integrity `ok`, zero foreign-key errors, 3 subscriptions, 2 radars,
+and SHA-256
+`fe64b8b3df43e40f49b38330eb9fed52c9b826bbdcebb28693f926f850a55a3c`.
 
 ### Bounded lifecycle and summary-only HTTP calls
 
@@ -241,8 +290,23 @@ The exact official create bodies were:
 Keep the returned IDs only in memory, print their final eight characters, call
 production stop, require listener/identity absence, restart, then GET
 `/api/v1/subscriptions` and `/api/v1/radars`. Assert each full in-memory ID is
-present and print only booleans and total counts. Observed create status
-201/201, suffixes `42aff916`/`8052e1c1`, persistence true/true, totals 4/3.
+present; also require subscription count 4 and radar count 3 so the same
+prepared v10 database proves exact transitions 3→4 and 2→3. Print only
+booleans and total counts. Observed create status 201/201, suffixes
+`42aff916`/`8052e1c1`, persistence true/true, counts 3→4 and 2→3.
+
+```python
+assert any(item.get("id") == subscription_id for item in subscriptions)
+assert any(item.get("id") == radar_id for item in radars)
+assert len(subscriptions) == 4  # prepared RuntimeDb had exactly 3
+assert len(radars) == 3         # prepared RuntimeDb had exactly 2
+print({
+    "subscription_persisted": True,
+    "subscription_count": len(subscriptions),
+    "radar_persisted": True,
+    "radar_count": len(radars),
+})
+```
 
 ### No-key analysis and cleanup
 
@@ -404,6 +468,11 @@ The review fix did not execute the lifecycle rehearsal, open a real network
 request, or start a LitWatch listener. The full suite uses only its existing
 controlled test boundaries. The warning remains the existing Starlette/httpx
 deprecation described above.
+
+Round-2 documentation review re-ran the fenced-code/secret/path/diff checks
+after binding the runtime DB and v2 import source explicitly; all passed. The
+full suite returned `604 passed, 1 warning in 114.23s`; Ruff, fsck, and both
+stable DSL comparisons also passed.
 
 ## Files in the H2 commit
 
