@@ -4,12 +4,14 @@
 
 **RELEASE CANDIDATE PREPARATION — NOT STABLE**
 
-This document records the automated Task 1 gate only. It proves that the
-approved core capabilities compose inside the Python runtime without a
-Docker, Dify, Compose, SSRF-proxy, real-network, real-process, or real-port
-readiness dependency. It does not replace the Task 2 lifecycle and migration
-rehearsal or final manual acceptance, and it does not authorize a v2.0 Stable
-tag.
+This document records the automated Task 1 gate and the isolated Task 2 real
+migration/runtime rehearsal. Task 1 proves that the approved core capabilities
+compose inside the Python runtime without a Docker, Dify, Compose, SSRF-proxy,
+real-network, real-process, or real-port readiness dependency. Task 2 adds a
+read-only snapshot of the real v1.7 database, real v2 migrations, a real
+alternate-port Python lifecycle, and a sanitized real OpenAlex request. These
+results do not replace final manual acceptance and do not authorize a v2.0
+Stable tag.
 
 ## Automated acceptance result
 
@@ -219,18 +221,77 @@ that process and did not attempt a real port smoke. Any later real lifecycle
 test must continue to fail closed rather than stopping an unknown or protected
 owner.
 
-## Remaining Task 2 and manual acceptance
+## Task 2 isolated real rehearsal
 
-Task 2 must still provide real, isolated evidence for:
+Task 2 ran against a SQLite-consistent copy of the real v1.7 database and a
+verified-free alternate port. The source database was opened with SQLite URI
+`mode=ro` and `PRAGMA query_only=1`; its SHA-256 was
+`a828fb97fde3b8d5c53ca97db1934f778ecaecf9339b869bac304484e341bbc7`
+both before and after snapshot/migration work. The source remained schema v6,
+2,654,208 bytes, and `PRAGMA integrity_check` returned `ok`.
 
-- copied-v1.7 database migration, integrity, backup, failed-migration rollback,
-  and recovery count/hash preservation;
-- cold start, warm start, status, safe stop, and restart through the real
-  Python lifecycle;
-- real OpenAlex TDOA search without Dify/Docker readiness;
-- persisted Radar and subscription behavior across a real restart; and
-- one locally safe or explicitly authorized external-model analysis path.
+The consistent snapshot preserved all recorded source counts: 455 papers, 104
+paper-topic rows, 3 subscriptions, 8 subscription runs, 8 deliveries, 2
+research radars, 15 radar scans, and 335 radar-paper rows. Real v2 migration
+advanced the isolated snapshot from v6 to v10. Verification returned true,
+integrity remained `ok`, the foreign-key error count was zero, and ten
+successful migration-audit rows were present. A real pre-migration backup was
+created and verified independently. A disposable invalid v11 migration left
+the database at v10 with no v11 audit row or partial table, and recovery on a
+different disposable copy restored the real backup byte-for-byte at v6 with
+all counts preserved. Full hashes and procedures are recorded in
+`docs/V2_0_MIGRATION_REHEARSAL.md`.
 
-Until those rehearsals and final manual acceptance complete, the historical
-Dify repository, volumes, integration assets, and stable v1.0/v1.1 DSL files
-remain frozen rollback assets and v2.0 remains Not Stable.
+The final runtime rehearsal used port 18080 and an isolated v10 database. It
+used the explicit non-default-port trusted-Python policy and imported
+`litwatch.web` from the v2.0 worktree. Cold start finalized a v2
+`launcher_child` identity (launch PID 55972, port-owner PID 54248); warm start
+preserved that exact logical identity. `status-stack.ps1` returned `READY`,
+and the live runtime endpoint reported:
+
+| Field | Observed value |
+|---|---:|
+| `mode` | `python_default` |
+| `python_primary` | `true` |
+| `requires_dify` | `false` |
+| `requires_docker` | `false` |
+| `requires_ssrf_proxy` | `false` |
+| `migration_verified` | `true` |
+| `runtime_started` | `true` |
+| `job_worker_running` | `true` |
+| `job_worker_active` | `0` |
+| `scheduler_running` | `true` |
+| `scheduler_last_error` | `null` |
+
+The real query `underwater acoustic TDOA localization` returned HTTP 200 with
+5 papers, OpenAlex provenance on all 5, provider status `success`, 10 raw
+records, 8 deduplicated records, and 2 duplicates removed. No paper payload,
+title, abstract, request header, credential, or secret is included in this
+evidence. One returned abstract exercised the production no-key analyzer and
+returned `extractive` with abstract-level evidence; no cloud LLM was enabled.
+
+The official APIs created one subscription (sanitized ID suffix `42aff916`)
+and one research radar (suffix `8052e1c1`), both with HTTP 201. An exact managed
+stop removed the listener and identity, a restart created a new v2 lineage
+(launch PID 4772, port-owner PID 47200), and official GET endpoints found both
+records. Totals changed from 3 to 4 subscriptions and from 2 to 3 radars. The
+production final stop returned zero; the final state had no port-18080
+listener, no matching LitWatch process, and no `litwatch-stack-18080.pid`.
+
+The first temporary orchestration attempt did not reach search because its
+test harness captured a PowerShell subprocess through anonymous pipes while
+that subprocess launched a persistent descendant. The harness timed out at
+the cold-start boundary even though health/runtime/provider probes returned
+HTTP 200. No production lifecycle defect was found. The single authorized
+corrected run redirected every lifecycle stdout/stderr stream to explicit
+task-temporary files and completed all phases in 76.781 seconds.
+
+## Remaining manual acceptance
+
+Automated and isolated real rehearsal is complete, but release-owner manual
+acceptance, deployment-specific backup review, operator rollback practice, and
+an explicit promotion decision remain outstanding. Port 8000 and its protected
+v1.7 PID 37408 were never signalled, stopped, or replaced. The historical Dify
+repository, volumes, integration assets, and stable v1.0/v1.1 DSL files remain
+frozen rollback assets. v2.0 remains **Release Candidate Preparation / Not
+Stable**.
