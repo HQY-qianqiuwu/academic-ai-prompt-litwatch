@@ -5,13 +5,18 @@ from datetime import UTC, datetime, timedelta
 import httpx
 
 from litwatch.analysis import PaperAnalyzer
+from litwatch.analysis_models import AnalysisStatus, EvidenceScope
+from litwatch.analysis_repository import AnalysisRepository
 from litwatch.config import Settings, Topic
 from litwatch.db import Database
 from litwatch.fulltext import FullTextExtractor
 from litwatch.llm.factory import LLMRuntime, build_llm_runtime
 from litwatch.models import Paper, RunSummary
-from litwatch.ranking import score_paper
-from litwatch.sources import ArxivSource, OpenAlexSource, SemanticScholarSource
+from litwatch.services.literature_search import (
+    AllProvidersFailedError,
+    LiteratureSearchService,
+)
+from litwatch.services.paper_analysis import AnalysisContext, PaperAnalysisService
 
 
 def merge_papers(existing: Paper, incoming: Paper) -> Paper:
@@ -40,21 +45,15 @@ class Pipeline:
         database: Database | None = None,
         *,
         llm_http_client: httpx.Client | None = None,
+        literature_search_service: LiteratureSearchService | None = None,
+        paper_analysis_service: PaperAnalysisService | None = None,
     ) -> None:
         self.settings = settings
         self.database = database or Database(settings.database_path)
         timeout = settings.request_timeout_seconds
-        self.sources = [
-            OpenAlexSource(email=settings.openalex_email, timeout=timeout),
-            ArxivSource(timeout=timeout),
-        ]
-        if settings.semantic_scholar_api_key or settings.semantic_scholar_anonymous:
-            self.sources.append(
-                SemanticScholarSource(
-                    api_key=settings.semantic_scholar_api_key,
-                    timeout=timeout,
-                )
-            )
+        self.literature_search_service = (
+            literature_search_service or LiteratureSearchService.from_settings(settings)
+        )
         self._llm_runtime: LLMRuntime | None = build_llm_runtime(
             settings,
             database=self.database,
@@ -66,6 +65,10 @@ class Pipeline:
             budget_factory=(
                 self._llm_runtime.budget_factory if self._llm_runtime else None
             ),
+        )
+        self.paper_analysis_service = paper_analysis_service or PaperAnalysisService(
+            analyzer=self.analyzer,
+            repository=AnalysisRepository(self.database),
         )
         self.fulltext = FullTextExtractor(timeout=max(45, timeout))
 
@@ -87,50 +90,75 @@ class Pipeline:
         accepted_papers: list[Paper] = []
 
         for topic in topics if topics is not None else self.settings.load_topics():
-            unique: dict[str, Paper] = {}
-            for source in self.sources:
-                try:
-                    papers = source.search(
-                        topic, start_date, end_date, self.settings.max_results_per_source
-                    )
-                    fetched += len(papers)
-                    for paper in papers:
-                        if paper.canonical_id in unique:
-                            unique[paper.canonical_id] = merge_papers(
-                                unique[paper.canonical_id], paper
-                            )
-                        else:
-                            unique[paper.canonical_id] = paper
-                except Exception as exc:  # noqa: BLE001 - one failed source must not stop a scan
-                    errors.append(f"{topic.id}/{source.name}: {type(exc).__name__}: {exc}")
+            try:
+                search_result = self.literature_search_service.search(
+                    topic=topic.query,
+                    limit=self.settings.max_results_per_source,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            except AllProvidersFailedError as error:
+                errors.append(
+                    f"{topic.id}/search: all_providers_failed:"
+                    f"{','.join(item.status.value for item in error.provider_status)}"
+                )
+                continue
+            except Exception:  # noqa: BLE001 - runtime summary stays redacted
+                errors.append(f"{topic.id}/search: search_failed")
+                continue
 
-            deduplicated += len(unique)
-            ranked = self._rank_topic(unique.values(), topic)
+            fetched += search_result.diagnostics.raw_count
+            deduplicated += search_result.diagnostics.dedup_count
+            ranked = [
+                paper
+                for paper in search_result.papers
+                if float(paper.score) >= topic.min_score
+            ]
+            for paper in ranked:
+                paper.topic_id = topic.id
+                paper.topic_name = topic.name
+                self.database.upsert(paper, run_id)
+
             for index, paper in enumerate(ranked[: self.settings.analyze_top_n]):
-                existing = self.database.paper_analysis(paper.canonical_id, topic.id)
-                if existing and existing.get("status") in {"ok", "extractive"} and existing.get("evidence_level") == "fulltext_excerpt":
-                    paper.analysis = existing
-                    analyzed += 1
-                    continue
                 fulltext = ""
                 if self.analyzer.enabled and index < self.settings.fulltext_top_n and paper.pdf_url:
                     try:
                         fulltext = self.fulltext.extract(paper.pdf_url)
-                    except Exception as exc:  # noqa: BLE001 - PDF extraction is optional
-                        errors.append(
-                            f"{topic.id}/pdf/{paper.canonical_id}: {type(exc).__name__}: {exc}"
-                        )
-                try:
-                    paper.analysis = self.analyzer.analyze(paper, topic, fulltext)
-                    analyzed += int(paper.analysis.get("status") in {"ok", "extractive"})
-                except Exception as exc:  # noqa: BLE001 - LLM analysis is optional
-                    paper.analysis = {"status": "error", "reason": str(exc)}
-                    errors.append(
-                        f"{topic.id}/llm/{paper.canonical_id}: {type(exc).__name__}: {exc}"
+                    except Exception:  # noqa: BLE001 - summary remains redacted
+                        errors.append(f"{topic.id}/pdf/{paper.canonical_id}: extraction_failed")
+                evidence = fulltext or paper.abstract
+                evidence_scope = (
+                    EvidenceScope.FULLTEXT_EXCERPT
+                    if fulltext
+                    else (
+                        EvidenceScope.ABSTRACT
+                        if paper.abstract
+                        else EvidenceScope.METADATA_ONLY
                     )
-
-            for paper in ranked:
-                self.database.upsert(paper, run_id)
+                )
+                try:
+                    analysis = self.paper_analysis_service.analyze(
+                        AnalysisContext(
+                            paper=paper,
+                            topic=topic,
+                            evidence=evidence,
+                            evidence_scope=evidence_scope,
+                        )
+                    )
+                    paper.analysis = analysis.model_dump(mode="json")
+                    analyzed += int(
+                        analysis.status
+                        in {AnalysisStatus.COMPLETED, AnalysisStatus.EXTRACTIVE}
+                    )
+                    if analysis.status is AnalysisStatus.FAILED:
+                        errors.append(
+                            f"{topic.id}/analysis/{paper.canonical_id}: analysis_failed"
+                        )
+                except Exception:  # noqa: BLE001 - summary remains redacted
+                    paper.analysis = {"status": "failed"}
+                    errors.append(
+                        f"{topic.id}/analysis/{paper.canonical_id}: analysis_failed"
+                    )
             accepted_papers.extend(ranked)
 
         finished = datetime.now(UTC)
@@ -153,14 +181,3 @@ class Pipeline:
             errors=errors,
         )
         return summary, sorted(accepted_papers, key=lambda item: item.score, reverse=True)
-
-    @staticmethod
-    def _rank_topic(papers, topic: Topic) -> list[Paper]:
-        ranked: list[Paper] = []
-        for paper in papers:
-            paper.topic_id = topic.id
-            paper.topic_name = topic.name
-            score_paper(paper, topic)
-            if paper.score >= topic.min_score:
-                ranked.append(paper)
-        return sorted(ranked, key=lambda item: (item.score, item.citation_count), reverse=True)
