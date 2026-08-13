@@ -15,7 +15,9 @@ fail-closed: any cloud request requires explicit
 
 The configured provider kind must match the trusted runtime classification;
 caller-provided classification cannot turn a cloud endpoint into a local one.
-The actual serialized payload length is checked before provider dispatch.
+Before dispatch, the egress payload limit checks the serialized user-message
+content only. It is not a measurement of the complete outbound HTTP JSON
+envelope, the system message, request headers, or a provider response.
 
 ## Prompt and evidence boundary
 
@@ -38,13 +40,20 @@ publication date, and URLs remain provider-owned data.
 
 Credentials are write-only at the provider-profile API and are held only in the
 runtime credential store. Provider options and job payloads reject credential
-values; jobs use opaque credential references where applicable. The shared
-redactor removes common API-key assignments, bearer values, cookie headers,
-credential-bearing URLs, environment credential assignments, and JSON
-credential fields before text crosses a persistence, model, or log projection.
+values; jobs use opaque credential references where applicable. For the model
+transport, the shared redactor removes common API-key assignments, bearer
+values, cookie headers, credential-bearing URLs, environment credential
+assignments, and JSON credential fields from the system instruction and from
+the serialized user-message fields.
 
-Do not persist or log raw upstream exception text. Jobs persist reviewed safe
-codes and messages; analysis traces record safe step errors only. The supported
+The redactor is not a general persistence or logging interceptor. Durable jobs
+persist reviewed safe codes and messages instead of raw handler exceptions, and
+analysis traces store fixed safe step errors instead of raw analyzer exceptions.
+The current production runtime has no dedicated application log-emission
+boundary for these values; therefore no regression claim is made for production
+log redaction. Any future raw exception or evidence logging/persistence path
+must either use the redactor at that boundary or use an allowlisted safe value.
+The supported
 policy rejection codes are `provider_kind_mismatch`, `cloud_consent_required`,
 `fulltext_consent_required`, `payload_limit_exceeded`,
 `token_limit_exceeded`, `job_cost_limit_exceeded`,
@@ -54,18 +63,24 @@ codes are `timeout`, `rate_limited`, `authentication`, `upstream`, `parse`, and
 `handler_error`, `worker_shutdown`, and `unsupported_job_type`; analysis traces
 use `invalid_paper`, `analysis_failed`, or `persistence_failed`.
 
-The regression suite uses unmistakably synthetic sentinels only. It checks API,
-SQLite, HTML, log, and serialized-model projections and is mutation-proved with
-a local redaction bypass that is restored before commit.
+The regression suite uses unmistakably synthetic sentinels only. It checks the
+real OpenAI-compatible Provider JSON request body, provider-profile and job
+APIs, SQLite rows, and the rendered provider-settings HTML shell. The page
+loads its secret-free profile data through the tested API; the server-rendered
+shell itself does not interpolate profile values. The LLM serialization test is
+mutation-proved by a local bypass of `LLMRequest.user_message_content`, restored
+before commit.
 
 ## Cost, payload, and concurrency controls
 
-Before dispatch, the runtime calculates a conservative input estimate from the
-serialized payload and reserves the request against durable SQLite usage state.
-The request is rejected before egress when its payload, estimated tokens,
-per-job cost, daily cost, or active concurrency exceeds the configured guard.
-Reservations are renewed while active and settled or released when the request
-finishes.
+Before dispatch, the runtime calculates an input estimate from the system
+instruction plus serialized user-message content and reserves the request
+against durable SQLite usage state. The estimate and payload guard do not cover
+the complete HTTP envelope, request headers, or a provider response. The request
+is rejected before egress when its measured user-message payload, estimated
+tokens, per-job cost, daily cost, or active concurrency exceeds the configured
+guard. Reservations are renewed while active and settled or released when the
+request finishes.
 
 The boundary environment-setting names are:
 
@@ -110,3 +125,14 @@ enforces configured byte and character limits while streaming, uses a bounded
 timeout, disables environment proxy trust, and returns generic safe failures
 rather than reflecting remote response content. These rules also apply to
 redirect destinations; no private-network allowlist exists.
+
+## Audit command scope
+
+The credential scan inspects only added lines in Git branch and staged diffs;
+it never reads or prints `.env` or diff content. It counts matches for these
+credential-shaped patterns: `sk-` values of at least 20 characters, bearer or
+basic values of at least 16 characters, assignments for API-key/token/secret/
+password/credential names with values of at least 16 characters, and private
+key PEM headers. Known synthetic `*_SENTINEL` and `*_PLACEHOLDER` fixtures are
+excluded from the count. The exact commands and zero-count evidence are retained
+in the Task 3 report.

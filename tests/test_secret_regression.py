@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from time import monotonic, sleep
 
+import httpx
 from fastapi.testclient import TestClient
 
 from litwatch.config import Settings
+from litwatch.llm import LLMRequest, OpenAICompatibleProvider
 from litwatch.models import Paper
-from litwatch.security import redact_sensitive_text
 from litwatch.web import create_app
 
 API_KEY_SENTINEL = "task3-synthetic-api-key-17"
@@ -17,6 +17,7 @@ BEARER_SENTINEL = "task3-synthetic-bearer-token-17"
 COOKIE_SENTINEL = "task3-synthetic-cookie-value-17"
 URL_USER_SENTINEL = "task3-synthetic-url-user-17"
 URL_PASSWORD_SENTINEL = "task3-synthetic-url-password-17"
+TRANSPORT_AUTH_PLACEHOLDER = "task3-synthetic-transport-auth-17"
 SENTINELS = (
     API_KEY_SENTINEL,
     BEARER_SENTINEL,
@@ -74,10 +75,45 @@ def _assert_secret_free(*projections: str) -> None:
         assert all(sentinel not in projection for projection in projections)
 
 
-def test_synthetic_secrets_are_absent_from_public_persistence_html_and_log_projections(
-    tmp_path, caplog, monkeypatch
+def test_real_llm_provider_payload_redacts_synthetic_instruction_and_evidence():
+    """Breaks if LLMRequest stops redacting its serialized user content."""
+
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["content"] = request.content.decode("utf-8")
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "{}"}}], "usage": {}},
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    provider = OpenAICompatibleProvider(
+        client=client,
+        base_url="https://llm.example.test/v1",
+        api_key=TRANSPORT_AUTH_PLACEHOLDER,
+    )
+    request = LLMRequest(
+        model="security-regression-model",
+        system_instruction=f"Return JSON only.\n{_sensitive_detail()}",
+        user_instruction=f"Summarize safely.\n{_sensitive_detail()}",
+        untrusted_evidence=_sensitive_detail(),
+        provider_kind="cloud",
+        evidence_scope="abstract",
+    )
+    try:
+        provider.complete(request)
+    finally:
+        client.close()
+
+    _assert_secret_free(captured["content"])
+
+
+def test_synthetic_secrets_are_absent_from_provider_api_job_db_and_rendered_html(
+    tmp_path, monkeypatch
 ):
-    """Breaks if shared credential redaction or safe-error projections are bypassed."""
+    """Breaks if profile write-only or safe-error public projections expose a secret."""
 
     app = create_app(
         _settings(tmp_path),
@@ -103,7 +139,6 @@ def test_synthetic_secrets_are_absent_from_public_persistence_html_and_log_proje
         raise RuntimeError(_sensitive_detail())
 
     monkeypatch.setattr(app.state.paper_analysis_service.analyzer, "analyze", fail_analysis)
-    caplog.set_level(logging.WARNING, logger="litwatch.security_audit")
 
     with TestClient(app) as client:
         profile_response = client.post(
@@ -118,6 +153,7 @@ def test_synthetic_secrets_are_absent_from_public_persistence_html_and_log_proje
                 ],
             },
         )
+        profile_readback = client.get("/api/v1/provider-profiles")
         failed_job_response = client.post(
             "/api/v2/jobs",
             json={
@@ -138,14 +174,14 @@ def test_synthetic_secrets_are_absent_from_public_persistence_html_and_log_proje
                 },
             },
         )
-        assert profile_response.status_code == 200
+        assert profile_response.status_code == profile_readback.status_code == 200
         assert failed_job_response.status_code == analysis_job_response.status_code == 202
         app.state.job_worker.run_once()
         failed_job = _wait_for_status(app, failed_job_response.json()["job_id"], "failed")
         analysis_job = _wait_for_status(app, analysis_job_response.json()["job_id"], "completed")
         failed_job_readback = client.get(failed_job_response.json()["status_url"])
         analysis_job_readback = client.get(analysis_job_response.json()["status_url"])
-        html_response = client.get("/provider-settings")
+        provider_settings_html = client.get("/provider-settings")
         database_rows = {
             "jobs": [
                 dict(row)
@@ -165,22 +201,12 @@ def test_synthetic_secrets_are_absent_from_public_persistence_html_and_log_proje
     assert failed_job.safe_error_message == "job handler failed"
     assert analysis_job.result_reference is not None
     assert failed_job_readback.status_code == analysis_job_readback.status_code == 200
-    assert html_response.status_code == 200
-
-    logging.getLogger("litwatch.security_audit").warning(
-        "security audit projection=%s", redact_sensitive_text(_sensitive_detail())
-    )
-    serialized_llm_projection = json.dumps(
-        {"untrusted_evidence": redact_sensitive_text(_sensitive_detail())},
-        sort_keys=True,
-    )
-
+    assert provider_settings_html.status_code == 200
     _assert_secret_free(
         profile_response.text,
+        profile_readback.text,
         failed_job_readback.text,
         analysis_job_readback.text,
         json.dumps(database_rows, default=str, sort_keys=True),
-        html_response.text,
-        caplog.text,
-        serialized_llm_projection,
+        provider_settings_html.text,
     )
