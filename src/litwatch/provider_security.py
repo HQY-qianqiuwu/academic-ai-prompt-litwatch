@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 
@@ -13,6 +14,16 @@ class ProviderBaseUrlError(ValueError):
 
 
 AddressResolver = Callable[[str, int], Iterable[str]]
+
+
+@dataclass(frozen=True, slots=True)
+class ValidatedProviderUrl:
+    """A public HTTPS URL bound to the DNS answers that were validated."""
+
+    value: str
+    hostname: str
+    port: int
+    addresses: tuple[str, ...]
 
 
 def resolve_host_addresses(hostname: str, port: int) -> tuple[str, ...]:
@@ -37,11 +48,11 @@ def _address_is_forbidden(value: str) -> bool:
     )
 
 
-def validate_provider_base_url(
+def resolve_validated_provider_url(
     value: str,
     *,
     resolver: AddressResolver = resolve_host_addresses,
-) -> str:
+) -> ValidatedProviderUrl:
     """Require a public HTTPS endpoint and reject unsafe DNS resolutions.
 
     This validation is intentionally called both when an API profile is saved and
@@ -80,6 +91,21 @@ def validate_provider_base_url(
         if not addresses:
             raise ProviderBaseUrlError("provider hostname did not resolve to an address")
 
-    if any(_address_is_forbidden(address) for address in addresses):
+    normalized_addresses = tuple(str(ipaddress.ip_address(address)) for address in addresses)
+    if any(_address_is_forbidden(address) for address in normalized_addresses):
         raise ProviderBaseUrlError("provider hostname resolves to a non-public address")
-    return value
+    return ValidatedProviderUrl(
+        value=value,
+        hostname=hostname,
+        port=parsed.port or 443,
+        addresses=normalized_addresses,
+    )
+
+
+def validate_provider_base_url(
+    value: str,
+    *,
+    resolver: AddressResolver = resolve_host_addresses,
+) -> str:
+    """Require a public HTTPS endpoint and reject unsafe DNS resolutions."""
+    return resolve_validated_provider_url(value, resolver=resolver).value

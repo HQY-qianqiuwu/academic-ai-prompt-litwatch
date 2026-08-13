@@ -77,6 +77,7 @@ class Pipeline:
     def close(self) -> None:
         if self._llm_runtime is not None:
             self._llm_runtime.close()
+        self.fulltext.close()
 
     def run(
         self, *, days: int | None = None, topics: list[Topic] | None = None

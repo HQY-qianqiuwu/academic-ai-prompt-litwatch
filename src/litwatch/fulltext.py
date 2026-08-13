@@ -8,8 +8,9 @@ import pymupdf
 from litwatch.provider_security import (
     AddressResolver,
     ProviderBaseUrlError,
+    ValidatedProviderUrl,
     resolve_host_addresses,
-    validate_provider_base_url,
+    resolve_validated_provider_url,
 )
 
 
@@ -29,15 +30,26 @@ class FullTextExtractor:
         max_redirects: int = 3,
         resolver: AddressResolver = resolve_host_addresses,
         transport: httpx.BaseTransport | None = None,
+        client: httpx.Client | None = None,
     ) -> None:
         if max_bytes < 1:
             raise ValueError("max_bytes must be positive")
         if max_redirects < 0:
             raise ValueError("max_redirects must not be negative")
-        self.client = httpx.Client(
+        if transport is not None and client is not None:
+            raise ValueError("transport and client cannot both be provided")
+        if client is not None and client._trust_env:
+            raise ValueError("injected client must set trust_env=False")
+        self.owns_client = client is None
+        self.client = client or httpx.Client(
             timeout=timeout,
             follow_redirects=False,
-            transport=transport if transport is not None else httpx.HTTPTransport(retries=0),
+            trust_env=False,
+            transport=(
+                transport
+                if transport is not None
+                else httpx.HTTPTransport(retries=0, trust_env=False)
+            ),
         )
         self.max_bytes = max_bytes
         self.max_redirects = max_redirects
@@ -55,11 +67,11 @@ class FullTextExtractor:
         current_url = pdf_url
         redirects = 0
         while True:
-            safe_url = self._validated_url(current_url)
+            target = self._validated_url(current_url)
             try:
-                with self.client.stream(
-                    "GET", safe_url, headers={"Accept": "application/pdf"}
-                ) as response:
+                request = self._build_request(target)
+                response = self.client.send(request, stream=True, follow_redirects=False)
+                try:
                     if response.status_code in _REDIRECT_STATUS_CODES:
                         location = response.headers.get("location")
                         if not location:
@@ -67,21 +79,36 @@ class FullTextExtractor:
                         if redirects >= self.max_redirects:
                             raise FullTextSecurityError("PDF redirect limit exceeded")
                         redirects += 1
-                        current_url = urljoin(safe_url, location)
+                        current_url = urljoin(target.value, location)
                         continue
                     if response.is_error:
                         raise FullTextSecurityError("PDF download failed")
                     return self._read_response(response)
+                finally:
+                    response.close()
             except FullTextSecurityError:
                 raise
             except httpx.HTTPError:
                 raise FullTextSecurityError("PDF download failed") from None
 
-    def _validated_url(self, value: str) -> str:
+    def _validated_url(self, value: str) -> ValidatedProviderUrl:
         try:
-            return validate_provider_base_url(value, resolver=self.resolver)
+            return resolve_validated_provider_url(value, resolver=self.resolver)
         except ProviderBaseUrlError as error:
             raise FullTextSecurityError(str(error)) from None
+
+    def _build_request(self, target: ValidatedProviderUrl) -> httpx.Request:
+        host_header = target.hostname if target.port == 443 else f"{target.hostname}:{target.port}"
+        return self.client.build_request(
+            "GET",
+            httpx.URL(target.value).copy_with(host=target.addresses[0]),
+            headers={"Accept": "application/pdf", "Host": host_header},
+            extensions={"sni_hostname": target.hostname},
+        )
+
+    def close(self) -> None:
+        if self.owns_client:
+            self.client.close()
 
     def _read_response(self, response: httpx.Response) -> tuple[bytes, str]:
         content_length_header = response.headers.get("content-length")

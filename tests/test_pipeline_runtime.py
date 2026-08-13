@@ -449,6 +449,21 @@ def test_pipeline_persists_typed_analysis_for_restart_consumers(tmp_path):
     database.connection.close()
 
 
+def test_pipeline_close_closes_its_fulltext_client(tmp_path):
+    database = Database(tmp_path / "pipeline.db")
+    pipeline = Pipeline(
+        Settings(llm_api_key="", analyze_top_n=0, _env_file=None),
+        database,
+        literature_search_service=FakeSearchService([]),
+    )
+    fulltext_client = pipeline.fulltext.client
+
+    pipeline.close()
+
+    assert fulltext_client.is_closed
+    database.connection.close()
+
+
 def test_pipeline_persists_first_discovered_paper_before_real_analysis_repository(
     tmp_path,
 ):

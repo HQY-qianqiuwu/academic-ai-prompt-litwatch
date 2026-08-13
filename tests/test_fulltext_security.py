@@ -73,7 +73,8 @@ def test_extract_rejects_redirect_to_private_host_without_following_it():
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(str(request.url))
-        if request.url.host == "public.example.test":
+        assert request.headers["host"] == "public.example.test"
+        if request.url.host == "8.8.8.8":
             return httpx.Response(
                 302,
                 headers={"location": "https://127.0.0.1/private.pdf"},
@@ -89,7 +90,7 @@ def test_extract_rejects_redirect_to_private_host_without_following_it():
     with pytest.raises(ValueError, match="non-public"):
         extractor.extract("https://public.example.test/paper.pdf")
 
-    assert requests == ["https://public.example.test/paper.pdf"]
+    assert requests == ["https://8.8.8.8/paper.pdf"]
 
 
 def test_extract_enforces_manual_redirect_limit():
@@ -113,8 +114,8 @@ def test_extract_enforces_manual_redirect_limit():
         extractor.extract("https://public.example.test/paper.pdf")
 
     assert requests == [
-        "https://public.example.test/paper.pdf",
-        "https://public.example.test/1.pdf",
+        "https://8.8.8.8/paper.pdf",
+        "https://8.8.8.8/1.pdf",
     ]
 
 
@@ -186,3 +187,107 @@ def test_extract_accepts_public_pdf_with_signature_and_bounded_text():
     )
 
     assert extractor.extract("https://public.example.test/paper.pdf", max_chars=10) == "Public PDF"
+
+
+def test_extract_binds_the_validated_address_without_re_resolving_it():
+    resolved_hosts: list[tuple[str, int]] = []
+
+    def rebinding_resolver(hostname: str, port: int) -> tuple[str, ...]:
+        resolved_hosts.append((hostname, port))
+        if len(resolved_hosts) > 1:
+            return ("127.0.0.1",)
+        return ("8.8.8.8",)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "8.8.8.8"
+        assert request.headers["host"] == "public.example.test"
+        assert request.extensions["sni_hostname"] == "public.example.test"
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/pdf"},
+            content=_pdf_bytes(),
+            request=request,
+        )
+
+    extractor = FullTextExtractor(
+        resolver=rebinding_resolver,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert extractor.extract("https://public.example.test/paper.pdf") == "Public PDF"
+    assert resolved_hosts == [("public.example.test", 443)]
+
+
+def test_extract_binds_each_redirect_hop_to_its_validated_address():
+    resolved_hosts: list[tuple[str, int]] = []
+    requests: list[tuple[str, str, str]] = []
+
+    def resolver(hostname: str, port: int) -> tuple[str, ...]:
+        resolved_hosts.append((hostname, port))
+        return {"first.example.test": ("8.8.8.8",), "next.example.test": ("1.1.1.1",)}[
+            hostname
+        ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(
+            (
+                request.url.host or "",
+                request.headers["host"],
+                request.extensions["sni_hostname"],
+            )
+        )
+        if request.url.host == "8.8.8.8":
+            return httpx.Response(
+                302,
+                headers={"location": "https://next.example.test/paper.pdf"},
+                request=request,
+            )
+        assert request.url.host == "1.1.1.1"
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/pdf"},
+            content=_pdf_bytes(),
+            request=request,
+        )
+
+    extractor = FullTextExtractor(resolver=resolver, transport=httpx.MockTransport(handler))
+
+    assert extractor.extract("https://first.example.test/paper.pdf") == "Public PDF"
+    assert resolved_hosts == [("first.example.test", 443), ("next.example.test", 443)]
+    assert requests == [
+        ("8.8.8.8", "first.example.test", "first.example.test"),
+        ("1.1.1.1", "next.example.test", "next.example.test"),
+    ]
+
+
+def test_close_closes_only_an_owned_fulltext_client():
+    extractor = FullTextExtractor(
+        resolver=_public_resolver,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
+    )
+
+    extractor.close()
+
+    assert extractor.client.is_closed
+
+
+def test_close_does_not_close_an_injected_fulltext_client():
+    client = httpx.Client(
+        trust_env=False,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
+    )
+    extractor = FullTextExtractor(resolver=_public_resolver, client=client)
+
+    extractor.close()
+
+    assert not client.is_closed
+    client.close()
+
+
+def test_extract_rejects_an_injected_client_that_trusts_environment_proxies():
+    client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+    try:
+        with pytest.raises(ValueError, match="trust_env"):
+            FullTextExtractor(resolver=_public_resolver, client=client)
+    finally:
+        client.close()
