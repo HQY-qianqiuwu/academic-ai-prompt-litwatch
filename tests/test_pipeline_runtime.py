@@ -456,11 +456,9 @@ def test_pipeline_close_closes_its_fulltext_client(tmp_path):
         database,
         literature_search_service=FakeSearchService([]),
     )
-    fulltext_client = pipeline.fulltext.client
-
     pipeline.close()
 
-    assert fulltext_client.is_closed
+    assert pipeline.fulltext.is_closed
     database.connection.close()
 
 
