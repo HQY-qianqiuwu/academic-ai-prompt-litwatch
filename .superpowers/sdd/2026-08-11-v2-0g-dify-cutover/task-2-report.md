@@ -137,3 +137,53 @@
   single warning. Ruff, all six PowerShell parser checks, and
   `git diff --check` passed. Port 18080 was clear and its identity file absent
   after verification.
+
+## G2 review fix round 2
+
+### RED / GREEN evidence
+
+- Three controlled regressions first failed against the round-1 lifecycle.
+  A transient null CIM result received only one lookup and aborted; complete
+  identity-capture exhaustion left the just-started process running; and
+  command/identity construction failure also had no cleanup path because
+  `$StartedIdentity` had never been assigned.
+- GREEN retains the `Start-Process -PassThru` process object immediately,
+  captures its `StartTime`, and retries CIM plus exact command identity at most
+  20 times with a 100 ms interval. The transient-null case succeeds on the
+  second capture. Exhaustion and construction failure both exit nonzero,
+  terminate only through the retained handle, wait for confirmed process exit,
+  leave the port free, and leave no managed identity file.
+- The existing failed-health-start regression now also proves cleanup uses the
+  retained handle rather than `Stop-Process -Id`; no uncertain naked-PID stop
+  occurs on any just-started cleanup path.
+- A cleanup-failure regression went RED when the script removed a valid
+  identity record even though handle termination failed. GREEN retains that
+  exact record whenever cleanup is not confirmed, so a still-running process
+  cannot become untracked.
+
+### Process-handle safety
+
+- Handle cleanup re-reads `Process.StartTime`, verifies it against the captured
+  UTC creation identity, checks `HasExited`, calls `Kill()` on the retained
+  process object, and uses bounded `WaitForExit(5000)`. It does not rediscover a
+  process by PID after identity uncertainty. StartTime comparison allows only
+  the sub-microsecond precision truncation observed between
+  `System.Diagnostics.Process` and Windows CIM (less than one microsecond).
+- Once full command identity is captured, the versioned PID/creation/fingerprint
+  record remains unchanged. If a later start validation fails, the record is
+  removed only when it exactly equals the identity created by that start.
+  Previous spoof, TOCTOU, PID-reuse, live-health, and interpreter restrictions
+  remain in force.
+
+### Smoke and verification
+
+- On confirmed-free alternate port 18080, the explicit external-interpreter
+  smoke cold-started PID `52320`, warm-started on the same PID, reported all
+  five status checks PASS and `System READY`, then stopped that recorded
+  process. The final port had zero listeners and no identity file.
+- Protected v1.7 PID `37408` continued to own port 8000 with its original
+  creation time and main-checkout command. It was read only and never stopped.
+- Lifecycle tests: `28 passed`. Full suite: `580 passed` with one pre-existing
+  Starlette/httpx deprecation warning. Ruff, all six PowerShell parser checks,
+  and `git diff --check` passed. No dependency or virtual environment was
+  installed.

@@ -475,6 +475,101 @@ function New-ManagedStackIdentity {
     }
 }
 
+function Get-ProcessHandleStartTimeUtc {
+    param([Parameter(Mandatory = $true)]$ProcessHandle)
+
+    try {
+        return ([DateTimeOffset]$ProcessHandle.StartTime).ToUniversalTime().ToString("o")
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-ProcessStartTimeMatches {
+    param(
+        [Parameter(Mandatory = $true)][string]$Left,
+        [Parameter(Mandatory = $true)][string]$Right
+    )
+
+    try {
+        $LeftUtc = ([DateTimeOffset]$Left).ToUniversalTime()
+        $RightUtc = ([DateTimeOffset]$Right).ToUniversalTime()
+        return [Math]::Abs(($LeftUtc - $RightUtc).Ticks) -lt 10
+    }
+    catch {
+        return $false
+    }
+}
+
+function Wait-StartedLitWatchIdentity {
+    param(
+        [Parameter(Mandatory = $true)]$ProcessHandle,
+        [Parameter(Mandatory = $true)][string]$HandleStartTimeUtc,
+        [int]$Port = 8000,
+        [ValidateRange(1, 100)][int]$MaxAttempts = 20,
+        [ValidateRange(0, 5000)][int]$RetryDelayMilliseconds = 100
+    )
+
+    $LastFailure = "process information was unavailable"
+    for ($Attempt = 1; $Attempt -le $MaxAttempts; $Attempt += 1) {
+        try {
+            if ($ProcessHandle.HasExited) {
+                $LastFailure = "the process exited before identity capture"
+                break
+            }
+            $ProcessInfo = Get-ProcessInfoById -ProcessId ([int]$ProcessHandle.Id)
+            if ($ProcessInfo) {
+                $CimStartTimeUtc = Get-ProcessCreationTimeUtc -ProcessInfo $ProcessInfo
+                if (-not $CimStartTimeUtc) {
+                    $LastFailure = "the process creation time was unavailable"
+                }
+                elseif (-not (Test-ProcessStartTimeMatches -Left $HandleStartTimeUtc -Right $CimStartTimeUtc)) {
+                    $LastFailure = "the process creation time did not match the retained handle"
+                }
+                else {
+                    try {
+                        return New-ManagedStackIdentity -ProcessInfo $ProcessInfo -Port $Port
+                    }
+                    catch {
+                        $LastFailure = $_.Exception.Message
+                    }
+                }
+            }
+        }
+        catch {
+            $LastFailure = $_.Exception.Message
+        }
+        if ($Attempt -lt $MaxAttempts -and $RetryDelayMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds $RetryDelayMilliseconds
+        }
+    }
+    throw "[LitWatch] Started PID $($ProcessHandle.Id) could not be identified safely after $MaxAttempts attempts. $LastFailure"
+}
+
+function Stop-StartedProcessHandle {
+    param(
+        [Parameter(Mandatory = $true)]$ProcessHandle,
+        [Parameter(Mandatory = $true)][string]$ExpectedStartTimeUtc,
+        [ValidateRange(1, 60000)][int]$WaitTimeoutMilliseconds = 5000
+    )
+
+    $CurrentStartTimeUtc = Get-ProcessHandleStartTimeUtc -ProcessHandle $ProcessHandle
+    if (
+        -not $CurrentStartTimeUtc -or
+        -not (Test-ProcessStartTimeMatches -Left $ExpectedStartTimeUtc -Right $CurrentStartTimeUtc)
+    ) {
+        throw "[LitWatch] Retained process handle creation time changed. Refusing cleanup."
+    }
+    if ($ProcessHandle.HasExited) {
+        return
+    }
+    $ProcessHandle.Kill()
+    if (-not $ProcessHandle.WaitForExit($WaitTimeoutMilliseconds)) {
+        throw "[LitWatch] Started process did not exit within $WaitTimeoutMilliseconds milliseconds."
+    }
+}
+
 function Test-MatchesManagedStackIdentity {
     param(
         [Parameter(Mandatory = $true)]$ProcessInfo,

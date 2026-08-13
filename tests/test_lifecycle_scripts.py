@@ -31,6 +31,8 @@ def _run_controlled_script(
     runtime_ready: bool = True,
     worker_ready: bool = True,
     scheduler_ready: bool = True,
+    identity_capture: str = "normal",
+    handle_cleanup: str = "normal",
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     assert POWERSHELL is not None
     sandbox = tmp_path / "scripts"
@@ -53,6 +55,7 @@ def _run_controlled_script(
         $script:StackErrorLogPath = Join-Path $script:StackDataDirectory 'litwatch-stack-error.log'
         $script:LifecycleEventLog = '{_powershell_literal(event_log)}'
         $script:LifecycleStartedPid = $null
+        $script:LifecycleIdentityCaptureAttempts = 0
 
         function Add-LifecycleTestEvent {{
             param([string]$Event)
@@ -127,13 +130,33 @@ def _run_controlled_script(
                 }}
             }}
             if ($script:LifecycleStartedPid -eq $ProcessId) {{
+                $script:LifecycleIdentityCaptureAttempts += 1
+                Add-LifecycleTestEvent (
+                    "identity-capture:${{ProcessId}}:$script:LifecycleIdentityCaptureAttempts"
+                )
+                if ($env:LITWATCH_TEST_IDENTITY_CAPTURE -eq 'exhausted') {{
+                    return $null
+                }}
+                if (
+                    $env:LITWATCH_TEST_IDENTITY_CAPTURE -eq 'transient' -and
+                    $script:LifecycleIdentityCaptureAttempts -eq 1
+                ) {{
+                    return $null
+                }}
+                $SourceDirectory = if (
+                    $env:LITWATCH_TEST_IDENTITY_CAPTURE -eq 'construction-failure'
+                ) {{
+                    $script:StackSourceDirectory + '-foreign'
+                }} else {{
+                    $script:StackSourceDirectory
+                }}
                 return [PSCustomObject]@{{
                     PID = $ProcessId
                     CreationDate = '2026-08-14T00:00:00.0000000+00:00'
                     ExecutablePath = $script:StackPython
                     CommandLine = '"' + $script:StackPython +
                         '" -m uvicorn litwatch.web:app --app-dir "' +
-                        $script:StackSourceDirectory + '" --host 127.0.0.1 --port ' +
+                        $SourceDirectory + '" --host 127.0.0.1 --port ' +
                         $env:LITWATCH_TEST_PORT
                 }}
             }}
@@ -194,7 +217,31 @@ def _run_controlled_script(
             }}
             Add-LifecycleTestEvent "start:$FilePath|$ArgumentList|$WorkingDirectory"
             $script:LifecycleStartedPid = [int]$env:LITWATCH_TEST_PID
-            return [PSCustomObject]@{{ Id = [int]$env:LITWATCH_TEST_PID }}
+            $Handle = [PSCustomObject]@{{
+                Id = [int]$env:LITWATCH_TEST_PID
+                StartTime = ([DateTimeOffset]'2026-08-14T00:00:00.0000000+00:00').LocalDateTime
+                HasExited = $false
+                EventLog = $script:LifecycleEventLog
+            }}
+            $Handle | Add-Member -MemberType ScriptMethod -Name Kill -Value {{
+                if ($env:LITWATCH_TEST_HANDLE_CLEANUP -eq 'kill-failure') {{
+                    Add-Content -LiteralPath $this.EventLog -Value "handle-stop-failed:$($this.Id)" -Encoding utf8
+                    throw 'CONTROLLED handle cleanup failure'
+                }}
+                Add-Content -LiteralPath $this.EventLog -Value "handle-stop:$($this.Id)" -Encoding utf8
+                $this.HasExited = $true
+            }}
+            $Handle | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {{
+                param([int]$Milliseconds)
+                Add-Content -LiteralPath $this.EventLog -Value "port-free:$($this.Id)" -Encoding utf8
+                return $this.HasExited
+            }}
+            return $Handle
+        }}
+
+        function Start-Sleep {{
+            param([int]$Milliseconds)
+            Add-LifecycleTestEvent "identity-retry:$Milliseconds"
         }}
 
         function Stop-Process {{
@@ -239,6 +286,8 @@ def _run_controlled_script(
             "LITWATCH_TEST_RUNTIME_READY": str(runtime_ready).lower(),
             "LITWATCH_TEST_WORKER_READY": str(worker_ready).lower(),
             "LITWATCH_TEST_SCHEDULER_READY": str(scheduler_ready).lower(),
+            "LITWATCH_TEST_IDENTITY_CAPTURE": identity_capture,
+            "LITWATCH_TEST_HANDLE_CLEANUP": handle_cleanup,
         }
     )
     command = [
@@ -328,8 +377,68 @@ def test_default_start_cleans_up_only_the_process_it_started_on_health_failure(
     )
 
     assert result.returncode != 0
-    assert "stop:4242" in events
+    assert "handle-stop:4242" in events
+    assert "port-free:4242" in events
+    assert "stop:4242" not in events
     assert "Health check failed" in result.stderr
+
+
+def test_default_start_retries_transient_identity_capture(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path, "start-stack.ps1", identity_capture="transient"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "identity-capture:4242:1" in events
+    assert "identity-capture:4242:2" in events
+    assert "identity-retry:100" in events
+    assert "handle-stop:4242" not in events
+    assert (tmp_path / "data" / "litwatch-stack.pid").is_file()
+
+
+def test_default_start_safely_cleans_up_when_identity_capture_is_exhausted(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path, "start-stack.ps1", identity_capture="exhausted"
+    )
+
+    assert result.returncode != 0
+    assert "could not be identified safely" in result.stderr
+    assert "handle-stop:4242" in events
+    assert "port-free:4242" in events
+    assert "stop:4242" not in events
+    assert not (tmp_path / "data" / "litwatch-stack.pid").exists()
+
+
+def test_default_start_safely_cleans_up_when_identity_construction_fails(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path, "start-stack.ps1", identity_capture="construction-failure"
+    )
+
+    assert result.returncode != 0
+    assert "could not be identified safely" in result.stderr
+    assert "handle-stop:4242" in events
+    assert "port-free:4242" in events
+    assert "stop:4242" not in events
+    assert not (tmp_path / "data" / "litwatch-stack.pid").exists()
+
+
+def test_default_start_retains_identity_when_handle_cleanup_fails(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        health_ready=False,
+        handle_cleanup="kill-failure",
+    )
+
+    assert result.returncode != 0
+    assert "Cleanup failed safely" in result.stderr
+    assert "handle-stop-failed:4242" in events
+    assert "port-free:4242" not in events
+    assert (tmp_path / "data" / "litwatch-stack.pid").is_file()
 
 
 def test_default_stop_stops_only_the_saved_current_repository_pid(tmp_path: Path):

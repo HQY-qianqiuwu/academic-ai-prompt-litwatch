@@ -11,6 +11,8 @@ $ErrorActionPreference = "Stop"
 Set-StackPortPaths -Port $Port
 
 $StartedIdentity = $null
+$StartedProcessHandle = $null
+$StartedProcessStartTimeUtc = $null
 try {
     $ImportPath = Assert-LitWatchImportPath -Port $Port
     Write-Output "Migration Mode: python_default"
@@ -52,13 +54,12 @@ try {
             RedirectStandardError = $script:StackErrorLogPath
             PassThru = $true
         }
-        $Process = Start-Process @StartArguments
-        $StartedPid = [int]$Process.Id
-        $StartedProcess = Get-ProcessInfoById -ProcessId $StartedPid
-        if (-not $StartedProcess) {
-            throw "[LitWatch] Started PID $StartedPid could not be identified safely."
+        $StartedProcessHandle = Start-Process @StartArguments
+        $StartedProcessStartTimeUtc = Get-ProcessHandleStartTimeUtc -ProcessHandle $StartedProcessHandle
+        if (-not $StartedProcessStartTimeUtc) {
+            throw "[LitWatch] Started process creation time could not be captured safely."
         }
-        $StartedIdentity = New-ManagedStackIdentity -ProcessInfo $StartedProcess -Port $Port
+        $StartedIdentity = Wait-StartedLitWatchIdentity -ProcessHandle $StartedProcessHandle -HandleStartTimeUtc $StartedProcessStartTimeUtc -Port $Port
         Set-ManagedStackIdentity -Identity $StartedIdentity
         Write-Output "LitWatch: started PID $($StartedIdentity.PID)"
     }
@@ -91,19 +92,40 @@ try {
     }
 }
 catch {
-    if ($null -ne $StartedIdentity) {
-        Stop-ManagedLitWatchProcess -Identity $StartedIdentity -Port $Port
+    $OriginalError = $_.Exception.Message
+    $CleanupError = $null
+    if ($null -ne $StartedProcessHandle -and $null -ne $StartedProcessStartTimeUtc) {
+        try {
+            Stop-StartedProcessHandle -ProcessHandle $StartedProcessHandle -ExpectedStartTimeUtc $StartedProcessStartTimeUtc
+        }
+        catch {
+            $CleanupError = $_.Exception.Message
+        }
+    }
+    if ($null -ne $StartedIdentity -and -not $CleanupError) {
         if (Test-Path -LiteralPath $script:StackPidPath -PathType Leaf) {
-            $RecordedIdentity = Get-ManagedStackIdentity
-            if (
-                $RecordedIdentity.PID -eq $StartedIdentity.PID -and
-                $RecordedIdentity.CreationTimeUtc -ceq $StartedIdentity.CreationTimeUtc -and
-                $RecordedIdentity.Fingerprint -ceq $StartedIdentity.Fingerprint
-            ) {
-                Remove-Item -LiteralPath $script:StackPidPath -Force
+            try {
+                $RecordedIdentity = Get-ManagedStackIdentity
+                if (
+                    $RecordedIdentity.PID -eq $StartedIdentity.PID -and
+                    $RecordedIdentity.CreationTimeUtc -ceq $StartedIdentity.CreationTimeUtc -and
+                    $RecordedIdentity.Fingerprint -ceq $StartedIdentity.Fingerprint
+                ) {
+                    Remove-Item -LiteralPath $script:StackPidPath -Force
+                }
+            }
+            catch {
+                if (-not $CleanupError) {
+                    $CleanupError = $_.Exception.Message
+                }
             }
         }
     }
-    Write-Error $_.Exception.Message
+    if ($CleanupError) {
+        Write-Error "$OriginalError Cleanup failed safely: $CleanupError"
+    }
+    else {
+        Write-Error $OriginalError
+    }
     exit 1
 }
