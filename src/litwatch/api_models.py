@@ -101,12 +101,24 @@ class PaperAnalysisJobRequest(BaseModel):
     evidence_scope: EvidenceScope = Field(strict=False)
     evidence: str | None = Field(default=None, max_length=36_000)
 
+    @field_validator("canonical_id", "topic_id", mode="before")
+    @classmethod
+    def strip_identifiers(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
     @model_validator(mode="after")
     def evidence_matches_declared_scope(self) -> PaperAnalysisJobRequest:
-        fulltext_scopes = {EvidenceScope.FULLTEXT_EXCERPT, EvidenceScope.FULLTEXT}
-        if self.evidence_scope in fulltext_scopes and not (self.evidence or "").strip():
+        if self.evidence_scope is EvidenceScope.FULLTEXT:
+            raise ValueError("complete full-text analysis is not supported")
+        if (
+            self.evidence_scope is EvidenceScope.FULLTEXT_EXCERPT
+            and not (self.evidence or "").strip()
+        ):
             raise ValueError("full-text evidence is required for the declared scope")
-        if self.evidence_scope not in fulltext_scopes and self.evidence is not None:
+        if (
+            self.evidence_scope is not EvidenceScope.FULLTEXT_EXCERPT
+            and self.evidence is not None
+        ):
             raise ValueError("evidence is only accepted for a full-text scope")
         return self
 

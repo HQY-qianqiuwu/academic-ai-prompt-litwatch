@@ -90,6 +90,36 @@ def test_application_runtime_unwinds_worker_when_scheduler_start_fails():
     assert calls == ["worker-start", "scheduler-start", "worker-stop"]
 
 
+def test_application_runtime_releases_owned_resources_when_startup_fails():
+    from litwatch.runtime import ApplicationRuntime
+
+    calls: list[str] = []
+
+    def fail_scheduler_start() -> None:
+        calls.append("scheduler-start")
+        raise RuntimeError("scheduler start failed")
+
+    runtime = ApplicationRuntime(
+        database_preflight=lambda: calls.append("database-preflight"),
+        scheduler_start=fail_scheduler_start,
+        scheduler_stop=lambda: calls.append("scheduler-stop"),
+        worker_start=lambda: calls.append("worker-start"),
+        worker_stop=lambda: calls.append("worker-stop"),
+        shutdown_hooks=(lambda: calls.append("resource-close"),),
+    )
+
+    with pytest.raises(RuntimeError, match="scheduler start failed"):
+        runtime.start()
+
+    assert calls == [
+        "database-preflight",
+        "worker-start",
+        "scheduler-start",
+        "worker-stop",
+        "resource-close",
+    ]
+
+
 def test_scheduler_stop_failure_still_stops_worker_and_reports_safe_error():
     from litwatch.runtime import ApplicationRuntime, RuntimeLifecycleError
 

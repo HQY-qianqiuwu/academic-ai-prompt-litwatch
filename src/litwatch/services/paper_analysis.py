@@ -65,13 +65,17 @@ class PaperAnalysisJobPayload(BaseModel):
 
     @model_validator(mode="after")
     def evidence_matches_declared_scope(self) -> PaperAnalysisJobPayload:
-        fulltext_scope = {
-            EvidenceScope.FULLTEXT_EXCERPT,
-            EvidenceScope.FULLTEXT,
-        }
-        if self.evidence_scope in fulltext_scope and not (self.evidence or "").strip():
+        if self.evidence_scope is EvidenceScope.FULLTEXT:
+            raise ValueError("complete full-text analysis is not supported")
+        if (
+            self.evidence_scope is EvidenceScope.FULLTEXT_EXCERPT
+            and not (self.evidence or "").strip()
+        ):
             raise ValueError("full-text evidence is required for the declared scope")
-        if self.evidence_scope not in fulltext_scope and self.evidence is not None:
+        if (
+            self.evidence_scope is not EvidenceScope.FULLTEXT_EXCERPT
+            and self.evidence is not None
+        ):
             raise ValueError("evidence is only accepted for a full-text scope")
         return self
 
@@ -101,7 +105,12 @@ class PaperAnalysisService:
         self.analyzer = analyzer
         self.repository = repository
 
-    def analyze(self, context: AnalysisContext) -> PaperAnalysis:
+    def analyze(
+        self,
+        context: AnalysisContext,
+        *,
+        should_abort: Callable[[], bool] = lambda: False,
+    ) -> PaperAnalysis | None:
         try:
             self._validate_context(context)
         except ValueError:
@@ -130,6 +139,9 @@ class PaperAnalysisService:
                 AnalysisTraceEntry("load_persisted_analysis", "completed")
             )
             return existing
+
+        if should_abort():
+            return None
 
         if not evidence:
             context.trace.append(AnalysisTraceEntry("skip_analysis", "skipped"))
@@ -164,10 +176,15 @@ class PaperAnalysisService:
             else:
                 context.trace.append(AnalysisTraceEntry(step, "completed"))
 
+        if should_abort():
+            return None
+
         validated = PaperAnalysis.model_validate(candidate)
         context.trace.append(
             AnalysisTraceEntry("validate_paper_analysis", "completed")
         )
+        if should_abort():
+            return None
         try:
             stored = self.repository.upsert(validated)
         except Exception:
@@ -292,14 +309,23 @@ class PaperAnalysisJobHandler:
             if payload.evidence_scope is EvidenceScope.ABSTRACT
             else ""
         )
+        actual_scope = (
+            payload.evidence_scope
+            if evidence.strip() or payload.evidence_scope is EvidenceScope.METADATA_ONLY
+            else EvidenceScope.METADATA_ONLY
+        )
+        should_abort = lambda: context.cancelled() or context.remaining_seconds() <= 0
         analysis = self.service.analyze(
             AnalysisContext(
                 paper=paper,
                 topic=topic,
                 evidence=evidence,
-                evidence_scope=payload.evidence_scope,
-            )
+                evidence_scope=actual_scope,
+            ),
+            should_abort=should_abort,
         )
+        if analysis is None or should_abort():
+            return None
         return self.result_reference(analysis)
 
     def _load_topic(self, topic_id: str) -> Topic:

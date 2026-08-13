@@ -191,6 +191,33 @@ def create_app(
     custom_job_types = frozenset((job_handlers or {}).keys())
     for job_type, handler in (job_handlers or {}).items():
         job_worker.register(job_type, handler)
+
+    def close_owned_resources() -> None:
+        try:
+            if analysis_llm_runtime is not None:
+                analysis_llm_runtime.close()
+        finally:
+            database.connection.close()
+
+    def close_owned_resources_when_worker_drains() -> None:
+        if job_worker.active_count == 0:
+            close_owned_resources()
+            return
+
+        def wait_for_drain() -> None:
+            while job_worker.active_count:
+                threading.Event().wait(0.01)
+            try:
+                close_owned_resources()
+            except Exception:  # noqa: BLE001 - deferred cleanup has no caller
+                return
+
+        threading.Thread(
+            target=wait_for_drain,
+            name="litwatch-resource-cleanup",
+            daemon=True,
+        ).start()
+
     runtime = ApplicationRuntime(
         database_preflight=database.verify_migrations,
         scheduler_start=scheduler_service.start,
@@ -198,7 +225,7 @@ def create_app(
         worker_start=job_worker.start,
         worker_stop=job_worker.stop,
         startup_hooks=(research_radar_service.recover_stale_scans,),
-        shutdown_hooks=((analysis_llm_runtime.close,) if analysis_llm_runtime else ()),
+        shutdown_hooks=(close_owned_resources_when_worker_drains,),
     )
 
     @asynccontextmanager
@@ -208,7 +235,6 @@ def create_app(
             yield
         finally:
             runtime.stop()
-            database.connection.close()
 
     app = FastAPI(title="LitWatch", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings

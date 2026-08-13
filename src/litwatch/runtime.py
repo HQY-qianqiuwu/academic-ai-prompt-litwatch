@@ -62,9 +62,9 @@ class ApplicationRuntime:
         with self._lock:
             if self._started:
                 return
-            self._database_preflight()
             worker_started = False
             try:
+                self._database_preflight()
                 for hook in self._startup_hooks:
                     hook()
                 self._worker_start()
@@ -74,6 +74,11 @@ class ApplicationRuntime:
                 if worker_started:
                     try:
                         self._worker_stop()
+                    except Exception:  # noqa: BLE001, S110 - preserve startup error
+                        pass
+                for hook in reversed(self._shutdown_hooks):
+                    try:
+                        hook()
                     except Exception:  # noqa: BLE001, S110 - preserve startup error
                         pass
                 raise
