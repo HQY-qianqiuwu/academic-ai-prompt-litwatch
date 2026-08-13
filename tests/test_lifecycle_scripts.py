@@ -8,6 +8,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
@@ -25,6 +26,7 @@ def _run_controlled_script(
     mode: str = "none",
     port: int = 8000,
     managed_pid: int | None = None,
+    provisional_pid: int | None = None,
     no_browser: bool = True,
     health_ready: bool = True,
     migration_ready: bool = True,
@@ -33,6 +35,7 @@ def _run_controlled_script(
     scheduler_ready: bool = True,
     identity_capture: str = "normal",
     handle_cleanup: str = "normal",
+    start_time_capture: str = "normal",
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     assert POWERSHELL is not None
     sandbox = tmp_path / "scripts"
@@ -167,6 +170,16 @@ def _run_controlled_script(
         function Test-HttpReady {{
             param([string]$Url, [int]$TimeoutSeconds = 5)
             Add-LifecycleTestEvent "http:$Url"
+            $RecordState = if (Test-Path -LiteralPath $script:StackPidPath) {{
+                try {{
+                    [string]((Get-Content -Raw -LiteralPath $script:StackPidPath | ConvertFrom-Json).state)
+                }} catch {{
+                    'invalid'
+                }}
+            }} else {{
+                'missing'
+            }}
+            Add-LifecycleTestEvent "http-record:$RecordState"
             return ($env:LITWATCH_TEST_HEALTH_READY -eq 'true')
         }}
 
@@ -219,11 +232,26 @@ def _run_controlled_script(
             $script:LifecycleStartedPid = [int]$env:LITWATCH_TEST_PID
             $Handle = [PSCustomObject]@{{
                 Id = [int]$env:LITWATCH_TEST_PID
-                StartTime = ([DateTimeOffset]'2026-08-14T00:00:00.0000000+00:00').LocalDateTime
                 HasExited = $false
                 EventLog = $script:LifecycleEventLog
             }}
+            $Handle | Add-Member -MemberType ScriptProperty -Name StartTime -Value {{
+                if ($env:LITWATCH_TEST_START_TIME_CAPTURE -eq 'failure') {{
+                    throw 'CONTROLLED StartTime capture failure'
+                }}
+                return ([DateTimeOffset]'2026-08-14T00:00:00.0000000+00:00').LocalDateTime
+            }}
             $Handle | Add-Member -MemberType ScriptMethod -Name Kill -Value {{
+                $RecordState = if (Test-Path -LiteralPath $script:StackPidPath) {{
+                    try {{
+                        [string]((Get-Content -Raw -LiteralPath $script:StackPidPath | ConvertFrom-Json).state)
+                    }} catch {{
+                        'invalid'
+                    }}
+                }} else {{
+                    'missing'
+                }}
+                Add-Content -LiteralPath $this.EventLog -Value "handle-stop-record:$RecordState" -Encoding utf8
                 if ($env:LITWATCH_TEST_HANDLE_CLEANUP -eq 'kill-failure') {{
                     Add-Content -LiteralPath $this.EventLog -Value "handle-stop-failed:$($this.Id)" -Encoding utf8
                     throw 'CONTROLLED handle cleanup failure'
@@ -253,6 +281,7 @@ def _run_controlled_script(
     (sandbox / "stack-common.ps1").write_text(common + shim, encoding="utf-8-sig")
 
     pid_path = data_dir / ("litwatch-stack.pid" if port == 8000 else f"litwatch-stack-{port}.pid")
+    assert managed_pid is None or provisional_pid is None
     if managed_pid is not None:
         fingerprint_fields = (
             str(Path(sys.executable).resolve()).rstrip("\\/").lower(),
@@ -273,6 +302,24 @@ def _run_controlled_script(
             ),
             encoding="utf-8",
         )
+    elif provisional_pid is not None:
+        pid_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "state": "provisional",
+                    "launch_id": "11111111-1111-1111-1111-111111111111",
+                    "pid": provisional_pid,
+                    "handle_start_time_utc": "2026-08-14T00:00:00.0000000+00:00",
+                    "expected_executable": str(Path(sys.executable).resolve()),
+                    "expected_app_dir": str((ROOT / "src").resolve()),
+                    "expected_host": "127.0.0.1",
+                    "expected_port": port,
+                },
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
 
     env = os.environ.copy()
     env.update(
@@ -288,6 +335,7 @@ def _run_controlled_script(
             "LITWATCH_TEST_SCHEDULER_READY": str(scheduler_ready).lower(),
             "LITWATCH_TEST_IDENTITY_CAPTURE": identity_capture,
             "LITWATCH_TEST_HANDLE_CLEANUP": handle_cleanup,
+            "LITWATCH_TEST_START_TIME_CAPTURE": start_time_capture,
         }
     )
     command = [
@@ -439,6 +487,108 @@ def test_default_start_retains_identity_when_handle_cleanup_fails(tmp_path: Path
     assert "handle-stop-failed:4242" in events
     assert "port-free:4242" not in events
     assert (tmp_path / "data" / "litwatch-stack.pid").is_file()
+
+
+def test_capture_exhaustion_and_kill_failure_leave_provisional_record(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        identity_capture="exhausted",
+        handle_cleanup="kill-failure",
+    )
+
+    assert result.returncode != 0
+    assert "handle-stop-record:provisional" in events
+    assert "handle-stop-failed:4242" in events
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert UUID(record["launch_id"]).int != 0
+    assert {key: value for key, value in record.items() if key != "launch_id"} == {
+        "version": 1,
+        "state": "provisional",
+        "pid": 4242,
+        "handle_start_time_utc": "2026-08-14T00:00:00.0000000+00:00",
+        "expected_executable": str(Path(sys.executable).resolve()),
+        "expected_app_dir": str((ROOT / "src").resolve()),
+        "expected_host": "127.0.0.1",
+        "expected_port": 8000,
+    }
+
+
+def test_start_time_failure_and_kill_failure_leave_provisional_record(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        start_time_capture="failure",
+        handle_cleanup="kill-failure",
+    )
+
+    assert result.returncode != 0
+    assert "creation time could not be captured safely" in result.stderr
+    assert "handle-stop-record:provisional" in events
+    assert "handle-stop-failed:4242" in events
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert record["state"] == "provisional"
+    assert record["pid"] == 4242
+    assert record["handle_start_time_utc"] is None
+
+
+def test_provisional_record_cannot_authorize_normal_stop(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "stop-stack.ps1",
+        mode="owned",
+        provisional_pid=4242,
+    )
+
+    assert result.returncode != 0
+    assert "Provisional ownership record" in result.stderr
+    assert "does not authorize normal lifecycle operations" in result.stderr
+    assert "stop:4242" not in events
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert record["state"] == "provisional"
+
+
+def test_successful_capture_atomically_upgrades_provisional_to_final(
+    tmp_path: Path,
+):
+    result, events = _run_controlled_script(tmp_path, "start-stack.ps1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "http-record:final" in events
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert record["state"] == "final"
+    assert record["pid"] == 4242
+    assert record["creation_time_utc"] == "2026-08-14T00:00:00.0000000+00:00"
+    assert len(record["fingerprint"]) == 64
+    assert "launch_id" not in record
+    assert not list((tmp_path / "data").glob("*.tmp"))
+    assert not list((tmp_path / "data").glob("*.bak"))
+
+
+def test_successful_cleanup_removes_the_provisional_record(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        identity_capture="exhausted",
+    )
+
+    assert result.returncode != 0
+    assert "handle-stop-record:provisional" in events
+    assert "handle-stop:4242" in events
+    assert "port-free:4242" in events
+    assert not (tmp_path / "data" / "litwatch-stack.pid").exists()
 
 
 def test_default_stop_stops_only_the_saved_current_repository_pid(tmp_path: Path):

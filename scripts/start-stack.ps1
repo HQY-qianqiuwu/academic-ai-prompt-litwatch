@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 Set-StackPortPaths -Port $Port
 
 $StartedIdentity = $null
+$StartedOwnershipRecord = $null
 $StartedProcessHandle = $null
 $StartedProcessStartTimeUtc = $null
 try {
@@ -56,11 +57,15 @@ try {
         }
         $StartedProcessHandle = Start-Process @StartArguments
         $StartedProcessStartTimeUtc = Get-ProcessHandleStartTimeUtc -ProcessHandle $StartedProcessHandle
+        $StartedProvisional = New-ProvisionalStackIdentity -ProcessHandle $StartedProcessHandle -HandleStartTimeUtc $StartedProcessStartTimeUtc -Port $Port
+        Set-ProvisionalStackIdentity -Identity $StartedProvisional
+        $StartedOwnershipRecord = $StartedProvisional
         if (-not $StartedProcessStartTimeUtc) {
             throw "[LitWatch] Started process creation time could not be captured safely."
         }
         $StartedIdentity = Wait-StartedLitWatchIdentity -ProcessHandle $StartedProcessHandle -HandleStartTimeUtc $StartedProcessStartTimeUtc -Port $Port
-        Set-ManagedStackIdentity -Identity $StartedIdentity
+        Set-ManagedStackIdentity -Identity $StartedIdentity -ExpectedProvisional $StartedProvisional
+        $StartedOwnershipRecord = $StartedIdentity
         Write-Output "LitWatch: started PID $($StartedIdentity.PID)"
     }
 
@@ -94,7 +99,7 @@ try {
 catch {
     $OriginalError = $_.Exception.Message
     $CleanupError = $null
-    if ($null -ne $StartedProcessHandle -and $null -ne $StartedProcessStartTimeUtc) {
+    if ($null -ne $StartedProcessHandle) {
         try {
             Stop-StartedProcessHandle -ProcessHandle $StartedProcessHandle -ExpectedStartTimeUtc $StartedProcessStartTimeUtc
         }
@@ -102,22 +107,13 @@ catch {
             $CleanupError = $_.Exception.Message
         }
     }
-    if ($null -ne $StartedIdentity -and -not $CleanupError) {
-        if (Test-Path -LiteralPath $script:StackPidPath -PathType Leaf) {
-            try {
-                $RecordedIdentity = Get-ManagedStackIdentity
-                if (
-                    $RecordedIdentity.PID -eq $StartedIdentity.PID -and
-                    $RecordedIdentity.CreationTimeUtc -ceq $StartedIdentity.CreationTimeUtc -and
-                    $RecordedIdentity.Fingerprint -ceq $StartedIdentity.Fingerprint
-                ) {
-                    Remove-Item -LiteralPath $script:StackPidPath -Force
-                }
-            }
-            catch {
-                if (-not $CleanupError) {
-                    $CleanupError = $_.Exception.Message
-                }
+    if ($null -ne $StartedOwnershipRecord -and -not $CleanupError) {
+        try {
+            Remove-StackOwnershipRecord -ExpectedRecord $StartedOwnershipRecord
+        }
+        catch {
+            if (-not $CleanupError) {
+                $CleanupError = $_.Exception.Message
             }
         }
     }

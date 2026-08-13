@@ -187,3 +187,53 @@
   Starlette/httpx deprecation warning. Ruff, all six PowerShell parser checks,
   and `git diff --check` passed. No dependency or virtual environment was
   installed.
+
+## G2 review fix round 3
+
+### RED / GREEN evidence
+
+- Five required controlled regressions first failed against round 2. Identity
+  capture exhaustion plus retained-handle `Kill()` failure had no provisional
+  record; `Process.StartTime` failure had the same gap; a pre-existing
+  provisional record produced only a generic invalid-record error; successful
+  capture wrote no explicit final state; and successful cleanup could not prove
+  that a provisional record existed before the handle was stopped.
+- GREEN passed all five scenarios, then the complete lifecycle suite passed
+  with `33 passed`. The controlled handle observes `state=provisional` before
+  every failed-start cleanup attempt. Confirmed exit removes that exact record;
+  a failed `Kill()` retains it. A successful exact identity capture exposes
+  only `state=final` by the time health validation begins.
+
+### Provisional ownership and atomic upgrade
+
+- Immediately after `Start-Process -PassThru`, and before any CIM or command
+  identity lookup, start writes a version-1 provisional JSON record. It carries
+  a unique `launch_id`, PID, nullable retained-handle start time, and the
+  expected executable/app-directory/host/port contract. Therefore both capture
+  exhaustion and `StartTime` acquisition failure remain visibly tracked if the
+  retained process handle cannot stop the process.
+- A provisional record never authorizes normal start/status/stop ownership.
+  `Get-ManagedStackIdentity` rejects it with an explicit fail-closed diagnostic,
+  and controlled stop proves that `Stop-Process -Id` is never reached.
+- Successful CIM plus exact command validation may upgrade only the same PID,
+  creation time, and exact provisional `launch_id`/contract. The final JSON is
+  written to a unique same-directory temporary file and atomically replaces the
+  exact provisional record with `File.Replace`; its temporary backup is then
+  removed. A legacy version-1 final record without a `state` field remains
+  readable as final for compatibility.
+- Failed-start cleanup continues to use only the retained process object. When
+  `StartTime` is available it is revalidated; when retrieval itself failed, the
+  original retained handle is still used directly. Only `HasExited` or
+  `Kill()` plus bounded `WaitForExit(5000)` confirms cleanup. The exact
+  provisional/final record is removed only after confirmation; otherwise it is
+  retained for recovery and diagnosis.
+
+### Verification
+
+- New round-3 regression set: `5 passed`; lifecycle suite: `33 passed`; full
+  suite: `585 passed` with one pre-existing Starlette/httpx deprecation warning.
+- Ruff, all six PowerShell parser checks, and `git diff --check` passed. No new
+  real smoke was run in round 3. Port 18080 remained unused, and protected v1.7
+  PID `37408` on port 8000 remained read-only and unchanged.
+- No virtual environment or dependency was installed. No Dify/DSL, `.env`,
+  stable, protected, or `.learnings/` content was changed.

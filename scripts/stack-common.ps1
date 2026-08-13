@@ -62,44 +62,247 @@ function Resolve-LitWatchPython {
     return $ConfiguredPython
 }
 
-function Get-ManagedStackIdentity {
+function Get-StackOwnershipRecord {
     if (-not (Test-Path -LiteralPath $script:StackPidPath -PathType Leaf)) {
         return $null
     }
     try {
-        $Identity = Get-Content -Raw -LiteralPath $script:StackPidPath | ConvertFrom-Json
+        $Record = Get-Content -Raw -Encoding utf8 -LiteralPath $script:StackPidPath | ConvertFrom-Json
     }
     catch {
         throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
     }
     $ManagedPid = 0
     if (
-        $Identity.version -ne 1 -or
-        -not [int]::TryParse([string]$Identity.pid, [ref]$ManagedPid) -or
-        $ManagedPid -le 0 -or
-        [string]::IsNullOrWhiteSpace([string]$Identity.creation_time_utc) -or
-        [string]$Identity.fingerprint -notmatch '^[0-9a-f]{64}$'
+        $Record.version -ne 1 -or
+        -not [int]::TryParse([string]$Record.pid, [ref]$ManagedPid) -or
+        $ManagedPid -le 0
     ) {
         throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
     }
+
+    $StateProperty = $Record.PSObject.Properties["state"]
+    $State = if (-not $StateProperty -or [string]::IsNullOrWhiteSpace([string]$StateProperty.Value)) {
+        "final"
+    }
+    else {
+        ([string]$StateProperty.Value).ToLowerInvariant()
+    }
+    if ($State -eq "final") {
+        if (
+            [string]::IsNullOrWhiteSpace([string]$Record.creation_time_utc) -or
+            [string]$Record.fingerprint -notmatch '^[0-9a-f]{64}$'
+        ) {
+            throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
+        }
+        return [PSCustomObject]@{
+            Version = 1
+            State = "final"
+            PID = $ManagedPid
+            CreationTimeUtc = [string]$Record.creation_time_utc
+            Fingerprint = [string]$Record.fingerprint
+        }
+    }
+    if ($State -ne "provisional") {
+        throw "[LitWatch] Invalid managed process identity file: $script:StackPidPath"
+    }
+
+    $LaunchId = [guid]::Empty
+    $ExpectedPort = 0
+    $HandleStartTimeProperty = $Record.PSObject.Properties["handle_start_time_utc"]
+    $HandleStartTimeUtc = if ($HandleStartTimeProperty) {
+        [string]$HandleStartTimeProperty.Value
+    }
+    else {
+        $null
+    }
+    if (
+        -not [guid]::TryParse([string]$Record.launch_id, [ref]$LaunchId) -or
+        $LaunchId -eq [guid]::Empty -or
+        -not [int]::TryParse([string]$Record.expected_port, [ref]$ExpectedPort) -or
+        $ExpectedPort -lt 1 -or
+        $ExpectedPort -gt 65535 -or
+        [string]::IsNullOrWhiteSpace([string]$Record.expected_executable) -or
+        [string]::IsNullOrWhiteSpace([string]$Record.expected_app_dir) -or
+        [string]::IsNullOrWhiteSpace([string]$Record.expected_host)
+    ) {
+        throw "[LitWatch] Invalid provisional ownership record: $script:StackPidPath"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($HandleStartTimeUtc)) {
+        try {
+            [void][DateTimeOffset]$HandleStartTimeUtc
+        }
+        catch {
+            throw "[LitWatch] Invalid provisional ownership record: $script:StackPidPath"
+        }
+    }
     return [PSCustomObject]@{
         Version = 1
+        State = "provisional"
+        LaunchId = $LaunchId.ToString("D")
         PID = $ManagedPid
-        CreationTimeUtc = [string]$Identity.creation_time_utc
-        Fingerprint = [string]$Identity.fingerprint
+        HandleStartTimeUtc = $HandleStartTimeUtc
+        ExpectedExecutable = [string]$Record.expected_executable
+        ExpectedAppDirectory = [string]$Record.expected_app_dir
+        ExpectedHost = [string]$Record.expected_host
+        ExpectedPort = $ExpectedPort
     }
 }
 
-function Set-ManagedStackIdentity {
+function Get-ManagedStackIdentity {
+    $Record = Get-StackOwnershipRecord
+    if ($null -eq $Record) {
+        return $null
+    }
+    if ($Record.State -eq "provisional") {
+        throw "[LitWatch] Provisional ownership record for PID $($Record.PID) does not authorize normal lifecycle operations. Resolve the failed startup before retrying."
+    }
+    return $Record
+}
+
+function Write-StackOwnershipRecordAtomic {
+    param(
+        [Parameter(Mandatory = $true)]$Document,
+        [switch]$RequireAbsent,
+        $ExpectedRecord = $null
+    )
+
+    $Json = $Document | ConvertTo-Json -Compress
+    $WriteId = [guid]::NewGuid().ToString('N')
+    $TemporaryPath = "$script:StackPidPath.$WriteId.tmp"
+    $BackupPath = "$script:StackPidPath.$WriteId.bak"
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($TemporaryPath, $Json, $Utf8NoBom)
+    try {
+        if ($RequireAbsent) {
+            if (Test-Path -LiteralPath $script:StackPidPath -PathType Leaf) {
+                throw "[LitWatch] Ownership record already exists: $script:StackPidPath"
+            }
+            [System.IO.File]::Move($TemporaryPath, $script:StackPidPath)
+            return
+        }
+        if ($null -eq $ExpectedRecord) {
+            throw "[LitWatch] Atomic ownership replacement requires an expected record."
+        }
+        $CurrentRecord = Get-StackOwnershipRecord
+        if (-not (Test-StackOwnershipRecordEquals -Left $CurrentRecord -Right $ExpectedRecord)) {
+            throw "[LitWatch] Ownership record changed before atomic replacement. Refusing overwrite."
+        }
+        [System.IO.File]::Replace($TemporaryPath, $script:StackPidPath, $BackupPath)
+    }
+    finally {
+        if (Test-Path -LiteralPath $TemporaryPath -PathType Leaf) {
+            Remove-Item -LiteralPath $TemporaryPath -Force
+        }
+        if (Test-Path -LiteralPath $BackupPath -PathType Leaf) {
+            Remove-Item -LiteralPath $BackupPath -Force
+        }
+    }
+}
+
+function Test-StackOwnershipRecordEquals {
+    param(
+        $Left,
+        $Right
+    )
+
+    if ($null -eq $Left -or $null -eq $Right -or $Left.State -cne $Right.State) {
+        return $false
+    }
+    if ([int]$Left.PID -ne [int]$Right.PID) {
+        return $false
+    }
+    if ($Left.State -eq "final") {
+        return (
+            $Left.CreationTimeUtc -ceq $Right.CreationTimeUtc -and
+            $Left.Fingerprint -ceq $Right.Fingerprint
+        )
+    }
+    return (
+        $Left.LaunchId -ceq $Right.LaunchId -and
+        [string]$Left.HandleStartTimeUtc -ceq [string]$Right.HandleStartTimeUtc -and
+        $Left.ExpectedExecutable -ceq $Right.ExpectedExecutable -and
+        $Left.ExpectedAppDirectory -ceq $Right.ExpectedAppDirectory -and
+        $Left.ExpectedHost -ceq $Right.ExpectedHost -and
+        [int]$Left.ExpectedPort -eq [int]$Right.ExpectedPort
+    )
+}
+
+function New-ProvisionalStackIdentity {
+    param(
+        [Parameter(Mandatory = $true)]$ProcessHandle,
+        [AllowNull()][string]$HandleStartTimeUtc,
+        [int]$Port = 8000,
+        [string]$ExpectedHost = "127.0.0.1"
+    )
+
+    return [PSCustomObject]@{
+        Version = 1
+        State = "provisional"
+        LaunchId = [guid]::NewGuid().ToString("D")
+        PID = [int]$ProcessHandle.Id
+        HandleStartTimeUtc = $HandleStartTimeUtc
+        ExpectedExecutable = Get-CanonicalPath -Path $script:StackPython
+        ExpectedAppDirectory = Get-CanonicalPath -Path $script:StackSourceDirectory
+        ExpectedHost = $ExpectedHost
+        ExpectedPort = $Port
+    }
+}
+
+function Set-ProvisionalStackIdentity {
     param([Parameter(Mandatory = $true)]$Identity)
 
     $Document = [ordered]@{
         version = 1
+        state = "provisional"
+        launch_id = [string]$Identity.LaunchId
+        pid = [int]$Identity.PID
+        handle_start_time_utc = if ([string]::IsNullOrWhiteSpace([string]$Identity.HandleStartTimeUtc)) { $null } else { [string]$Identity.HandleStartTimeUtc }
+        expected_executable = [string]$Identity.ExpectedExecutable
+        expected_app_dir = [string]$Identity.ExpectedAppDirectory
+        expected_host = [string]$Identity.ExpectedHost
+        expected_port = [int]$Identity.ExpectedPort
+    }
+    Write-StackOwnershipRecordAtomic -Document $Document -RequireAbsent
+}
+
+function Set-ManagedStackIdentity {
+    param(
+        [Parameter(Mandatory = $true)]$Identity,
+        [Parameter(Mandatory = $true)]$ExpectedProvisional
+    )
+
+    if ($ExpectedProvisional.State -cne "provisional") {
+        throw "[LitWatch] Final identity upgrade requires a provisional ownership record."
+    }
+    if (
+        [int]$Identity.PID -ne [int]$ExpectedProvisional.PID -or
+        -not (Test-ProcessStartTimeMatches -Left $Identity.CreationTimeUtc -Right $ExpectedProvisional.HandleStartTimeUtc)
+    ) {
+        throw "[LitWatch] Final identity does not match the provisional process creation identity."
+    }
+
+    $Document = [ordered]@{
+        version = 1
+        state = "final"
         pid = [int]$Identity.PID
         creation_time_utc = [string]$Identity.CreationTimeUtc
         fingerprint = [string]$Identity.Fingerprint
     }
-    $Document | ConvertTo-Json -Compress | Set-Content -LiteralPath $script:StackPidPath -Encoding utf8
+    Write-StackOwnershipRecordAtomic -Document $Document -ExpectedRecord $ExpectedProvisional
+}
+
+function Remove-StackOwnershipRecord {
+    param([Parameter(Mandatory = $true)]$ExpectedRecord)
+
+    if (-not (Test-Path -LiteralPath $script:StackPidPath -PathType Leaf)) {
+        return
+    }
+    $CurrentRecord = Get-StackOwnershipRecord
+    if (-not (Test-StackOwnershipRecordEquals -Left $CurrentRecord -Right $ExpectedRecord)) {
+        throw "[LitWatch] Ownership record changed before cleanup. Refusing removal."
+    }
+    Remove-Item -LiteralPath $script:StackPidPath -Force
 }
 
 function Get-ProcessInfoById {
@@ -550,16 +753,18 @@ function Wait-StartedLitWatchIdentity {
 function Stop-StartedProcessHandle {
     param(
         [Parameter(Mandatory = $true)]$ProcessHandle,
-        [Parameter(Mandatory = $true)][string]$ExpectedStartTimeUtc,
+        [AllowNull()][string]$ExpectedStartTimeUtc,
         [ValidateRange(1, 60000)][int]$WaitTimeoutMilliseconds = 5000
     )
 
-    $CurrentStartTimeUtc = Get-ProcessHandleStartTimeUtc -ProcessHandle $ProcessHandle
-    if (
-        -not $CurrentStartTimeUtc -or
-        -not (Test-ProcessStartTimeMatches -Left $ExpectedStartTimeUtc -Right $CurrentStartTimeUtc)
-    ) {
-        throw "[LitWatch] Retained process handle creation time changed. Refusing cleanup."
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedStartTimeUtc)) {
+        $CurrentStartTimeUtc = Get-ProcessHandleStartTimeUtc -ProcessHandle $ProcessHandle
+        if (
+            -not $CurrentStartTimeUtc -or
+            -not (Test-ProcessStartTimeMatches -Left $ExpectedStartTimeUtc -Right $CurrentStartTimeUtc)
+        ) {
+            throw "[LitWatch] Retained process handle creation time changed. Refusing cleanup."
+        }
     }
     if ($ProcessHandle.HasExited) {
         return
