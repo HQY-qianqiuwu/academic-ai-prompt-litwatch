@@ -112,6 +112,8 @@ class Pipeline:
             fetched += search_result.diagnostics.raw_count
             deduplicated += search_result.diagnostics.dedup_count
             ranked = self._rank_topic(search_result.papers, topic)
+            for paper in ranked:
+                self.database.upsert(paper, run_id)
 
             for index, paper in enumerate(ranked[: self.settings.analyze_top_n]):
                 fulltext = ""

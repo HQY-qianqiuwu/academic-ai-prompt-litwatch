@@ -9,6 +9,7 @@ import pytest
 import litwatch.pipeline as pipeline_module
 from litwatch.analysis import PaperAnalyzer
 from litwatch.analysis_models import EvidenceScope, PaperAnalysis
+from litwatch.analysis_repository import AnalysisRepository
 from litwatch.config import AnalysisMode, Settings, Topic
 from litwatch.db import Database
 from litwatch.models import Paper
@@ -444,6 +445,38 @@ def test_pipeline_persists_typed_analysis_for_restart_consumers(tmp_path):
     pipeline.run(days=7, topics=[_topic()])
 
     assert database.list_papers(topic_id=_topic().id)[0]["analysis"]["status"] == "extractive"
+    pipeline.close()
+    database.connection.close()
+
+
+def test_pipeline_persists_first_discovered_paper_before_real_analysis_repository(
+    tmp_path,
+):
+    database = Database(tmp_path / "pipeline.db")
+    pipeline = Pipeline(
+        Settings(
+            llm_api_key="",
+            analyze_top_n=1,
+            fulltext_top_n=0,
+            _env_file=None,
+        ),
+        database,
+        literature_search_service=FakeSearchService([_paper(canonical_id="paper:first")]),
+    )
+
+    summary, returned = pipeline.run(days=7, topics=[_topic()])
+
+    assert summary.errors == []
+    assert summary.analyzed == 1
+    assert returned[0].analysis["status"] == "extractive"
+    persisted = database.list_papers(topic_id=_topic().id)[0]["analysis"]
+    assert persisted["status"] == "extractive"
+    assert AnalysisRepository(database).get(
+        canonical_id="paper:first",
+        analysis_version="v2.0",
+        evidence_hash=returned[0].analysis["evidence_hash"],
+        model_config_hash=returned[0].analysis["model_config_hash"],
+    ).status.value == "extractive"
     pipeline.close()
     database.connection.close()
 
