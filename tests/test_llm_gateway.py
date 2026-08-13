@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
@@ -182,7 +183,13 @@ def test_structured_success_tracks_usage_cost_and_separates_evidence(usage_datab
         "content": "Return grounded JSON only.",
     }
     assert payload["messages"][1]["role"] == "user"
-    assert "Untrusted abstract text." in payload["messages"][1]["content"]
+    envelope = json.loads(payload["messages"][1]["content"])
+    assert envelope["trusted_user_instruction"] == "Summarize the paper."
+    assert envelope["untrusted_evidence_encoding"] == "base64-utf-8"
+    assert (
+        base64.b64decode(envelope["untrusted_evidence"]).decode("utf-8")
+        == "Untrusted abstract text."
+    )
     assert captured["authorization"] == "Bearer top-secret-api-key"
     assert "top-secret-api-key" not in repr(result)
 
