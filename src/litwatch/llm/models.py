@@ -6,6 +6,8 @@ from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from litwatch.security import allowlisted_safe_error
+
 
 class LLMErrorCode(StrEnum):
     TIMEOUT = "timeout"
@@ -26,6 +28,30 @@ class LLMGatewayError(RuntimeError):
         *,
         attempts: int = 1,
     ) -> None:
+        fallback = {
+            LLMErrorCode.TIMEOUT: "LLM request timed out",
+            LLMErrorCode.RATE_LIMITED: "LLM provider rate limit exceeded",
+            LLMErrorCode.AUTHENTICATION: "LLM authentication failed",
+            LLMErrorCode.UPSTREAM: "LLM request failed",
+            LLMErrorCode.PARSE: "LLM response was not valid JSON",
+            LLMErrorCode.VALIDATION: "LLM response did not match the required schema",
+        }[code]
+        safe_message = allowlisted_safe_error(
+            safe_message,
+            allowed_messages={
+                "LLM request timed out",
+                "LLM transport failed",
+                "LLM request failed",
+                "LLM authentication failed",
+                "LLM provider rate limit exceeded",
+                "LLM provider unavailable",
+                "LLM request was rejected",
+                "LLM provider returned an invalid response envelope",
+                "LLM response was not valid JSON",
+                "LLM response did not match the required schema",
+            },
+            fallback=fallback,
+        )
         super().__init__(safe_message)
         self.code = code
         self.attempts = attempts

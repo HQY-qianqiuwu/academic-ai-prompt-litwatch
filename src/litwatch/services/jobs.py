@@ -10,8 +10,22 @@ from uuid import uuid4
 
 from litwatch.job_repository import JobRepository, JobTransitionError
 from litwatch.jobs import JobRecord
+from litwatch.security import allowlisted_safe_error
 
 JobHandler = Callable[["JobContext", JobRecord], str | None]
+
+_SAFE_JOB_ERROR_MESSAGES = frozenset(
+    {
+        "worker stopped before handler drained",
+        "worker stopped before job execution",
+        "job exceeded its execution time limit",
+        "worker stopped during job execution",
+        "job timed out",
+        "upstream service unavailable",
+        "job handler failed",
+        "no handler is registered for this job",
+    }
+)
 
 
 @dataclass(slots=True)
@@ -330,7 +344,11 @@ class JobWorker:
                 job.job_id,
                 self.worker_id,
                 safe_error_code=code,
-                safe_error_message=message,
+                safe_error_message=allowlisted_safe_error(
+                    message,
+                    allowed_messages=_SAFE_JOB_ERROR_MESSAGES,
+                    fallback="job execution failed",
+                ),
                 retryable=retryable,
             )
         except JobTransitionError:

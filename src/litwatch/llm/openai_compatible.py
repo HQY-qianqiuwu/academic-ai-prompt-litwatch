@@ -15,6 +15,7 @@ from litwatch.llm.models import (
     LLMResponse,
     LLMUsage,
 )
+from litwatch.security import redact_sensitive_text
 
 
 def _utc_now() -> datetime:
@@ -68,13 +69,16 @@ class OpenAICompatibleProvider:
             "model": request.model,
             "response_format": {"type": "json_object"},
             "messages": [
-                {"role": "system", "content": request.system_instruction},
+                {
+                    "role": "system",
+                    "content": redact_sensitive_text(request.system_instruction),
+                },
                 {
                     "role": "user",
                     "content": (
-                        f"{request.user_instruction}\n\n"
+                        f"{redact_sensitive_text(request.user_instruction)}\n\n"
                         "<untrusted_evidence>\n"
-                        f"{request.untrusted_evidence}\n"
+                        f"{redact_sensitive_text(request.untrusted_evidence)}\n"
                         "</untrusted_evidence>"
                     ),
                 },
