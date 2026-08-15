@@ -11,20 +11,22 @@ delete.
 The audit distinguishes a **legacy integration dependency** from a **core
 runtime dependency**. Existing Python search, Radar, subscription, scheduler,
 database, and web behavior remains present. `RuntimeStatus` reports the mode's
-declared requirements only; it does not probe Dify, Docker, or a proxy.
+declared requirements only; it does not probe Dify, Docker, or a proxy. Dify
+assets in this repository were removed by user decision after this audit
+record was written; the rows below document their former locations.
 
 ## Frozen Dify and Docker dependencies
 
 | Area | v1.7 dependency | Current location | v2.0 boundary |
 |---|---|---|---|
-| Dify workflow | The compatible HTTP workflow contract is retained in versioned release artifacts. | `dify/workflows/literature-search-v1.0.yml`, `dify/workflows/literature-search-v1.1.yml` | Frozen; do not modify, move, or delete. |
-| Stack lifecycle | The full-stack start path starts Docker Desktop when needed, runs `docker compose up -d` in Dify, waits for `http://localhost`, and requires `ssrf_proxy`. | `scripts/start-stack.ps1`, `scripts/stack-common.ps1` | Legacy-only after cutover; it remains available for rollback. |
-| Root start launcher | The desktop-facing launcher delegates to the full-stack Dify/Docker start script. | `启动科研文献系统.cmd` -> `scripts/start-stack.ps1` | Legacy full-stack wrapper and a cutover point; redirect only after Python-default start is released. |
-| Stack shutdown/status | Stop and status resolve the Dify compose directory and inspect Docker/Dify/`ssrf_proxy`. | `scripts/stop-stack.ps1`, `scripts/status-stack.ps1`, `scripts/stack-common.ps1` | Legacy-only after cutover. |
-| Root stop launcher | The desktop-facing launcher delegates to the full-stack Dify/Docker stop script. | `停止科研文献系统.cmd` -> `scripts/stop-stack.ps1` | Legacy full-stack wrapper and a cutover point; redirect only after Python-default stop is released. |
-| Dify network smoke | A Dify worker container calls the LitWatch API through `host.docker.internal:8000`; the check is optional with `-SkipDocker`. | `scripts/smoke-v1.1.ps1` | Historical compatibility evidence, not a Python-default requirement. |
-| SSRF integration | A version-locked Dify 1.16.1 patch permits only `host.docker.internal:8000` and can recreate `ssrf_proxy`. | `scripts/apply-dify-ssrf-integration.ps1`, `integrations/dify/1.16.1/litwatch-ssrf.patch`, `docs/DIFY_SSRF_INTEGRATION.md` | Frozen legacy integration; never broaden its allowlist. |
-| Local Python launch | LitWatch can be started/stopped without the Dify stack through its local scripts. | `scripts/start-local.ps1`, `scripts/stop-local.ps1`, `scripts/run-weekly.ps1` | Foundation for Python-primary lifecycle. |
+| Dify workflow | The compatible HTTP workflow contract was retained in versioned release artifacts. | Removed; recoverable from `dify-v1.0` / `dify-v1.1` tags | Removed by user decision. |
+| Stack lifecycle | The full-stack start path previously started Docker Desktop when needed, ran `docker compose up -d` in Dify, waited for `http://localhost`, and required `ssrf_proxy`. | `scripts/start-legacy-dify-stack.ps1` (removed) | Removed by user decision. |
+| Root start launcher | The desktop-facing launcher delegates to the Python-only start script. | `启动科研文献系统.cmd` -> `scripts/start-stack.ps1` | Python-only; no Dify/Docker/SSRF steps. |
+| Stack shutdown/status | Stop and status manage only the Python LitWatch lineage. | `scripts/stop-stack.ps1`, `scripts/status-stack.ps1`, `scripts/stack-common.ps1` | Python-only. |
+| Root stop launcher | The desktop-facing launcher delegates to the Python-only stop script. | `停止科研文献系统.cmd` -> `scripts/stop-stack.ps1` | Python-only. |
+| Dify network smoke | A Dify worker container previously called LitWatch through `host.docker.internal:8000`. | `scripts/smoke-v1.1.ps1` (removed) | Removed by user decision. |
+| SSRF integration | A version-locked Dify 1.16.1 patch previously permitted only `host.docker.internal:8000`. | Removed assets | Removed by user decision. |
+| Local Python launch | LitWatch can be started/stopped without any external stack. | `scripts/start-local.ps1`, `scripts/stop-local.ps1`, `scripts/run-weekly.ps1` | Retained; complements the Python-primary lifecycle. |
 
 `src/litwatch/provider_security.py` is a separate Python SSRF defense for
 user-configurable provider endpoints. It is retained in every mode and is not

@@ -24,17 +24,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\status-stack.ps1
 这些默认入口不会探测、启动或要求 Docker Desktop、Dify、Dify Compose
 或 Dify SSRF proxy；启动失败时也**不会自动回退到 Dify**。
 
-需要在人工验收期间显式回滚时，才使用旧版入口：
-
-```text
-启动旧版 Dify 科研文献系统.cmd
-停止旧版 Dify 科研文献系统.cmd
-```
-
-旧 Dify 仓库、Docker 数据卷以及
-`dify/workflows/literature-search-v1.0.yml`、
-`dify/workflows/literature-search-v1.1.yml` 继续保留为只读兼容与回滚材料。
-在 v2.0 人工验收完成、并获得单独删除授权之前，不删除、不迁移、不改写这些材料。
+项目已按用户决定删除 Dify 内容：旧版启动/停止入口、Dify 生命周期脚本
+以及 `dify/workflows/` 下的 DSL 文件已从工作区移除，系统为纯 Python
+运行时。历史 v1.0/v1.1 DSL 仍保留在 `dify-v1.0`、`dify-v1.1` 等 Git
+tag 中，仅用于历史追溯；日常使用不需要也不提供 Dify 回滚入口。
 
 ## LitWatch 能做什么
 

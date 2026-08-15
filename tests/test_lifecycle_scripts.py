@@ -39,6 +39,8 @@ def _run_controlled_script(
     start_time_capture: str = "normal",
     topology: str = "direct",
     child_pid: int = 4343,
+    child_argv0: str | None = None,
+    venv_launcher: str | None = None,
     lineage_fault: str = "none",
     stop_cleanup: str = "normal",
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
@@ -60,6 +62,13 @@ def _run_controlled_script(
         $script:StackProjectRoot = '{_powershell_literal(ROOT)}'
         $script:StackSourceDirectory = '{_powershell_literal(ROOT / 'src')}'
         $script:StackPython = '{_powershell_literal(sys.executable)}'
+        $script:StackVenvLauncherPath = if (
+            $env:LITWATCH_TEST_VENV_LAUNCHER
+        ) {{
+            $env:LITWATCH_TEST_VENV_LAUNCHER
+        }} else {{
+            $script:StackPython
+        }}
         $script:StackLitWatchExe = '{_powershell_literal(ROOT / '.venv/Scripts/litwatch.exe')}'
         $script:StackDataDirectory = '{_powershell_literal(data_dir)}'
         $script:StackPidPath = Join-Path $script:StackDataDirectory 'litwatch-stack.pid'
@@ -188,12 +197,17 @@ def _run_controlled_script(
             }} else {{
                 '2026-08-14T00:00:00.0000000+00:00'
             }}
+            $ArgvZero = if ($env:LITWATCH_TEST_CHILD_ARGV0) {{
+                $env:LITWATCH_TEST_CHILD_ARGV0
+            }} else {{
+                $Executable
+            }}
             return [PSCustomObject]@{{
                 PID = $ProcessId
                 ParentPID = $ParentPid
                 CreationDate = $CreationDate
                 ExecutablePath = $Executable
-                CommandLine = '"' + $Executable +
+                CommandLine = '"' + $ArgvZero +
                     '" -m uvicorn litwatch.web:app --app-dir "' +
                     $SourceDirectory + '" --host 127.0.0.1 --port ' +
                     $env:LITWATCH_TEST_PORT
@@ -567,6 +581,8 @@ def _run_controlled_script(
             "LITWATCH_TEST_TOPOLOGY": topology,
             "LITWATCH_TEST_CHILD_PID": str(child_pid),
             "LITWATCH_TEST_CHILD_PYTHON": str(BASE_EXECUTABLE),
+            "LITWATCH_TEST_CHILD_ARGV0": str(child_argv0 or ""),
+            "LITWATCH_TEST_VENV_LAUNCHER": str(venv_launcher or ""),
             "LITWATCH_TEST_LINEAGE_FAULT": lineage_fault,
             "LITWATCH_TEST_STOP_CLEANUP": stop_cleanup,
         }
@@ -839,6 +855,44 @@ def test_launcher_child_start_records_full_logical_stack_identity(tmp_path: Path
     assert len(record["launch_process"]["fingerprint"]) == 64
     assert len(record["port_owner_process"]["fingerprint"]) == 64
     assert "children:4242" in events
+
+
+def test_launcher_child_start_accepts_windows_venv_launcher_argv0(tmp_path: Path):
+    venv_launcher = str(ROOT / ".venv" / "Scripts" / "python.exe")
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        topology="launcher_child",
+        venv_launcher=venv_launcher,
+        child_argv0=venv_launcher,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert record["version"] == 2
+    assert record["state"] == "final"
+    assert record["topology"] == "launcher_child"
+    assert record["port_owner_process"]["pid"] == 4343
+    assert "children:4242" in events
+
+
+def test_launcher_child_start_rejects_foreign_child_argv0(tmp_path: Path):
+    result, events = _run_controlled_script(
+        tmp_path,
+        "start-stack.ps1",
+        topology="launcher_child",
+        child_argv0="C:\\foreign\\python.exe",
+    )
+
+    assert result.returncode != 0
+    assert "could not be identified safely" in result.stderr
+    assert "handle-stop:4242" in events
+    record = json.loads(
+        (tmp_path / "data" / "litwatch-stack.pid").read_text(encoding="utf-8-sig")
+    )
+    assert record["state"] == "provisional"
 
 
 def test_launcher_child_warm_start_reuses_same_logical_stack(tmp_path: Path):
@@ -1321,28 +1375,27 @@ def test_nondefault_port_allows_explicit_external_python_for_smoke(tmp_path: Pat
     assert str(Path(sys.executable).resolve()) in result.stdout
 
 
-def test_legacy_full_stack_scripts_remain_explicit_and_volume_preserving():
-    start = _script_text("start-legacy-dify-stack.ps1").lower()
-    stop = _script_text("stop-legacy-dify-stack.ps1").lower()
+def test_legacy_dify_scripts_and_entry_points_are_removed():
+    for name in (
+        "start-legacy-dify-stack.ps1",
+        "stop-legacy-dify-stack.ps1",
+        "启动旧版 Dify 科研文献系统.cmd",
+        "停止旧版 Dify 科研文献系统.cmd",
+    ):
+        path = (SCRIPTS / name) if name.endswith(".ps1") else (ROOT / name)
+        assert not path.exists(), name
 
-    assert "get-dockercommand" in start
-    assert "resolve-difydockerdirectory" in start
-    assert "ssrf_proxy" in start
-    assert "docker compose up -d" in start
-    assert "docker compose stop" in stop
-    assert "down -v" not in stop
-    assert "resolve-litwatchpython" in stop
-    assert "stop-managedlitwatchprocess" in stop
-    assert "stop-process" not in stop
+    for name in ("start-stack.ps1", "status-stack.ps1", "stop-stack.ps1"):
+        lowered = _script_text(name).lower()
+        assert "start-legacy-dify-stack" not in lowered
+        assert "stop-legacy-dify-stack" not in lowered
 
 
-def test_root_launchers_make_python_default_and_legacy_dify_explicit():
+def test_root_launchers_are_python_only_without_legacy_dify():
     default_start = (ROOT / "启动科研文献系统.cmd").read_text(encoding="utf-8-sig")
     default_stop = (ROOT / "停止科研文献系统.cmd").read_text(encoding="utf-8-sig")
-    legacy_start = (ROOT / "启动旧版 Dify 科研文献系统.cmd").read_text(encoding="utf-8-sig")
-    legacy_stop = (ROOT / "停止旧版 Dify 科研文献系统.cmd").read_text(encoding="utf-8-sig")
 
     assert r"scripts\start-stack.ps1" in default_start
     assert r"scripts\stop-stack.ps1" in default_stop
-    assert r"scripts\start-legacy-dify-stack.ps1" in legacy_start
-    assert r"scripts\stop-legacy-dify-stack.ps1" in legacy_stop
+    assert not (ROOT / "启动旧版 Dify 科研文献系统.cmd").exists()
+    assert not (ROOT / "停止旧版 Dify 科研文献系统.cmd").exists()

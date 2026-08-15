@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 $script:StackProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $script:StackSourceDirectory = Join-Path $script:StackProjectRoot "src"
 $script:StackPython = Join-Path $script:StackProjectRoot ".venv\Scripts\python.exe"
+$script:StackVenvLauncherPath = $script:StackPython
 $script:StackBasePython = $script:StackPython
 $script:StackLitWatchExe = Join-Path $script:StackProjectRoot ".venv\Scripts\litwatch.exe"
 $script:StackDataDirectory = Join-Path $script:StackProjectRoot "data"
@@ -471,95 +472,6 @@ function Get-ProcessHandleById {
     return Get-Process -Id $ProcessId -ErrorAction Stop
 }
 
-function Resolve-DifyDockerDirectory {
-    $Candidates = @()
-    if (-not [string]::IsNullOrWhiteSpace($env:DIFY_DOCKER_DIR)) {
-        $Candidates += $env:DIFY_DOCKER_DIR
-    }
-    $Candidates += Join-Path (Split-Path $script:StackProjectRoot -Parent) "dify\docker"
-
-    foreach ($Candidate in $Candidates) {
-        if (-not (Test-Path -LiteralPath $Candidate -PathType Container)) {
-            continue
-        }
-        $Resolved = (Resolve-Path -LiteralPath $Candidate).Path
-        $ComposeFiles = @("docker-compose.yaml", "docker-compose.yml", "compose.yaml", "compose.yml")
-        foreach ($ComposeFile in $ComposeFiles) {
-            if (Test-Path -LiteralPath (Join-Path $Resolved $ComposeFile) -PathType Leaf) {
-                return $Resolved
-            }
-        }
-    }
-
-    throw "[Dify] Compose directory was not found. Checked DIFY_DOCKER_DIR and the sibling dify\docker directory."
-}
-
-function Get-DockerCommand {
-    $Command = Get-Command docker.exe -ErrorAction SilentlyContinue
-    if (-not $Command) {
-        throw "[Docker] Docker CLI was not found in PATH. Install Docker Desktop first."
-    }
-    return $Command
-}
-
-function Test-DockerDaemon {
-    param([Parameter(Mandatory = $true)]$DockerCommand)
-
-    $Version = & $DockerCommand.Source info --format "{{.ServerVersion}}" 2>$null
-    return ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace(($Version -join "")))
-}
-
-function Find-DockerDesktopExecutable {
-    param([Parameter(Mandatory = $true)]$DockerCommand)
-
-    $Candidates = New-Object System.Collections.Generic.List[string]
-    $Running = Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($Running) {
-        try {
-            if ($Running.Path) {
-                $Candidates.Add($Running.Path)
-            }
-        }
-        catch {
-            # Access to the process path can be restricted; continue with known locations.
-        }
-    }
-
-    try {
-        $RegistryKey = Get-Item -LiteralPath "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Docker Desktop.exe" -ErrorAction Stop
-        $RegistryPath = $RegistryKey.GetValue("")
-        if ($RegistryPath) {
-            $Candidates.Add([string]$RegistryPath)
-        }
-    }
-    catch {
-        # Docker Desktop does not always register an App Paths entry.
-    }
-
-    if ($env:ProgramFiles) {
-        $Candidates.Add((Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"))
-    }
-
-    $DockerBin = Split-Path $DockerCommand.Source -Parent
-    $DockerResources = Split-Path $DockerBin -Parent
-    $DockerInstallRoot = Split-Path $DockerResources -Parent
-    if ($DockerInstallRoot) {
-        $Candidates.Add((Join-Path $DockerInstallRoot "Docker Desktop.exe"))
-        $Candidates.Add((Join-Path $DockerInstallRoot "frontend\Docker Desktop.exe"))
-        $DockerInstallParent = Split-Path $DockerInstallRoot -Parent
-        if ($DockerInstallParent) {
-            $Candidates.Add((Join-Path $DockerInstallParent "App\frontend\Docker Desktop.exe"))
-        }
-    }
-
-    foreach ($Candidate in $Candidates | Select-Object -Unique) {
-        if ($Candidate -and (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
-            return (Resolve-Path -LiteralPath $Candidate).Path
-        }
-    }
-    return $null
-}
-
 function Wait-StackCondition {
     param(
         [Parameter(Mandatory = $true)][scriptblock]$Condition,
@@ -590,43 +502,6 @@ function Test-HttpReady {
     catch {
         return $false
     }
-}
-
-function Get-ComposeServiceContainerId {
-    param(
-        [Parameter(Mandatory = $true)][string]$DifyDockerDirectory,
-        [Parameter(Mandatory = $true)][string]$Service
-    )
-
-    Push-Location $DifyDockerDirectory
-    try {
-        $ComposeJson = & docker compose ps --format json $Service 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            return $null
-        }
-        if ([string]::IsNullOrWhiteSpace(($ComposeJson -join ""))) {
-            return $null
-        }
-        $Container = $ComposeJson | ConvertFrom-Json | Select-Object -First 1
-        return [string]$Container.ID
-    }
-    finally {
-        Pop-Location
-    }
-}
-
-function Test-ComposeServiceRunning {
-    param(
-        [Parameter(Mandatory = $true)][string]$DifyDockerDirectory,
-        [Parameter(Mandatory = $true)][string]$Service
-    )
-
-    $ContainerId = Get-ComposeServiceContainerId -DifyDockerDirectory $DifyDockerDirectory -Service $Service
-    if ([string]::IsNullOrWhiteSpace($ContainerId)) {
-        return $false
-    }
-    $Running = & docker inspect --format "{{.State.Running}}" $ContainerId 2>$null
-    return ($LASTEXITCODE -eq 0 -and ($Running -join "").Trim() -eq "true")
 }
 
 function Get-PortProcessInfo {
@@ -759,9 +634,21 @@ function Test-IsCurrentLitWatchProcess {
     if ($Arguments.Count -ne 10) {
         return $false
     }
+    $ArgumentZeroMatches = Test-CanonicalPathEquals -Left $Arguments[0] -Right $ExpectedExecutable
+    if (-not $ArgumentZeroMatches) {
+        # Windows venv launchers spawn the base interpreter as a child whose
+        # argv[0] still names the venv launcher. Accept that exact launcher
+        # path only when the process image already matches the expected base
+        # executable; a bare foreign argv[0] never matches.
+        $VenvLauncher = [string]$script:StackVenvLauncherPath
+        $ArgumentZeroMatches = (
+            -not (Test-CanonicalPathEquals -Left $ExpectedExecutable -Right $VenvLauncher) -and
+            (Test-CanonicalPathEquals -Left $Arguments[0] -Right $VenvLauncher)
+        )
+    }
     return (
         (Test-CanonicalPathEquals -Left $ExecutablePath -Right $ExpectedExecutable) -and
-        (Test-CanonicalPathEquals -Left $Arguments[0] -Right $ExpectedExecutable) -and
+        $ArgumentZeroMatches -and
         $Arguments[1] -ceq "-m" -and
         $Arguments[2] -ceq "uvicorn" -and
         $Arguments[3] -ceq "litwatch.web:app" -and

@@ -16,10 +16,11 @@ Stack and Workflow versions are not required to match. A backend-only Stack
 release may reuse an older compatible DSL. See `docs/RELEASE_MATRIX.md` for the
 authoritative mapping.
 
-For v2.0, the default Stack no longer includes Dify: Python LitWatch is the only
-default runtime, and no Dify Workflow DSL is required for normal operation.
-The old Dify deployment and DSL remain frozen, explicit rollback assets during
-manual acceptance; their presence does not make them a v2.0 runtime dependency.
+For v2.0, the Stack no longer includes Dify: Python LitWatch is the only
+runtime, and no Dify Workflow DSL is required for normal operation. Dify
+content (legacy launchers, lifecycle scripts, and `dify/workflows/` DSL files)
+has been removed from the working tree by user decision; the v1.x DSL files
+remain recoverable from their Git tags.
 
 ## Stack v1.0 — Direct OpenAlex
 
@@ -330,14 +331,10 @@ Windows default launcher
 
 Default start, stop, and status never probe, start, or require Docker, Dify,
 Compose, or the Dify SSRF proxy, and they do not automatically fall back to
-Dify. Rollback is a separate operator choice through
-`启动旧版 Dify 科研文献系统.cmd` and
-`停止旧版 Dify 科研文献系统.cmd` only.
-
-The historical Dify repository, Docker volumes, integration patch, and stable
-v1.0/v1.1 workflow DSL files remain retained and frozen until v2.0 manual
-acceptance completes and separate deletion authorization is given. No v2.0
-Stable tag may be created during this implementation / RC preparation stage.
+Dify. Dify content has been removed from the working tree by user decision:
+the legacy launchers, lifecycle scripts, and v1.0/v1.1 workflow DSL files are
+deleted. No v2.0 Stable tag may be created during this Release Candidate
+stage.
 
 ### v2.0 Release Candidate Evidence
 
@@ -356,7 +353,8 @@ Stable tag may be created during this implementation / RC preparation stage.
 - Real OpenAlex TDOA search: HTTP 200, 5 papers, OpenAlex provenance 5/5,
   provider status `success`; no-key extractive analysis passed.
 - Subscription and Radar restart persistence: pass.
-- Stable v1.0 and v1.1 DSL protection: pass.
+- Historical `dify-v1.0` / `dify-v1.1` tags unchanged; DSL files removed from
+  the working tree.
 - No v2.0 Stable tag; final manual acceptance remains outstanding.
 
 Evidence: `docs/V2_0_E2E_RESULTS.md` and
@@ -384,8 +382,8 @@ private backup. The next feature branch starts from the preceding Stable tag;
 development must not accumulate indefinitely on an older feature branch.
 
 v2.0 remains outside that Stable set until Python-only manual acceptance is
-complete. Retaining a working legacy Dify rollback does not itself satisfy the
-v2.0 acceptance gate and does not authorize a Stable tag.
+complete. Removing Dify content does not by itself satisfy the v2.0 acceptance
+gate and does not authorize a Stable tag.
 
 Secrets, `.env`, API keys, tokens, and passwords are never committed. Stable
 tags and stable DSL files are immutable.

@@ -16,8 +16,9 @@ Install the following software on the new Windows PC:
 2. Python 3.11 or newer
 3. Visual Studio Code
 
-Docker Desktop is **not** a prerequisite for the v2.0 Python-default runtime.
-Install it only if the explicit legacy Dify rollback path must be restored.
+Docker Desktop is not a prerequisite for the v2.0 Python-only runtime. Dify
+content has been removed from the working tree by user decision; no Dify
+rollback entry point is provided.
 
 Verify the command-line tools:
 
@@ -25,8 +26,6 @@ Verify the command-line tools:
 git --version
 python --version
 ```
-
-For an explicitly authorized legacy rollback, also verify `docker version`.
 
 ## 2. Clone the private repository
 
@@ -61,6 +60,10 @@ git switch -c recovery/dify-v1.0 dify-v1.0
 ```
 
 Do not move or overwrite the `dify-v1.0` tag.
+
+The v1.0/v1.1 workflow DSL files were removed from the working tree by user
+decision. They remain available in the `dify-v1.0` / `dify-v1.1` tags if a
+historical v1.x review is ever required.
 
 ## 4. Recreate the Python environment
 
@@ -118,81 +121,20 @@ For direct local browser access without the lifecycle wrapper:
 & ".\.venv\Scripts\litwatch.exe" serve --host 127.0.0.1 --port 8000
 ```
 
-Only for the explicit legacy Dify rollback workflow, LitWatch must be reachable
-from containers:
-
-```powershell
-& ".\.venv\Scripts\litwatch.exe" serve --host 0.0.0.0 --port 8000
-```
-
 Verify the API:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-## 7. Optional legacy rollback: restore Dify separately
+## 7. Dify content removal
 
-Skip this section for normal v2.0 operation. Dify is retained only as an
-explicit rollback path during manual acceptance; it is never an automatic
-fallback.
-
-Install or clone the official Dify Community Edition deployment, configure its `.env`, and start
-its Docker Compose stack from the Dify `docker` directory:
-
-```powershell
-docker compose up -d
-docker compose ps
-```
-
-Do not modify Dify's PostgreSQL database directly. Docker volumes and Dify runtime data require a
-separate data backup; they are not restored by this Git repository.
-
-### Restore the Dify 1.16.1 LitWatch SSRF exception
-
-The local Dify HTTP Request node requires a narrow Squid exception for
-`host.docker.internal:8000`. Reapply the version-controlled integration from the LitWatch root:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File scripts\apply-dify-ssrf-integration.ps1 `
-  -RestartProxy
-```
-
-This script is restricted to Dify 1.16.1 and allows only the LitWatch host and port combination.
-It does not open other Docker-host ports or private networks. See
-`docs/DIFY_SSRF_INTEGRATION.md` for the security checks and upgrade boundary.
-
-## 8. Optional legacy rollback: import the frozen Dify workflow
-
-The frozen stable legacy workflows are:
-
-```text
-dify/workflows/literature-search-v1.0.yml
-dify/workflows/literature-search-v1.1.yml
-```
-
-Import the selected legacy DSL through the authenticated Dify console. The v1.1
-workflow calls:
-
-```text
-http://host.docker.internal:8000/api/v1/literature/search
-```
-
-Run the v1.1 smoke test after LitWatch and Dify are running:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\smoke-v1.1.ps1
-```
-
-An imported legacy workflow still requires a real runtime test on the restored
-machine. Its success validates only that selected v1.x rollback; it does not
-make the Python-native v2.0 implementation Stable.
-
-The historical Dify repository, volumes, integration patch, and v1.0/v1.1 DSL
-files are retained and frozen until v2.0 manual acceptance completes and a
-separate deletion or migration action is authorized. Do not rewrite these DSL
-files as part of restoring or validating the Python-default runtime.
+Dify content in this repository (legacy launchers, lifecycle scripts, and
+`dify/workflows/` DSL files) has been removed by user decision. The default
+and only runtime is Python LitWatch. The v1.x DSL files remain recoverable
+from the `dify-v1.x` Git tags, and the external Dify deployment and its Docker
+volumes were not part of this repository and require a separate data backup if
+they are ever restored.
 
 ## 9. GitHub connector access
 
@@ -206,7 +148,7 @@ The private repository restores:
 
 - Source code and Git commit history
 - Branches and annotated Git tags
-- Dify workflow DSL files
+- Historical Dify workflow DSL files (recoverable from Git tags)
 - Prompts, tests, documentation, and deployment scripts
 - `.env.example` and other non-secret configuration examples
 
@@ -249,11 +191,9 @@ Check the system without changing its state:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\status-stack.ps1
 ```
 
-There is no automatic Dify fallback. For an explicitly chosen legacy rollback,
-use `启动旧版 Dify 科研文献系统.cmd` and
-`停止旧版 Dify 科研文献系统.cmd`; only those legacy commands discover
-`dify\docker`, start or stop Compose, and validate the SSRF proxy. If Dify is
-installed elsewhere, set `DIFY_DOCKER_DIR` only for that legacy action.
+There is no automatic Dify fallback and no legacy Dify entry points. The
+repository root exposes only the Python-only launchers
+`启动科研文献系统.cmd` and `停止科研文献系统.cmd`.
 
 Port 8000 must either be unused or owned by this repository's fully validated
 LitWatch process. The default scripts report the owning PID, executable,

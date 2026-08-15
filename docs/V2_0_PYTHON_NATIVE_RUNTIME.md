@@ -34,10 +34,9 @@ Default start, stop, and status never probe, start, or require Docker, Dify,
 Compose, or the Dify SSRF proxy. A Python startup failure is reported and
 never automatically falls back to Dify.
 
-Legacy rollback is explicit and separate:
-
-- `启动旧版 Dify 科研文献系统.cmd`
-- `停止旧版 Dify 科研文献系统.cmd`
+Dify content has been removed from the working tree by user decision: the
+legacy Dify launchers, lifecycle scripts, and `dify/workflows/` DSL files are
+deleted. The v1.x DSL files remain recoverable from the `dify-v1.x` Git tags.
 
 ## Component disposition
 
@@ -51,8 +50,8 @@ Legacy rollback is explicit and separate:
 | Durable Jobs | Python, newly default |
 | SQLite migration / backup / recovery | Python, verified against a real v1.7 snapshot copy |
 | Bilingual Web UI | Python/Jinja2/vanilla JS, retained |
-| Dify runtime / Docker / SSRF proxy | Not a default dependency; legacy rollback only |
-| v1.0 / v1.1 Workflow DSL | Frozen release-history artifacts; unchanged |
+| Dify runtime / Docker / SSRF proxy | Removed; not part of the Python runtime |
+| v1.0 / v1.1 Workflow DSL | Removed from the working tree; recoverable from Git tags |
 
 ## Verification evidence
 
@@ -78,8 +77,8 @@ services with deterministic external I/O only:
 - zh-CN and English pages and navigation pass.
 
 Full suite: `604 passed, 1 warning`. Ruff: `All checks passed!`.
-`git diff --check` and `git fsck --no-dangling`: pass. Stable v1.0/v1.1 DSL
-diffs: empty.
+`git diff --check` and `git fsck --no-dangling`: pass. Historical
+`dify-v1.0` / `dify-v1.1` tags remain unchanged.
 
 ### Real migration and lifecycle rehearsal (isolated)
 
@@ -110,9 +109,10 @@ Full procedure and sanitized evidence:
   remain covered by tests.
 - Cloud AI requires explicit consent and a key; the no-key extractive path is
   the deterministic default.
-- The historical Dify repository, volumes, integration patch, and stable DSL
-  files remain frozen until manual acceptance and separate deletion
-  authorization.
+- Dify content in this repository (launchers, lifecycle scripts, DSL files)
+  has been removed by user decision. The sibling Dify repository and its
+  Docker volumes are external and were not modified; removing them is a
+  separate operator action.
 
 ## Manual acceptance checklist
 
@@ -134,11 +134,9 @@ Release owner should confirm the following before promotion:
    managed port and volumes/data are preserved.
 7. Restart; subscriptions, Radar history, job history, and analysis history
    persist.
-8. Optionally practice legacy rollback with
-   `启动旧版 Dify 科研文献系统.cmd`; the default Python path must remain
-   unaffected.
+8. Confirm the old Dify entry points are gone: only `启动科研文献系统.cmd`
+   and `停止科研文献系统.cmd` exist at the repository root.
 9. Confirm repository `HQY-qianqiuwu/dify-literature-search-workflow` is
    PRIVATE and `feat/v2.0-python-native-runtime` is backed up.
 10. Decide promotion. Only after acceptance may a v2.0 Stable tag be created
-    (candidate name `litwatch-v2.0`); deleting Dify assets then requires a
-    separate explicit authorization.
+    (candidate name `litwatch-v2.0`).

@@ -378,6 +378,9 @@ Capabilities:
 - Default runtime, UI, and lifecycle are Python-only; the default path does not
   probe, start, or require Docker, Dify, Compose, or the Dify SSRF proxy, and
   Python startup failure never triggers an automatic Dify fallback.
+- Dify content (legacy launchers, lifecycle scripts, and `dify/workflows/`
+  DSL files) has been removed from the working tree by user decision; the v1.x
+  DSL files remain recoverable from their Git tags.
 - Durable analysis jobs with enqueue idempotency, cancellation, normalized
   timeout failure, and stale-lease restart recovery.
 - Structured Paper Analysis through the Python `LLMGateway`, including a
@@ -400,7 +403,8 @@ Validation state:
   provider status `success`.
 - No-key extractive analysis: pass.
 - Subscription and Research Radar restart persistence: pass.
-- Stable v1.0 and v1.1 DSL protection: pass.
+- Historical `dify-v1.0` / `dify-v1.1` tags unchanged; DSL files removed from
+  the working tree.
 - Stable tag: none — awaiting final manual acceptance.
 - Branch: `feat/v2.0-python-native-runtime`.
 

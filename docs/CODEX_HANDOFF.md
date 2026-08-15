@@ -33,8 +33,8 @@
   and the promotion decision remain outstanding.
 - Scope: default Python-only lifecycle and workspace, durable paper-analysis
   jobs, structured analysis through the Python LLM gateway, retained
-  Search/Provider Settings/Radar/Subscriptions/Weekly Digest, and explicit
-  legacy Dify rollback launchers without automatic fallback.
+  Search/Provider Settings/Radar/Subscriptions/Weekly Digest, and removal of
+  Dify launchers/scripts/DSL from the working tree.
 - Validation: 604 tests passed; Ruff and `git diff --check` passed; real v1.7
   SQLite snapshot migrated v6 -> v10 with verified rollback and byte-identical
   backup recovery; Python-only cold/warm/status/stop/restart on port 18080
@@ -43,8 +43,9 @@
   subscription/Radar restart persistence passed.
 - Security: `mode=python_default` reports `requires_dify=false`,
   `requires_docker=false`, and `requires_ssrf_proxy=false`; default launchers
-  never probe or start Dify/Docker/SSRF; legacy rollback is explicit only.
-- Stable DSL protection: v1.0 and v1.1 files unchanged.
+  never probe or start Dify/Docker/SSRF; Dify entry points have been removed.
+- Historical DSL: v1.0/v1.1 tags unchanged; DSL files removed from the working
+  tree by user decision.
 - Protected v1.7 process: port 8000 PID 37408 was never signalled or replaced.
 - Records: `docs/V2_0_PYTHON_NATIVE_RUNTIME.md`,
   `docs/V2_0_E2E_RESULTS.md`, `docs/V2_0_MIGRATION_REHEARSAL.md`,
@@ -77,4 +78,6 @@
 - Architecture: `docs/V1_6_WEEKLY_RECOMMENDATIONS.md`
 - E2E evidence: `docs/V1_6_E2E_RESULTS.md`
 
-Do not move historical Stable tags or modify the v1.0/v1.1 Workflow DSL files.
+Do not move historical Stable tags. The v1.0/v1.1 Workflow DSL files were
+removed from the working tree by user decision and remain recoverable from
+their Git tags.

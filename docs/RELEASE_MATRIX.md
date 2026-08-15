@@ -11,9 +11,10 @@ and Dify Workflow DSL version.
 - **Dify Workflow DSL** changes only when the workflow contract or user-facing
   workflow capability changes.
 
-For v2.0, Python LitWatch is the default Stack and a Dify Workflow DSL is not a
-runtime prerequisite. Historical Dify mappings remain below for Stable v1.x
-recovery and explicit rollback only.
+For v2.0, Python LitWatch is the only Stack runtime and no Dify Workflow DSL is
+required. Dify content has been removed from the working tree by user decision;
+historical Dify mappings below document Stable v1.x history only, and the DSL
+files remain recoverable from the `dify-v1.0` / `dify-v1.1` Git tags.
 
 Stack Version and Workflow Version are not required to match. Do not copy a DSL
 solely to make version numbers align.
@@ -30,7 +31,7 @@ solely to make version numbers align.
 | v1.5 | Stable | Local research Web UI, diagnostics, Provider Settings, secret-safe BYOK UX | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.5` |
 | v1.6 | Stable | Research subscriptions, historical novelty, weekly scheduling, Dashboard recommendations and digests | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.6` |
 | v1.7 | Stable | Research Radar, historical backfill, deterministic trends, evidence timeline | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.7` |
-| v2.0 | Release Candidate (**Not Stable**) | Python-native lifecycle, durable jobs, paper analysis, and existing Search/Radar/Subscriptions/Digest workspace | None for the default runtime; frozen v1.1 DSL is explicit legacy rollback only | OpenAlex + Semantic Scholar + arXiv + Crossref | None |
+| v2.0 | Release Candidate (**Not Stable**) | Python-native lifecycle, durable jobs, paper analysis, and existing Search/Radar/Subscriptions/Digest workspace | None; Dify DSL removed from the working tree | OpenAlex + Semantic Scholar + arXiv + Crossref | None |
 
 ## Provider Capability Matrix
 
@@ -91,12 +92,12 @@ The v2.0 default entry points are `启动科研文献系统.cmd`,
 start, or require Docker, Dify, Compose, or the Dify SSRF proxy. A Python
 startup failure is reported; it never triggers an automatic Dify fallback.
 
-Legacy rollback is explicit through `启动旧版 Dify 科研文献系统.cmd` and
-`停止旧版 Dify 科研文献系统.cmd` only. The old Dify repository, Docker
-volumes, integration patch, and v1.0/v1.1 DSL files remain retained and frozen
-until manual v2.0 acceptance is complete and a separate cleanup action is
-authorized. This compatibility path does not make v2.0 Stable. There is no
-v2.0 Stable tag during implementation / RC preparation.
+Dify content has been removed from the working tree by user decision: the
+legacy Dify launchers, lifecycle scripts, and `dify/workflows/` DSL files are
+deleted. The v1.0/v1.1 DSL files remain recoverable from the `dify-v1.0` /
+`dify-v1.1` Git tags for historical reference. The sibling Dify repository and
+its Docker volumes are not managed by this repository; removing them is a
+separate operator action. There is no v2.0 Stable tag during RC preparation.
 
 ## Stack v2.0 Release Evidence
 
@@ -229,7 +230,8 @@ Recovery on a new computer selects a Stable Stack tag first, then imports the
 compatible workflow listed here when that Stable version requires Dify. The
 Stack tag does not imply a same-numbered DSL file exists.
 
-The in-progress v2.0 Python-default work is restored from its reviewed branch or
-commit, not from a Stable tag. Its normal runtime does not import a Dify DSL.
-The frozen v1.x Dify assets are restored separately only when an operator
-explicitly chooses the legacy rollback path.
+The v2.0 Python-default work is restored from its reviewed branch or commit,
+not from a Stable tag. Its normal runtime does not import a Dify DSL. If a
+historical v1.x Dify stack is ever required, restore the `dify-v1.x` tag
+snapshot from Git history and the separately backed-up Dify deployment; this
+is not part of the v2.0 runtime.
