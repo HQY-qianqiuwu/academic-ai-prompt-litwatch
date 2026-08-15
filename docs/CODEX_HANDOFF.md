@@ -22,6 +22,35 @@
 - Records: `docs/V1_7_RESEARCH_RADAR.md` and
   `docs/V1_7_E2E_RESULTS.md`.
 
+## Current work (v2.0 Release Candidate)
+
+- Stack: v2.0 - Python-native Runtime Migration
+- Tag: none (Release Candidate, not Stable)
+- Branch: `feat/v2.0-python-native-runtime`
+- Base tag: `dify-v1.7`
+- State: Release Candidate; automated Dify-free acceptance and isolated real
+  migration / Python-only lifecycle rehearsal passed. Final manual acceptance
+  and the promotion decision remain outstanding.
+- Scope: default Python-only lifecycle and workspace, durable paper-analysis
+  jobs, structured analysis through the Python LLM gateway, retained
+  Search/Provider Settings/Radar/Subscriptions/Weekly Digest, and explicit
+  legacy Dify rollback launchers without automatic fallback.
+- Validation: 604 tests passed; Ruff and `git diff --check` passed; real v1.7
+  SQLite snapshot migrated v6 -> v10 with verified rollback and byte-identical
+  backup recovery; Python-only cold/warm/status/stop/restart on port 18080
+  passed; real OpenAlex TDOA search returned 5 papers with OpenAlex
+  provenance and provider `success`; no-key extractive analysis and
+  subscription/Radar restart persistence passed.
+- Security: `mode=python_default` reports `requires_dify=false`,
+  `requires_docker=false`, and `requires_ssrf_proxy=false`; default launchers
+  never probe or start Dify/Docker/SSRF; legacy rollback is explicit only.
+- Stable DSL protection: v1.0 and v1.1 files unchanged.
+- Protected v1.7 process: port 8000 PID 37408 was never signalled or replaced.
+- Records: `docs/V2_0_PYTHON_NATIVE_RUNTIME.md`,
+  `docs/V2_0_E2E_RESULTS.md`, `docs/V2_0_MIGRATION_REHEARSAL.md`,
+  `docs/V2_0_SECURITY_BOUNDARY.md`, and
+  `docs/V2_0_RUNTIME_DEPENDENCY_AUDIT.md`.
+
 ## Previous stable
 
 - Stack: v1.6 - Research Subscriptions and Weekly Recommendations

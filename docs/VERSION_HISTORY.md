@@ -359,3 +359,55 @@ Architecture record: `docs/V1_7_RESEARCH_RADAR.md`
 Validation record: `docs/V1_7_E2E_RESULTS.md`
 
 Stable tag: `dify-v1.7`
+
+## Stack v2.0
+
+Status: **Release Candidate — Not Stable**
+
+Architecture:
+
+```text
+Windows default launcher
+    -> Python lifecycle (start / stop / status)
+    -> FastAPI + SQLite + Scheduler + JobWorker + LLMGateway
+    -> Search / Radar / Subscriptions / Digest / Jobs / Paper Analysis
+```
+
+Capabilities:
+
+- Default runtime, UI, and lifecycle are Python-only; the default path does not
+  probe, start, or require Docker, Dify, Compose, or the Dify SSRF proxy, and
+  Python startup failure never triggers an automatic Dify fallback.
+- Durable analysis jobs with enqueue idempotency, cancellation, normalized
+  timeout failure, and stale-lease restart recovery.
+- Structured Paper Analysis through the Python `LLMGateway`, including a
+  no-key extractive path with explicit evidence scope.
+- Existing Search, Provider Settings, Research Radar, Subscriptions, Weekly
+  Digest, deterministic deduplication and ranking, and bilingual UI retained
+  on the Python runtime.
+- Dify-free cross-feature acceptance gate and isolated real migration /
+  lifecycle rehearsal evidence.
+
+Validation state:
+
+- Tests: 604 passed; Ruff and `git diff --check`: pass.
+- Dify-free automated acceptance: pass.
+- Real v1.7 SQLite snapshot migration v6 -> v10: pass; invalid-migration
+  rollback and backup recovery: pass.
+- Python-only cold start, warm start, status, stop, and restart on alternate
+  port 18080: pass.
+- Real OpenAlex TDOA search: HTTP 200, 5 papers, OpenAlex provenance 5/5,
+  provider status `success`.
+- No-key extractive analysis: pass.
+- Subscription and Research Radar restart persistence: pass.
+- Stable v1.0 and v1.1 DSL protection: pass.
+- Stable tag: none — awaiting final manual acceptance.
+- Branch: `feat/v2.0-python-native-runtime`.
+
+Records:
+
+- `docs/V2_0_PYTHON_NATIVE_RUNTIME.md`
+- `docs/V2_0_E2E_RESULTS.md`
+- `docs/V2_0_MIGRATION_REHEARSAL.md`
+- `docs/V2_0_SECURITY_BOUNDARY.md`
+- `docs/V2_0_RUNTIME_DEPENDENCY_AUDIT.md`

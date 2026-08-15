@@ -314,7 +314,7 @@ Add PDF retrieval, parsing, section extraction, and `fulltext_excerpt` /
 
 ## Stack v2.0 — Python-Native Research Workspace
 
-Status: **Implementation / RC preparation — Not Stable**
+Status: **Release Candidate — Not Stable**
 
 The v2.0 implementation combines the previously delivered Search, Provider
 Settings, Subscriptions, Weekly Digest, and Research Radar capabilities with
@@ -338,6 +338,29 @@ The historical Dify repository, Docker volumes, integration patch, and stable
 v1.0/v1.1 workflow DSL files remain retained and frozen until v2.0 manual
 acceptance completes and separate deletion authorization is given. No v2.0
 Stable tag may be created during this implementation / RC preparation stage.
+
+### v2.0 Release Candidate Evidence
+
+- Full suite: 604 tests passed; Ruff, `git diff --check`, and
+  `git fsck --no-dangling`: pass.
+- Dify-free automated acceptance: FastAPI lifespan, Manual Search,
+  Provider Settings redaction, subscriptions, scheduler, Weekly Digest,
+  historical deduplication, Radar, Paper Analysis, durable jobs, migration /
+  backup / recovery, and zh-CN/English pages: pass.
+- Real v1.7 SQLite snapshot: schema v6 -> v10 migration verified; invalid
+  migration leaves no partial state; backup recovery byte-identical; source
+  read-only throughout.
+- Python-only lifecycle on port 18080: cold start, warm start, status, stop,
+  restart all pass with `mode=python_default` and
+  `requires_dify=false`; no listener or identity left behind.
+- Real OpenAlex TDOA search: HTTP 200, 5 papers, OpenAlex provenance 5/5,
+  provider status `success`; no-key extractive analysis passed.
+- Subscription and Radar restart persistence: pass.
+- Stable v1.0 and v1.1 DSL protection: pass.
+- No v2.0 Stable tag; final manual acceptance remains outstanding.
+
+Evidence: `docs/V2_0_E2E_RESULTS.md` and
+`docs/V2_0_MIGRATION_REHEARSAL.md`.
 
 ## Future — Sustainable Personal Research System
 

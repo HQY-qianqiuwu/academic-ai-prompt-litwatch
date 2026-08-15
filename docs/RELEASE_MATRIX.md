@@ -30,7 +30,7 @@ solely to make version numbers align.
 | v1.5 | Stable | Local research Web UI, diagnostics, Provider Settings, secret-safe BYOK UX | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.5` |
 | v1.6 | Stable | Research subscriptions, historical novelty, weekly scheduling, Dashboard recommendations and digests | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.6` |
 | v1.7 | Stable | Research Radar, historical backfill, deterministic trends, evidence timeline | `literature-search-v1.1.yml` (compatible reuse) | OpenAlex + Semantic Scholar + arXiv + Crossref | `dify-v1.7` |
-| v2.0 | Implementation / RC preparation (**Not Stable**) | Python-native lifecycle, durable jobs, paper analysis, and existing Search/Radar/Subscriptions/Digest workspace | None for the default runtime; frozen v1.1 DSL is explicit legacy rollback only | OpenAlex + Semantic Scholar + arXiv + Crossref | None |
+| v2.0 | Release Candidate (**Not Stable**) | Python-native lifecycle, durable jobs, paper analysis, and existing Search/Radar/Subscriptions/Digest workspace | None for the default runtime; frozen v1.1 DSL is explicit legacy rollback only | OpenAlex + Semantic Scholar + arXiv + Crossref | None |
 
 ## Provider Capability Matrix
 
@@ -97,6 +97,28 @@ volumes, integration patch, and v1.0/v1.1 DSL files remain retained and frozen
 until manual v2.0 acceptance is complete and a separate cleanup action is
 authorized. This compatibility path does not make v2.0 Stable. There is no
 v2.0 Stable tag during implementation / RC preparation.
+
+## Stack v2.0 Release Evidence
+
+Stack v2.0 is a Release Candidate. Automated Dify-free acceptance covered the
+real FastAPI lifespan, Manual Search through the production
+`LiteratureSearchService`, Provider Settings credential redaction,
+subscriptions, scheduler, Weekly Digest, historical deduplication, Research
+Radar, structured Paper Analysis, durable jobs, migration/backup/recovery
+boundaries, and zh-CN/English pages. Full suite: 604 tests passed; Ruff,
+`git diff --check`, and `git fsck --no-dangling`: pass.
+
+The isolated real rehearsal copied the live v1.7 SQLite database read-only,
+migrated the copy from schema v6 to v10 with verification, proved an invalid
+migration leaves no partial state, and proved byte-identical backup recovery.
+The Python-only lifecycle passed cold start, warm start, status, stop, and
+restart on port 18080 with `mode=python_default` and
+`requires_dify=false`. A real OpenAlex TDOA search returned HTTP 200 with 5
+papers, OpenAlex provenance on all 5, and provider status `success`. A no-key
+extractive analysis and subscription/Radar restart persistence passed.
+
+See `docs/V2_0_E2E_RESULTS.md` and `docs/V2_0_MIGRATION_REHEARSAL.md`. No
+v2.0 Stable tag exists; final manual acceptance remains outstanding.
 
 ## Stack v1.2 Release Evidence
 
