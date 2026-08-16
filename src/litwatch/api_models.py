@@ -339,6 +339,34 @@ class SubscriptionResponse(BaseModel):
         return cls.model_validate(subscription.model_dump())
 
 
+class EmailSettingsResponse(BaseModel):
+    recipient_email: str
+    enabled: bool
+    smtp_host: str
+    smtp_port: int
+    smtp_username: str
+    has_auth_code: bool
+
+    @classmethod
+    def from_settings(cls, settings) -> EmailSettingsResponse:
+        return cls(**settings.model_dump())
+
+
+class EmailSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    recipient_email: str | None = None
+    enabled: bool | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_username: str | None = None
+    smtp_auth_code: str | None = None
+
+
+class EmailSettingsTestResponse(BaseModel):
+    ok: bool
+    safe_error: str | None = None
+
+
 class RecommendationResponse(BaseModel):
     canonical_id: str
     rank_position: int

@@ -460,7 +460,8 @@ def test_radar_subscription_scheduler_digest_dedup_and_restart_share_sqlite(tmp_
     restarted = Database(settings.database_path)
     assert SubscriptionRepository(restarted).get(subscription_id) is not None
     assert len(SubscriptionRunRepository(restarted).list_for_subscription(subscription_id)) == 3
-    assert len(DeliveryRepository(restarted).list(subscription_id)) == 3
+    # Each of the 3 runs records both a dashboard and an email delivery.
+    assert len(DeliveryRepository(restarted).list(subscription_id)) == 6
     assert (
         HistoricalPaperRepository(restarted)
         .get_subscription_paper(subscription_id, "doi:10.1000/d")

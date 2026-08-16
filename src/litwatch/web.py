@@ -18,6 +18,9 @@ from pydantic import ValidationError
 from litwatch.analysis import PaperAnalyzer
 from litwatch.analysis_repository import AnalysisRepository
 from litwatch.api_models import (
+    EmailSettingsResponse,
+    EmailSettingsTestResponse,
+    EmailSettingsUpdate,
     JobCreateRequest,
     JobListResponse,
     JobResponse,
@@ -37,6 +40,8 @@ from litwatch.api_models import (
 from litwatch.config import Settings, Topic
 from litwatch.db import Database
 from litwatch.delivery_repository import DeliveryRepository
+from litwatch.email_mailer import EmailMailer
+from litwatch.email_settings import EmailNotConfiguredError, EmailSettings, EmailSettingsStore
 from litwatch.export import rows_to_bibtex
 from litwatch.historical_paper_repository import HistoricalPaperRepository
 from litwatch.job_repository import JobRepository
@@ -131,7 +136,15 @@ def create_app(
     historical_repository = HistoricalPaperRepository(database)
     run_repository = SubscriptionRunRepository(database)
     delivery_repository = DeliveryRepository(database)
-    delivery_service = DeliveryService(delivery_repository, historical_repository)
+    email_settings_store = EmailSettingsStore(
+        database, settings.database_path.parent / "smtp-auth.secret"
+    )
+    email_mailer = EmailMailer(settings, email_settings_store)
+    delivery_service = DeliveryService(
+        delivery_repository,
+        historical_repository,
+        email_sender=email_mailer,
+    )
     subscription_run_service = subscription_run_service or SubscriptionRunService(
         search_service,
         subscription_repository,
@@ -314,6 +327,14 @@ def create_app(
         return templates.TemplateResponse(
             request=request,
             name="provider_settings.html",
+            context={},
+        )
+
+    @app.get("/email-settings", response_class=HTMLResponse)
+    async def email_settings_page(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="email_settings.html",
             context={},
         )
 
@@ -552,6 +573,34 @@ def create_app(
             raise HTTPException(status_code=502, detail="Literature request failed") from None
 
         return LiteratureSearchResponse.from_result(result)
+
+    @app.get("/api/v1/email-settings", response_model=EmailSettingsResponse)
+    def get_email_settings() -> EmailSettingsResponse:
+        return EmailSettingsResponse.from_settings(email_settings_store.load())
+
+    @app.put("/api/v1/email-settings", response_model=EmailSettingsResponse)
+    def update_email_settings(payload: EmailSettingsUpdate) -> EmailSettingsResponse:
+        current = email_settings_store.load()
+        merged = EmailSettings.model_validate(
+            {
+                **current.model_dump(),
+                **payload.model_dump(exclude_unset=True, exclude={"smtp_auth_code"}),
+            }
+        )
+        email_settings_store.save(merged, auth_code=payload.smtp_auth_code)
+        return EmailSettingsResponse.from_settings(email_settings_store.load())
+
+    @app.post("/api/v1/email-settings/test", response_model=EmailSettingsTestResponse)
+    def test_email_settings() -> EmailSettingsTestResponse:
+        try:
+            email_mailer.send_test()
+        except EmailNotConfiguredError:
+            raise HTTPException(status_code=400, detail="Email not configured") from None
+        except Exception as error:  # noqa: BLE001 - normalized
+            return EmailSettingsTestResponse(
+                ok=False, safe_error=DeliveryService._safe_email_error(error)
+            )
+        return EmailSettingsTestResponse(ok=True)
 
     @app.get("/api/v1/subscriptions", response_model=list[SubscriptionResponse])
     def subscriptions() -> list[SubscriptionResponse]:

@@ -24,6 +24,7 @@
         <a href="/radars" data-i18n="nav.radar">科研雷达</a>
         <a class="active" href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a>
         <a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a>
+        <a href="/email-settings" data-i18n="nav.email">邮件设置</a>
         <a href="/provider-settings" data-i18n="nav.settings">数据源设置</a>
       </nav>
       <div class="locale-switch" role="group" aria-label="界面语言" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span aria-hidden="true">|</span><button type="button" data-locale="en">EN</button></div>
@@ -60,10 +61,11 @@
           <label><span data-i18n="subscriptions.searchLimit">候选文献数量</span><input name="search_limit" type="number" min="1" max="50" value="20" required></label>
           <label><span data-i18n="subscriptions.recommendLimit">每次最多推荐</span><input name="recommendation_limit" type="number" min="1" max="50" value="5" required></label>
           <label><span data-i18n="subscriptions.frequency">更新频率</span><select name="frequency" disabled><option value="weekly" selected data-i18n="subscriptions.weekly">每周</option></select></label>
-          <label><span data-i18n="subscriptions.weekday">星期</span><select name="weekday"><option value="0" data-i18n="weekday.0">星期一</option><option value="1" data-i18n="weekday.1">星期二</option><option value="2" data-i18n="weekday.2">星期三</option><option value="3" data-i18n="weekday.3">星期四</option><option value="4" data-i18n="weekday.4">星期五</option><option value="5" data-i18n="weekday.5">星期六</option><option value="6" selected data-i18n="weekday.6">星期日</option></select></label>
-          <label><span data-i18n="subscriptions.time">时间</span><input name="local_time" type="time" value="08:00" required></label>
+          <label><span data-i18n="subscriptions.weekday">星期</span><select name="weekday"><option value="0" selected data-i18n="weekday.0">星期一</option><option value="1" data-i18n="weekday.1">星期二</option><option value="2" data-i18n="weekday.2">星期三</option><option value="3" data-i18n="weekday.3">星期四</option><option value="4" data-i18n="weekday.4">星期五</option><option value="5" data-i18n="weekday.5">星期六</option><option value="6" data-i18n="weekday.6">星期日</option></select></label>
+          <label><span data-i18n="subscriptions.time">时间</span><input name="local_time" type="time" value="09:00" required></label>
           <label><span data-i18n="subscriptions.timezone">时区</span><input name="timezone" value="Asia/Shanghai" required></label>
           <label class="subscription-toggle"><input name="enabled" type="checkbox" checked> <span data-i18n="subscriptions.enabled">已启用</span></label>
+          <label class="subscription-toggle"><input name="email_enabled" type="checkbox" checked> <span data-i18n="subscriptions.emailEnabled">每周发送邮件</span></label>
           <div class="subscription-form-actions wide">
             <button class="research-primary" type="submit" data-save-subscription data-i18n="subscriptions.save">保存订阅</button>
           </div>

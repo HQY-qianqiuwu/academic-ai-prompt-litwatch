@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title data-i18n="email.pageTitle">LitWatch 邮件设置</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/local-ui.css') }}">
+    <script src="{{ url_for('static', path='/i18n.js') }}" defer></script>
+    <script src="{{ url_for('static', path='/email-settings.js') }}" defer></script>
+  </head>
+  <body class="research-app">
+    <a class="skip-link" href="#main-content" data-i18n="email.skip">跳到邮件设置</a>
+    <header class="research-topbar">
+      <a class="research-brand" href="/" aria-label="LitWatch 文献检索首页" data-i18n-aria-label="brand.home" translate="no">
+        <span>LW</span>
+        <strong>LitWatch</strong>
+      </a>
+      <p data-i18n="email.topbar">邮件配置</p>
+      <nav aria-label="主导航" data-i18n-aria-label="nav.primary">
+        <a href="/" data-i18n="nav.search">文献检索</a>
+        <a href="/analysis" data-i18n="nav.analysis">Python 分析</a>
+        <a href="/jobs" data-i18n="nav.jobs">任务</a>
+        <a href="/radars" data-i18n="nav.radar">科研雷达</a>
+        <a href="/subscriptions" data-i18n="nav.subscriptions">研究订阅</a>
+        <a href="/weekly-digests" data-i18n="nav.digests">每周文献推荐</a>
+        <a class="active" href="/email-settings" data-i18n="nav.email">邮件设置</a>
+        <a href="/provider-settings" data-i18n="nav.settings">数据源设置</a>
+      </nav>
+      <div class="locale-switch" role="group" aria-label="界面语言" data-i18n-aria-label="locale.label"><button type="button" data-locale="zh-CN">中文</button><span aria-hidden="true">|</span><button type="button" data-locale="en">EN</button></div>
+    </header>
+
+    <main id="main-content" class="research-shell settings-shell">
+      <section class="research-intro" aria-labelledby="email-title">
+        <p class="research-kicker" data-i18n="email.kicker">本地邮件配置</p>
+        <h1 id="email-title" data-i18n="email.title">邮件设置</h1>
+        <p data-i18n="email.intro">配置接收每周文献摘要的 QQ 邮箱与 SMTP 授权码。授权码只写不可读，绝不会返回到本页面。</p>
+      </section>
+
+      <section class="settings-notice" aria-label="授权码安全配置">
+        <strong data-i18n="email.noticeTitle">授权码安全配置</strong>
+        <span data-i18n="email.noticeBody">授权码留空会保留已保存的授权码；需要修改时填写新的授权码即可。</span>
+      </section>
+
+      <section class="settings-state" data-email-settings-status aria-live="polite">
+        <strong data-i18n="email.loading">正在加载邮件配置...</strong>
+      </section>
+
+      <form class="settings-card" data-email-settings-form>
+        <label><span data-i18n="email.recipient">收件邮箱</span><input name="recipient_email" type="email" autocomplete="email"></label>
+        <label><span data-i18n="email.smtpAuthCode">SMTP 授权码</span><input name="smtp_auth_code" type="password" autocomplete="new-password"></label>
+        <label class="subscription-toggle"><input name="enabled" type="checkbox" checked> <span data-i18n="email.enabled">启用每周邮件</span></label>
+        <div class="settings-actions">
+          <button class="research-primary" type="submit" data-save-email-settings data-i18n="email.save">保存设置</button>
+          <button class="research-secondary" type="button" data-test-email-settings data-i18n="email.test">测试发送</button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>

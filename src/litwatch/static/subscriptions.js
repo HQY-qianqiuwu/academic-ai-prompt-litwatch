@@ -50,6 +50,7 @@
       for (const name of ["name","topic","search_limit","recommendation_limit","weekday","local_time","timezone"]) form.elements[name].value = item[name];
       form.elements.keywords.value = item.keywords.join(", ");
       form.elements.enabled.checked = item.enabled;
+      form.elements.email_enabled.checked = item.email_enabled !== false;
     }
     renderProviders(item?.providers || providers.filter((p) => p.default_selected && p.runnable).map((p) => p.name));
     editor.hidden = false;
@@ -81,7 +82,7 @@
     event.preventDefault();
     const data = new FormData(form);
     const id = data.get("subscription_id");
-    const payload = {name:data.get("name"), topic:data.get("topic"), keywords:String(data.get("keywords") || "").split(",").map((v) => v.trim()).filter(Boolean), providers:data.getAll("providers"), search_limit:Number(data.get("search_limit")), recommendation_limit:Number(data.get("recommendation_limit")), frequency:"weekly", weekday:Number(data.get("weekday")), local_time:data.get("local_time"), timezone:data.get("timezone"), enabled:data.get("enabled") === "on"};
+    const payload = {name:data.get("name"), topic:data.get("topic"), keywords:String(data.get("keywords") || "").split(",").map((v) => v.trim()).filter(Boolean), providers:data.getAll("providers"), search_limit:Number(data.get("search_limit")), recommendation_limit:Number(data.get("recommendation_limit")), frequency:"weekly", weekday:Number(data.get("weekday")), local_time:data.get("local_time"), timezone:data.get("timezone"), enabled:data.get("enabled") === "on", email_enabled:data.get("email_enabled") === "on"};
     const button = document.querySelector("[data-save-subscription]"); button.disabled = true;
     try { await request(id ? `/api/v1/subscriptions/${id}` : "/api/v1/subscriptions", {method:id ? "PATCH" : "POST", body:JSON.stringify(payload)}); editor.hidden = true; await load(); }
     catch (error) { setState(t("subscriptions.invalidSchedule"), error.message, true); }

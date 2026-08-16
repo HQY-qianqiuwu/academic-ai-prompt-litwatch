@@ -153,3 +153,37 @@ def test_legacy_dashboard_redirects_to_radars_and_is_not_run_history(tmp_path):
     assert subscriptions.status_code == 200
     assert 'href="/radars" data-i18n="nav.radar"' in subscriptions.text
     assert 'href="/dashboard" data-i18n="nav.history"' not in subscriptions.text
+
+
+def test_email_settings_page_renders(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        response = client.get("/email-settings")
+    assert response.status_code == 200
+    assert "email" in response.text.lower()
+
+
+def test_email_settings_api_never_returns_secret(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        settings_response = client.put(
+            "/api/v1/email-settings",
+            json={
+                "recipient_email": "me@qq.com",
+                "enabled": True,
+                "smtp_auth_code": "write-only-code",
+            },
+        )
+        get_body = client.get("/api/v1/email-settings").json()
+    assert settings_response.status_code == 200
+    body = settings_response.json()
+    assert body["recipient_email"] == "me@qq.com"
+    assert body["has_auth_code"] is True
+    assert "write-only-code" not in settings_response.text
+    assert "write-only-code" not in str(get_body)
+
+
+def test_subscription_form_has_email_toggle_and_monday_default(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        page = client.get("/subscriptions").text
+    assert 'name="email_enabled"' in page
+    assert 'value="0" selected' in page
+    assert 'value="09:00"' in page
