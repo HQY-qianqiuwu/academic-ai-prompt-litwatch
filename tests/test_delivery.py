@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import smtplib
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -7,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from litwatch.config import Settings
 from litwatch.db import Database
-from litwatch.deliveries import DeliveryStatus
+from litwatch.deliveries import DeliveryChannel, DeliveryStatus
 from litwatch.delivery_repository import DeliveryRepository
 from litwatch.historical_paper_repository import HistoricalPaperRepository
 from litwatch.models import Author, Paper
@@ -185,3 +186,108 @@ def test_weekly_digest_page_assets_and_empty_api(tmp_path):
     assert "rank_score" in script.text
     assert "relevance_score" in script.text
     assert "quality_score" in script.text
+
+
+class FakeSender:
+    def __init__(self, configured=True, error=None):
+        self._configured = configured
+        self.error = error
+        self.sent: list[dict[str, object]] = []
+
+    def configured(self) -> bool:
+        return self._configured
+
+    def send_digest(self, digest: dict[str, object]) -> None:
+        if self.error is not None:
+            raise self.error
+        self.sent.append(digest)
+
+
+def test_deliver_email_creates_delivered_delivery_once(tmp_path: Path):
+    database = Database(tmp_path / "email.db")
+    subscription = Subscription(
+        id="sub-a", name="TDOA Weekly",
+        topic="underwater acoustic TDOA localization",
+        providers=["openalex"], search_limit=10, recommendation_limit=5,
+        weekday=0, local_time="09:00", timezone="Asia/Shanghai",
+        email_enabled=True, created_at=NOW, updated_at=NOW,
+    )
+    run = SubscriptionRun(
+        id="run-a", subscription_id="sub-a", run_key="weekly:a",
+        trigger=SubscriptionRunTrigger.SCHEDULED, started_at=NOW,
+        heartbeat_at=NOW, finished_at=NOW,
+        status=SubscriptionRunStatus.SUCCESS,
+        new_count=1, recommended_count=1,
+    )
+    SubscriptionRepository(database).create(subscription)
+    SubscriptionRunRepository(database).create(run)
+    delivery_service = DeliveryService(
+        DeliveryRepository(database),
+        HistoricalPaperRepository(database),
+        email_sender=FakeSender(),
+    )
+    recommendation = Recommendation(
+        id="rec-a", run_id="run-a", subscription_id="sub-a",
+        canonical_id="doi:10.1000/tdoa", rank_position=1,
+        rank_score=0.9, relevance_score=0.8, quality_score=0.7,
+        recommended_at=NOW,
+    )
+    first = delivery_service.deliver_email(subscription, run, [recommendation])
+    second = delivery_service.deliver_email(subscription, run, [recommendation])
+    assert first.channel is DeliveryChannel.EMAIL
+    assert first.status is DeliveryStatus.DELIVERED
+    assert second.id == first.id
+
+
+def test_deliver_email_fails_safely_without_configuration(tmp_path: Path):
+    database = Database(tmp_path / "email.db")
+    subscription = Subscription(
+        id="sub-a", name="TDOA Weekly",
+        topic="underwater acoustic TDOA localization",
+        providers=["openalex"], search_limit=10, recommendation_limit=5,
+        weekday=0, local_time="09:00", timezone="Asia/Shanghai",
+        email_enabled=True, created_at=NOW, updated_at=NOW,
+    )
+    run = SubscriptionRun(
+        id="run-a", subscription_id="sub-a", run_key="weekly:a",
+        trigger=SubscriptionRunTrigger.SCHEDULED, started_at=NOW,
+        heartbeat_at=NOW, finished_at=NOW,
+        status=SubscriptionRunStatus.SUCCESS,
+    )
+    SubscriptionRepository(database).create(subscription)
+    SubscriptionRunRepository(database).create(run)
+    delivery_service = DeliveryService(
+        DeliveryRepository(database),
+        HistoricalPaperRepository(database),
+        email_sender=FakeSender(configured=False),
+    )
+    delivery = delivery_service.deliver_email(subscription, run, [])
+    assert delivery.status is DeliveryStatus.FAILED
+    assert delivery.safe_error == "Email not configured"
+
+
+def test_deliver_email_maps_smtp_auth_failure_to_safe_error(tmp_path: Path):
+    database = Database(tmp_path / "email.db")
+    subscription = Subscription(
+        id="sub-a", name="TDOA Weekly",
+        topic="underwater acoustic TDOA localization",
+        providers=["openalex"], search_limit=10, recommendation_limit=5,
+        weekday=0, local_time="09:00", timezone="Asia/Shanghai",
+        email_enabled=True, created_at=NOW, updated_at=NOW,
+    )
+    run = SubscriptionRun(
+        id="run-a", subscription_id="sub-a", run_key="weekly:a",
+        trigger=SubscriptionRunTrigger.SCHEDULED, started_at=NOW,
+        heartbeat_at=NOW, finished_at=NOW,
+        status=SubscriptionRunStatus.SUCCESS,
+    )
+    SubscriptionRepository(database).create(subscription)
+    SubscriptionRunRepository(database).create(run)
+    delivery_service = DeliveryService(
+        DeliveryRepository(database),
+        HistoricalPaperRepository(database),
+        email_sender=FakeSender(error=smtplib.SMTPAuthenticationError(535, b"auth")),
+    )
+    delivery = delivery_service.deliver_email(subscription, run, [])
+    assert delivery.status is DeliveryStatus.FAILED
+    assert delivery.safe_error == "SMTP authentication failed"

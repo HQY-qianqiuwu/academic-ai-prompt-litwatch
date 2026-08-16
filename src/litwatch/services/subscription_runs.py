@@ -203,6 +203,8 @@ class SubscriptionRunService:
             if self.delivery_service is not None
             else None
         )
+        if self.delivery_service is not None:
+            self.delivery_service.deliver_email(subscription, run, recommendations)
         return SubscriptionRunResult(
             run=run, recommendations=recommendations, delivery=delivery
         )

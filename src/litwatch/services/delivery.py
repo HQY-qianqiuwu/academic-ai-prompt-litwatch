@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import smtplib
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Protocol
 from uuid import uuid4
 
 from litwatch.deliveries import Delivery, DeliveryChannel, DeliveryStatus
@@ -9,6 +11,12 @@ from litwatch.delivery_repository import DeliveryRepository
 from litwatch.historical_paper_repository import HistoricalPaperRepository
 from litwatch.subscription_runs import Recommendation, SubscriptionRun
 from litwatch.subscriptions import Subscription
+
+
+class EmailDigestSender(Protocol):
+    def configured(self) -> bool: ...
+
+    def send_digest(self, digest: dict[str, object]) -> None: ...
 
 
 class DeliveryService:
@@ -19,11 +27,13 @@ class DeliveryService:
         repository: DeliveryRepository,
         papers: HistoricalPaperRepository,
         *,
+        email_sender: EmailDigestSender | None = None,
         clock: Callable[[], datetime] | None = None,
         id_factory: Callable[[], str] | None = None,
     ) -> None:
         self.repository = repository
         self.papers = papers
+        self.email_sender = email_sender
         self.clock = clock or (lambda: datetime.now(UTC))
         self.id_factory = id_factory or (lambda: uuid4().hex)
 
@@ -37,6 +47,26 @@ class DeliveryService:
         if existing is not None:
             return existing
         now = self._now()
+        digest = self._build_digest(subscription, run, recommendations)
+        delivery = Delivery(
+            id=self.id_factory(),
+            run_id=run.id,
+            subscription_id=subscription.id,
+            channel=DeliveryChannel.DASHBOARD,
+            status=DeliveryStatus.DELIVERED,
+            digest=digest,
+            attempted_at=now,
+            delivered_at=now,
+        )
+        stored, _ = self.repository.create(delivery)
+        return stored
+
+    def _build_digest(
+        self,
+        subscription: Subscription,
+        run: SubscriptionRun,
+        recommendations: list[Recommendation],
+    ) -> dict[str, object]:
         cards: list[dict[str, object]] = []
         for recommendation in recommendations:
             paper = self.papers.get_paper(recommendation.canonical_id)
@@ -86,16 +116,70 @@ class DeliveryService:
                 else None
             ),
         }
-        delivery = Delivery(
-            id=self.id_factory(),
-            run_id=run.id,
-            subscription_id=subscription.id,
-            channel=DeliveryChannel.DASHBOARD,
-            status=DeliveryStatus.DELIVERED,
-            digest=digest,
-            attempted_at=now,
-            delivered_at=now,
+        return digest
+
+    @staticmethod
+    def _safe_email_error(error: Exception) -> str:
+        if isinstance(error, smtplib.SMTPAuthenticationError):
+            return "SMTP authentication failed"
+        if isinstance(error, (smtplib.SMTPException, OSError)):
+            return "Email transport failed"
+        return "Email delivery failed"
+
+    def deliver_email(
+        self,
+        subscription: Subscription,
+        run: SubscriptionRun,
+        recommendations: list[Recommendation],
+    ) -> Delivery:
+        existing = self.repository.get_for_run(
+            run.id, channel=DeliveryChannel.EMAIL
         )
+        if existing is not None:
+            return existing
+        now = self._now()
+        digest = self._build_digest(subscription, run, recommendations)
+        if (
+            self.email_sender is None
+            or not subscription.email_enabled
+            or not self.email_sender.configured()
+        ):
+            delivery = Delivery(
+                id=self.id_factory(),
+                run_id=run.id,
+                subscription_id=subscription.id,
+                channel=DeliveryChannel.EMAIL,
+                status=DeliveryStatus.FAILED,
+                digest=digest,
+                attempted_at=now,
+                safe_error="Email not configured",
+            )
+            stored, _ = self.repository.create(delivery)
+            return stored
+        try:
+            self.email_sender.send_digest(digest)
+        except Exception as error:  # noqa: BLE001 - normalized to allowlist
+            delivery = Delivery(
+                id=self.id_factory(),
+                run_id=run.id,
+                subscription_id=subscription.id,
+                channel=DeliveryChannel.EMAIL,
+                status=DeliveryStatus.FAILED,
+                digest=digest,
+                attempted_at=now,
+                safe_error=self._safe_email_error(error),
+            )
+        else:
+            delivery = Delivery(
+                id=self.id_factory(),
+                run_id=run.id,
+                subscription_id=subscription.id,
+                channel=DeliveryChannel.EMAIL,
+                status=DeliveryStatus.DELIVERED,
+                digest=digest,
+                attempted_at=now,
+                delivered_at=now,
+            )
         stored, _ = self.repository.create(delivery)
         return stored
 
