@@ -162,9 +162,9 @@ def test_evidence_excerpt_is_bounded_and_page_is_positive():
         )
 
 
-def test_migration_10_is_appended_without_rewriting_prior_migrations(tmp_path):
-    assert [migration.version for migration in MIGRATION_REGISTRY] == list(range(1, 11))
-    assert MIGRATION_REGISTRY[-1].name == "paper_analyses"
+def test_latest_migration_is_appended_without_rewriting_prior_migrations(tmp_path):
+    assert [migration.version for migration in MIGRATION_REGISTRY] == list(range(1, 12))
+    assert MIGRATION_REGISTRY[-1].name == "email_settings_and_subscription_email"
 
     database = Database(tmp_path / "analysis-migration.db")
     columns = {

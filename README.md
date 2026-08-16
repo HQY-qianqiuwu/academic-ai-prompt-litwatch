@@ -99,6 +99,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install-local.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\uninstall-local.ps1
 ```
 
+## 每周邮件
+
+每个订阅可独立开启“每周发送邮件”：打开 <http://127.0.0.1:8000/email-settings>，
+填写收件 QQ 邮箱与 SMTP 授权码（QQ 邮箱在“设置 → 账号 → 安全”中生成），保存后点击
+“测试发送”即可验证。新订阅默认每周一 09:00 发送一封 HTML 邮件并附带
+`weekly-digest.pdf` 摘要附件；授权码只写不可读，保存在本机 `data/smtp-auth.secret`，
+不会被页面、API 或日志返回，也不会被提交到仓库。
+
 ## 配置 AI 分析
 
 编辑 `.env`：

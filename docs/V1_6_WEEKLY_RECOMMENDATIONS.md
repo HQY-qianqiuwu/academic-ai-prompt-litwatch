@@ -31,9 +31,9 @@ existing search page, Provider Registry, Provider Settings, BYOK boundary,
 SSRF protection, deterministic deduplication/ranking, partial-failure behavior,
 Dify integration, and stable v1.0/v1.1 DSL files must remain compatible.
 
-Email delivery is optional in the product scope and deferred from the core
-v1.6 implementation. Dashboard delivery is mandatory and must not depend on
-SMTP configuration.
+Email delivery was optional in the v1.6 scope and is implemented in v2.0 as
+the weekly email PDF digest. Dashboard delivery is mandatory and does not
+depend on SMTP configuration.
 
 ## Non-goals
 
@@ -248,8 +248,9 @@ idempotency barrier against recommending the same paper again by default.
 | `error_code TEXT` | Sanitized channel error category. |
 
 Unique constraint: `(subscription_run_id, channel)`. Rebuilding the page does
-not create a second delivery. Email, if implemented later, uses `channel=email`
-and separate environment-only SMTP secrets.
+not create a second delivery. Email uses `channel=email` with write-only SMTP
+secrets: public settings live in SQLite, the auth code lives on disk under
+`data/` and is never returned, rendered, or logged.
 
 ## Historical deduplication
 
@@ -425,10 +426,11 @@ Dashboard delivery is the v1.6 required channel. The digest snapshot contains:
 The Dashboard renders the persisted snapshot and joins current Paper metadata
 for cards. It does not re-run retrieval merely because a user opens a page.
 
-Email is **optional and deferred**. The core release must be complete without
-SMTP. If a later Stage 8 explicitly enables it, SMTP credentials remain in
-environment variables, email failures do not roll back Dashboard delivery,
-and the existing recommendation/delivery idempotency constraints still apply.
+Email is **implemented in v2.0** as the weekly email PDF digest. The v1.6 core
+release was complete without SMTP. The v2.0 implementation keeps SMTP
+credentials local (public fields in SQLite, write-only auth code on disk),
+email failures do not roll back Dashboard delivery, and the existing
+recommendation/delivery idempotency constraints still apply.
 
 ## Web and Dashboard design
 
@@ -563,17 +565,17 @@ unchanged v1.0/v1.1 Dify DSL files.
 
 ### Stage 8 - Optional Email
 
-- deferred by default;
-- begin only after the Dashboard release path is complete and an explicit
-  scope review confirms SMTP will not delay v1.6.
+- implemented in v2.0 as the weekly email PDF digest;
+- configured on the 邮件设置 page with a write-only SMTP auth code.
 
-Stage 8 decision: **DEFERRED**. The legacy notifier reads SMTP credentials
-directly from environment-backed Settings and is not integrated with the v1.6
-subscription/delivery model. A safe product implementation would additionally
-require write-only credential configuration, isolated delivery retries, safe
-error reporting, and dedicated UI/tests. Dashboard Delivery is the complete
-v1.6 delivery path; no SMTP secret is persisted in SQLite, returned by an API,
-embedded in HTML/DSL, or written to logs.
+Stage 8 decision: **IMPLEMENTED (v2.0 weekly email PDF digest)**. The v2.0
+implementation adds a write-only `EmailSettingsStore` (public fields in
+SQLite, SMTP auth code on disk under `data/`), renders an HTML email with a
+PyMuPDF PDF attachment, and delivers one email per enabled subscription run
+through the isolated `DeliveryService.deliver_email` channel with per-run
+idempotency. Email failures never change run status or Dashboard delivery.
+The SMTP auth code is never returned by GET/API, never rendered, never
+written to logs, and never committed.
 
 ### Stage 9 - Regression and real E2E
 
@@ -616,10 +618,10 @@ metadata, while Provider/run enums and database contracts remain unchanged.
 
 The final Stable gate has 250 passing tests, Ruff PASS, and
 `git diff --check` PASS. Dashboard delivery is complete. Optional email
-delivery remains deferred because a safe product implementation requires
-write-only SMTP configuration and isolated retry/error handling. Final manual
-acceptance passed for Manual Search, Research Subscription, Run Now, Run
-History, Weekly Digest, historical deduplication, immediate duplicate
+delivery is implemented in v2.0 as the weekly email PDF digest, with
+write-only SMTP configuration and isolated, idempotent email delivery. Final
+manual acceptance passed for Manual Search, Research Subscription, Run Now,
+Run History, Weekly Digest, historical deduplication, immediate duplicate
 suppression, restart persistence, and post-restart historical deduplication.
 
 ## Test strategy
