@@ -301,6 +301,7 @@ class SubscriptionUpdateRequest(BaseModel):
     local_time: str | None = None
     timezone: str | None = None
     enabled: bool | None = None
+    email_enabled: bool | None = None
 
     @model_validator(mode="after")
     def require_non_null_changes(self) -> SubscriptionUpdateRequest:
@@ -326,6 +327,7 @@ class SubscriptionResponse(BaseModel):
     local_time: str
     timezone: str
     enabled: bool
+    email_enabled: bool
     created_at: datetime
     updated_at: datetime
     last_run_at: datetime | None

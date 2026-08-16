@@ -392,6 +392,23 @@ _MIGRATION_SQL = (
             ON paper_analyses(canonical_id,updated_at DESC);
         """,
     ),
+    (
+        11,
+        "email_settings_and_subscription_email",
+        """
+        CREATE TABLE IF NOT EXISTS email_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            recipient_email TEXT NOT NULL DEFAULT '',
+            enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+            smtp_host TEXT NOT NULL DEFAULT 'smtp.qq.com',
+            smtp_port INTEGER NOT NULL DEFAULT 465 CHECK (smtp_port BETWEEN 1 AND 65535),
+            smtp_username TEXT NOT NULL DEFAULT ''
+        );
+        ALTER TABLE subscriptions
+            ADD COLUMN email_enabled INTEGER NOT NULL DEFAULT 1
+            CHECK (email_enabled IN (0, 1));
+        """,
+    ),
 )
 
 MIGRATION_REGISTRY = tuple(

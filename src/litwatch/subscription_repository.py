@@ -24,11 +24,13 @@ class SubscriptionRepository:
                 """INSERT INTO subscriptions(
                        id,name,topic,keywords_json,providers_json,search_limit,
                        recommendation_limit,frequency,weekday,local_time,timezone,enabled,
-                       created_at,updated_at,last_run_at,last_success_at,next_run_at
+                       email_enabled,created_at,updated_at,last_run_at,last_success_at,
+                       next_run_at
                    ) VALUES (
                        :id,:name,:topic,:keywords_json,:providers_json,:search_limit,
                        :recommendation_limit,:frequency,:weekday,:local_time,:timezone,:enabled,
-                       :created_at,:updated_at,:last_run_at,:last_success_at,:next_run_at
+                       :email_enabled,:created_at,:updated_at,:last_run_at,:last_success_at,
+                       :next_run_at
                    )""",
                 values,
             )
@@ -64,8 +66,9 @@ class SubscriptionRepository:
                        providers_json=:providers_json, search_limit=:search_limit,
                        recommendation_limit=:recommendation_limit, frequency=:frequency,
                        weekday=:weekday, local_time=:local_time, timezone=:timezone,
-                       enabled=:enabled, updated_at=:updated_at, last_run_at=:last_run_at,
-                       last_success_at=:last_success_at, next_run_at=:next_run_at
+                       enabled=:enabled, email_enabled=:email_enabled, updated_at=:updated_at,
+                       last_run_at=:last_run_at, last_success_at=:last_success_at,
+                       next_run_at=:next_run_at
                    WHERE id=:id""",
                 values,
             )
@@ -127,6 +130,7 @@ class SubscriptionRepository:
             "local_time": subscription.local_time,
             "timezone": subscription.timezone,
             "enabled": int(subscription.enabled),
+            "email_enabled": int(subscription.email_enabled),
             "created_at": subscription.created_at.isoformat(),
             "updated_at": subscription.updated_at.isoformat(),
             "last_run_at": SubscriptionRepository._serialize_datetime(
@@ -160,6 +164,7 @@ class SubscriptionRepository:
                 "local_time": row["local_time"],
                 "timezone": row["timezone"],
                 "enabled": bool(row["enabled"]),
+                "email_enabled": bool(row["email_enabled"]),
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
                 "last_run_at": row["last_run_at"],

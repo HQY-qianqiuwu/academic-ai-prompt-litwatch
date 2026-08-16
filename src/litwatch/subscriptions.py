@@ -51,10 +51,11 @@ class SubscriptionSpec(BaseModel):
         default=5, ge=1, le=MAX_SUBSCRIPTION_SEARCH_LIMIT
     )
     frequency: SubscriptionFrequency = SubscriptionFrequency.WEEKLY
-    weekday: StrictInt = Field(default=6, ge=0, le=6)
-    local_time: str = "08:00"
+    weekday: StrictInt = Field(default=0, ge=0, le=6)
+    local_time: str = "09:00"
     timezone: str = "Asia/Shanghai"
     enabled: StrictBool = True
+    email_enabled: StrictBool = True
 
     @field_validator("name", "topic", mode="before")
     @classmethod
