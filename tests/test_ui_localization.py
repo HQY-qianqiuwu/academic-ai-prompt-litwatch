@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -125,3 +126,21 @@ def test_secret_redaction_path_remains_write_only_after_localization():
     assert "clear_secret: true" in script
     assert "response.text()" not in script
     assert "innerHTML" not in script
+
+
+def test_all_template_i18n_keys_exist_in_both_locales():
+    used: set[str] = set()
+    for template in Path("src/litwatch/templates").glob("*.html"):
+        text = template.read_text(encoding="utf-8")
+        used.update(re.findall(r'data-i18n(?:-placeholder|-aria-label)?="([^"]+)"', text))
+        used.update(re.findall(r"data-i18n(?:-placeholder|-aria-label)?='([^']+)'", text))
+    i18n_text = Path("src/litwatch/static/i18n.js").read_text(encoding="utf-8")
+    zh_start = i18n_text.index('"zh-CN": {')
+    en_start = i18n_text.index("en: {", zh_start)
+    messages_end = i18n_text.index("};", en_start)
+    zh_block = i18n_text[zh_start:en_start]
+    en_block = i18n_text[en_start:messages_end]
+    zh_keys = set(re.findall(r'"([a-zA-Z][a-zA-Z0-9_.]*)"\s*:', zh_block))
+    en_keys = set(re.findall(r'"([a-zA-Z][a-zA-Z0-9_.]*)"\s*:', en_block))
+    missing = sorted(key for key in used if key not in zh_keys or key not in en_keys)
+    assert missing == [], f"missing i18n keys: {missing}"
