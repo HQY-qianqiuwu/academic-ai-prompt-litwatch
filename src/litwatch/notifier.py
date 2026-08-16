@@ -42,7 +42,12 @@ def render_digest(summary: RunSummary, papers: list[Paper], *, limit: int = 20) 
     </body></html>"""
 
 
-def send_email(settings: Settings, subject: str, html_body: str) -> None:
+def send_email(
+    settings: Settings,
+    subject: str,
+    html_body: str,
+    attachment: tuple[str, bytes] | None = None,
+) -> None:
     required = [
         settings.smtp_host,
         settings.smtp_username,
@@ -58,6 +63,14 @@ def send_email(settings: Settings, subject: str, html_body: str) -> None:
     message["To"] = settings.email_to
     message.set_content("请使用支持 HTML 的邮件客户端查看 LitWatch 文献摘要。")
     message.add_alternative(html_body, subtype="html")
+    if attachment is not None:
+        filename, payload = attachment
+        message.add_attachment(
+            payload,
+            maintype="application",
+            subtype="pdf",
+            filename=filename,
+        )
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context) as server:
         server.login(settings.smtp_username, settings.smtp_password)
