@@ -28,6 +28,15 @@ from litwatch.web import create_app
 NOW = datetime(2026, 8, 10, 1, 0, tzinfo=UTC)
 
 
+class ChineseTranslator:
+    def translate(self, text: str) -> str:
+        translations = {
+            "Underwater Acoustic TDOA Paper": "水下声学 TDOA 论文",
+            "Provider-backed abstract.": "基于文献来源的摘要。",
+        }
+        return translations.get(text, f"译文：{text}")
+
+
 def setup_delivery(tmp_path: Path):
     database = Database(tmp_path / "delivery.db")
     subscriptions = SubscriptionRepository(database)
@@ -93,7 +102,11 @@ def setup_delivery(tmp_path: Path):
     )
     repository = DeliveryRepository(database)
     service = DeliveryService(
-        repository, history, clock=lambda: NOW, id_factory=lambda: "delivery-a"
+        repository,
+        history,
+        translator=ChineseTranslator(),
+        clock=lambda: NOW,
+        id_factory=lambda: "delivery-a",
     )
     return database, saved, run, recommendation, repository, service
 
@@ -114,6 +127,13 @@ def test_dashboard_digest_contains_source_backed_card_and_is_idempotent(tmp_path
         "year": 2026,
         "venue": "JASA",
         "abstract": "Provider-backed abstract.",
+        "title_zh": "水下声学 TDOA 论文",
+        "abstract_zh": "基于文献来源的摘要。",
+        "methods_zh": ["基于文献来源的摘要。"],
+        "recommendation_reason_zh": (
+            "与订阅主题“underwater acoustic TDOA localization”高度相关；"
+            "相关度 0.80，文献质量 0.70。"
+        ),
         "sources": ["openalex"],
         "doi": "10.1000/tdoa",
         "url": "https://doi.org/10.1000/tdoa",

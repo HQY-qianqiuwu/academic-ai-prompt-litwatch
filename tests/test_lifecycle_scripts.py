@@ -1399,3 +1399,42 @@ def test_root_launchers_are_python_only_without_legacy_dify():
     assert r"scripts\stop-stack.ps1" in default_stop
     assert not (ROOT / "启动旧版 Dify 科研文献系统.cmd").exists()
     assert not (ROOT / "停止旧版 Dify 科研文献系统.cmd").exists()
+
+
+def test_weekly_script_preserves_success_when_scanner_writes_stderr_warning(tmp_path: Path):
+    assert POWERSHELL is not None
+    fake_scanner = tmp_path / "fake-litwatch.cmd"
+    fake_scanner.write_text(
+        "@echo off\r\n>&2 echo harmless provider warning\r\necho scan completed\r\nexit /b 0\r\n",
+        encoding="ascii",
+    )
+    log_path = tmp_path / "weekly.log"
+
+    result = subprocess.run(
+        [
+            POWERSHELL,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(SCRIPTS / "run-weekly.ps1"),
+            "-Days",
+            "14",
+            "-LitWatchExecutable",
+            str(fake_scanner),
+            "-LogPath",
+            str(log_path),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    log = log_path.read_text(encoding="utf-8-sig")
+    assert "harmless provider warning" in log
+    assert "Weekly scan completed" in log

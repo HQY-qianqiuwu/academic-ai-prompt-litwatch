@@ -86,6 +86,7 @@ from litwatch.sources.registry import (
 )
 from litwatch.subscription_repository import SubscriptionRepository
 from litwatch.subscription_run_repository import SubscriptionRunRepository
+from litwatch.translation import LocalEnglishChineseTranslator
 
 PACKAGE_DIR = Path(__file__).parent
 
@@ -144,6 +145,7 @@ def create_app(
         delivery_repository,
         historical_repository,
         email_sender=email_mailer,
+        translator=LocalEnglishChineseTranslator(),
     )
     subscription_run_service = subscription_run_service or SubscriptionRunService(
         search_service,

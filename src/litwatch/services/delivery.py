@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import smtplib
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -19,6 +20,10 @@ class EmailDigestSender(Protocol):
     def send_digest(self, digest: dict[str, object]) -> None: ...
 
 
+class TextTranslator(Protocol):
+    def translate(self, text: str) -> str: ...
+
+
 class DeliveryService:
     """Persist render-independent digest snapshots for delivery channels."""
 
@@ -28,12 +33,14 @@ class DeliveryService:
         papers: HistoricalPaperRepository,
         *,
         email_sender: EmailDigestSender | None = None,
+        translator: TextTranslator | None = None,
         clock: Callable[[], datetime] | None = None,
         id_factory: Callable[[], str] | None = None,
     ) -> None:
         self.repository = repository
         self.papers = papers
         self.email_sender = email_sender
+        self.translator = translator
         self.clock = clock or (lambda: datetime.now(UTC))
         self.id_factory = id_factory or (lambda: uuid4().hex)
 
@@ -72,6 +79,7 @@ class DeliveryService:
             paper = self.papers.get_paper(recommendation.canonical_id)
             if paper is None:
                 continue
+            methods = self._method_sentences(paper.abstract)
             cards.append(
                 {
                     "canonical_id": paper.canonical_id,
@@ -80,6 +88,12 @@ class DeliveryService:
                     "year": paper.publication_date.year if paper.publication_date else None,
                     "venue": paper.venue or None,
                     "abstract": paper.abstract or None,
+                    "title_zh": self._translate(paper.title),
+                    "abstract_zh": self._translate(paper.abstract),
+                    "methods_zh": [self._translate(method) for method in methods],
+                    "recommendation_reason_zh": self._recommendation_reason(
+                        subscription.topic, recommendation
+                    ),
                     "sources": list(paper.sources),
                     "doi": paper.doi or None,
                     "url": paper.url or None,
@@ -117,6 +131,51 @@ class DeliveryService:
             ),
         }
         return digest
+
+    def _translate(self, text: str) -> str:
+        if not text or self.translator is None:
+            return text
+        try:
+            translated = self.translator.translate(text).strip()
+        except Exception:  # noqa: BLE001 - translation must not block delivery
+            return text
+        return translated or text
+
+    @staticmethod
+    def _method_sentences(abstract: str) -> list[str]:
+        if not abstract.strip():
+            return []
+        sentences = [
+            item.strip()
+            for item in re.split(r"(?<=[.!?。！？])\s+", abstract.strip())
+            if item.strip()
+        ]
+        markers = (
+            "method", "approach", "algorithm", "model", "framework", "scheme",
+            "technique", "propose", "develop", "design", "employ", "utilize",
+            "方法", "算法", "模型", "框架", "方案", "提出", "采用", "构建",
+        )
+        matched = [
+            sentence for sentence in sentences
+            if any(marker in sentence.casefold() for marker in markers)
+        ]
+        return (matched or sentences)[:2]
+
+    @staticmethod
+    def _recommendation_reason(
+        topic: str, recommendation: Recommendation
+    ) -> str:
+        if recommendation.relevance_score >= 0.75:
+            relevance = "高度相关"
+        elif recommendation.relevance_score >= 0.5:
+            relevance = "较为相关"
+        else:
+            relevance = "具有一定相关性"
+        return (
+            f"与订阅主题“{topic}”{relevance}；"
+            f"相关度 {recommendation.relevance_score:.2f}，"
+            f"文献质量 {recommendation.quality_score:.2f}。"
+        )
 
     @staticmethod
     def _safe_email_error(error: Exception) -> str:

@@ -22,6 +22,8 @@ $WebAction = New-ScheduledTaskAction `
 $WebTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $WebSettings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
     -RestartCount 3 `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -MultipleInstances IgnoreNew
@@ -44,6 +46,8 @@ $WeeklyTrigger = New-ScheduledTaskTrigger `
     -At $WeeklyAt
 $WeeklySettings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
     -MultipleInstances IgnoreNew
 Register-ScheduledTask `
