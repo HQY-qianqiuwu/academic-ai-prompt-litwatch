@@ -1317,12 +1317,15 @@ def _run_python_resolution_probe(
     tmp_path: Path, *, port: int, allow_external: bool
 ) -> subprocess.CompletedProcess[str]:
     assert POWERSHELL is not None
+    external_python = Path(sys._base_executable).resolve()
+    assert external_python.is_file()
+    assert not external_python.is_relative_to(ROOT / ".venv")
     probe = tmp_path / f"python-resolution-{port}.ps1"
     probe.write_text(
         textwrap.dedent(
             rf"""
             . '{_powershell_literal(SCRIPTS / 'stack-common.ps1')}'
-            $env:LITWATCH_PYTHON = '{_powershell_literal(sys.executable)}'
+            $env:LITWATCH_PYTHON = '{_powershell_literal(external_python)}'
             $env:LITWATCH_ALLOW_EXTERNAL_PYTHON = '{int(allow_external)}'
             try {{
                 Resolve-LitWatchPython -Port {port}
@@ -1372,7 +1375,7 @@ def test_nondefault_port_allows_explicit_external_python_for_smoke(tmp_path: Pat
     result = _run_python_resolution_probe(tmp_path, port=18080, allow_external=True)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert str(Path(sys.executable).resolve()) in result.stdout
+    assert str(Path(sys._base_executable).resolve()) in result.stdout
 
 
 def test_legacy_dify_scripts_and_entry_points_are_removed():
