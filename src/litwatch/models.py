@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -39,3 +40,6 @@ class RunSummary(BaseModel):
     accepted: int
     analyzed: int
     errors: list[str] = Field(default_factory=list)
+    scan_status: Literal[
+        "success", "success_empty", "partial_success", "all_providers_failed"
+    ] = "success"

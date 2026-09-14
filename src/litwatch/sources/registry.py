@@ -135,13 +135,13 @@ CAPABILITIES = (
         ("search", "metadata", "citations"),
     ),
     ProviderCapability(
-        ProviderType.ARXIV, "arXiv", True, False, False, True, ("search", "preprints")
+        ProviderType.ARXIV, "arXiv", True, True, False, True, ("search", "preprints")
     ),
     ProviderCapability(
         ProviderType.CROSSREF,
         "Crossref",
         True,
-        False,
+        True,
         False,
         True,
         ("search", "metadata"),

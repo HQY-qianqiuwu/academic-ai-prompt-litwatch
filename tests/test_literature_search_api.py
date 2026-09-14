@@ -175,6 +175,25 @@ def test_search_returns_additive_dedup_and_ranking_diagnostics(tmp_path):
     assert response.json()["diagnostics"] == diagnostics.model_dump()
 
 
+def test_api_exposes_shared_scan_status_for_partial_provider_success(tmp_path):
+    statuses = [
+        ProviderSearchStatus(provider="openalex", status=ProviderExecutionStatus.RATE_LIMITED),
+        ProviderSearchStatus(provider="arxiv", status=ProviderExecutionStatus.SUCCESS,
+                             fetched_count=1, returned_count=1),
+    ]
+    service = FakeLiteratureSearchService(sample_papers()[:1], provider_status=statuses)
+    app = create_app(settings_for(tmp_path), service)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/literature/search", json={"topic": "underwater acoustics", "limit": 5}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["scan_status"] == "partial_success"
+    assert response.json()["paper_count"] == 1
+
+
 @pytest.mark.parametrize(
     "request_body",
     [
@@ -262,6 +281,8 @@ def test_provider_apis_are_exposed_and_default_profile_is_safe(tmp_path):
         item for item in capabilities.json() if item["name"] == "openalex"
     )
     assert openalex_capability["default_selected"] is True
+    assert next(item for item in capabilities.json() if item["name"] == "arxiv")["default_selected"] is True
+    assert next(item for item in capabilities.json() if item["name"] == "crossref")["default_selected"] is True
     assert openalex_capability["requires_api_key"] is False
     assert openalex_capability["supports_anonymous"] is True
     assert "search" in openalex_capability["capabilities"]
@@ -280,7 +301,7 @@ def test_provider_apis_are_exposed_and_default_profile_is_safe(tmp_path):
         for item in profile["providers"]
         if item["default_selected"]
     ]
-    assert defaults == ["openalex"]
+    assert defaults == ["openalex", "arxiv", "crossref"]
     assert all("api_key" not in item for item in profile["providers"])
     paths = openapi.json()["paths"]
     assert "post" in paths["/api/v1/literature/search"]

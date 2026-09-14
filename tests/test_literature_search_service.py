@@ -605,3 +605,43 @@ def test_all_empty_providers_return_http_eligible_empty_success():
         item.status is ProviderExecutionStatus.EMPTY
         for item in result.provider_status
     )
+
+
+def test_unconfigured_provider_does_not_block_configured_fallback():
+    arxiv = FakeSource([paper("arxiv:one", source="arxiv")], name="arxiv")
+    profile = ProviderProfile(providers=[
+        ProviderConfig(
+            provider_id="semantic_scholar",
+            provider_type=ProviderType.SEMANTIC_SCHOLAR,
+            enabled=True,
+            default_selected=True,
+            base_url="https://semantic.example.org/search",
+            requires_api_key=True,
+            credential_reference="missing",
+        ),
+        ProviderConfig(
+            provider_id="arxiv",
+            provider_type=ProviderType.ARXIV,
+            enabled=True,
+            default_selected=True,
+            base_url="https://arxiv.example.org/search",
+        ),
+    ])
+    registry = ProviderRegistry(
+        factories={
+            ProviderType.SEMANTIC_SCHOLAR: lambda _config, _credential: FakeSource(),
+            ProviderType.ARXIV: lambda _config, _credential: arxiv,
+        },
+        credential_store=InMemoryCredentialStore(),
+    )
+
+    result = LiteratureSearchService(
+        registry=registry, profile_store=ProviderProfileStore([profile])
+    ).search(topic="underwater acoustic localization", limit=5)
+
+    assert [item.status for item in result.provider_status] == [
+        ProviderExecutionStatus.SKIPPED_UNCONFIGURED,
+        ProviderExecutionStatus.SUCCESS,
+    ]
+    assert arxiv.calls
+    assert result.papers[0].score_detail["rank_score"] >= 0

@@ -15,10 +15,14 @@ from litwatch.db import Database
 from litwatch.models import Paper
 from litwatch.pipeline import Pipeline
 from litwatch.services.literature_search import (
+    AllProvidersFailedError,
     LiteratureSearchDiagnostics,
     LiteratureSearchResult,
+    ProviderExecutionStatus,
+    ProviderSearchStatus,
 )
 from litwatch.services.paper_analysis import AnalysisContext, PaperAnalysisService
+from litwatch.services.scan import ScanService
 
 
 def _paper(*, canonical_id: str = "paper:1", abstract: str = "Evidence.") -> Paper:
@@ -422,6 +426,78 @@ def test_pipeline_uses_injected_search_service_and_preserves_compatibility_retur
     assert search.calls[0]["topic"] == _topic().query
     assert len(analysis.contexts) == 2
     assert all(paper.analysis["status"] == "extractive" for paper in returned)
+    pipeline.close()
+    database.connection.close()
+
+
+def test_pipeline_uses_shared_scan_service_as_legacy_adapter(tmp_path):
+    database = Database(tmp_path / "pipeline.db")
+    search = FakeSearchService([_paper()])
+    pipeline = Pipeline(
+        Settings(llm_api_key="", analyze_top_n=0, _env_file=None),
+        database,
+        scan_service=ScanService(search),
+    )
+
+    summary, papers = pipeline.run(days=7, topics=[_topic()])
+
+    assert summary.fetched == 1
+    assert len(papers) == 1
+    assert search.calls[0]["topic"] == _topic().query
+    pipeline.close()
+    database.connection.close()
+
+
+def test_pipeline_reports_all_providers_failed_instead_of_empty_success(tmp_path):
+    class FailedSearch:
+        def search(self, **_kwargs):
+            raise AllProvidersFailedError([
+                ProviderSearchStatus(
+                    provider="openalex", status=ProviderExecutionStatus.RATE_LIMITED
+                )
+            ])
+
+    database = Database(tmp_path / "pipeline.db")
+    pipeline = Pipeline(
+        Settings(llm_api_key="", analyze_top_n=0, _env_file=None),
+        database,
+        scan_service=ScanService(FailedSearch()),
+    )
+
+    summary, papers = pipeline.run(days=7, topics=[_topic()])
+
+    assert summary.scan_status == "all_providers_failed"
+    assert summary.accepted == 0
+    assert papers == []
+    pipeline.close()
+    database.connection.close()
+
+
+def test_pipeline_does_not_mislabel_non_provider_exception_as_all_providers_failed(tmp_path):
+    class MixedSearch:
+        def search(self, **kwargs):
+            if kwargs["topic"] == "provider failure":
+                raise AllProvidersFailedError([
+                    ProviderSearchStatus(
+                        provider="openalex", status=ProviderExecutionStatus.RATE_LIMITED
+                    )
+                ])
+            raise RuntimeError("unrelated runtime error")
+
+    database = Database(tmp_path / "pipeline.db")
+    pipeline = Pipeline(
+        Settings(llm_api_key="", analyze_top_n=0, _env_file=None),
+        database,
+        scan_service=ScanService(MixedSearch()),
+    )
+    topics = [
+        _topic().model_copy(update={"query": "provider failure"}),
+        _topic().model_copy(update={"id": "second", "query": "runtime failure"}),
+    ]
+
+    summary, _papers = pipeline.run(days=7, topics=topics)
+
+    assert summary.scan_status != "all_providers_failed"
     pipeline.close()
     database.connection.close()
 

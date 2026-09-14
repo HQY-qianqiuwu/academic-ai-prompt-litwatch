@@ -60,7 +60,7 @@ def test_registry_declares_only_implemented_capabilities_as_runnable():
     assert all(
         not capability.default_selected
         for provider_type, capability in capabilities.items()
-        if provider_type is not ProviderType.OPENALEX
+        if provider_type not in {ProviderType.OPENALEX, ProviderType.ARXIV, ProviderType.CROSSREF}
     )
 
 

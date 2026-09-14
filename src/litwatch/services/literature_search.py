@@ -21,7 +21,11 @@ from litwatch.provider_config import (
 from litwatch.services.deduplication import deduplicate_papers
 from litwatch.services.search_ranking import rank_papers
 from litwatch.sources.base import PaperSource
-from litwatch.sources.registry import ProviderNotFoundError, ProviderRegistry
+from litwatch.sources.registry import (
+    ProviderCredentialError,
+    ProviderNotFoundError,
+    ProviderRegistry,
+)
 
 # The v1.1 request contract has no date fields. Use a broad historical lower bound while keeping
 # the upper bound tied to the current date. Both values are injectable so a later API revision can
@@ -38,6 +42,7 @@ def _utc_today() -> date:
 class ProviderExecutionStatus(StrEnum):
     SUCCESS = "success"
     EMPTY = "empty"
+    SKIPPED_UNCONFIGURED = "skipped_unconfigured"
     TIMEOUT = "timeout"
     RATE_LIMITED = "rate_limited"
     AUTH_ERROR = "auth_error"
@@ -87,9 +92,12 @@ class AllProvidersFailedError(RuntimeError):
 
     @property
     def all_timeouts(self) -> bool:
-        return bool(self.provider_status) and all(
-            item.status is ProviderExecutionStatus.TIMEOUT
-            for item in self.provider_status
+        attempted = [
+            item for item in self.provider_status
+            if item.status is not ProviderExecutionStatus.SKIPPED_UNCONFIGURED
+        ]
+        return bool(attempted) and all(
+            item.status is ProviderExecutionStatus.TIMEOUT for item in attempted
         )
 
 
@@ -107,7 +115,7 @@ class LiteratureSearchResult(BaseModel):
 
 class SelectedSource(NamedTuple):
     provider_id: str
-    source: PaperSource
+    source: PaperSource | None
 
 
 class LiteratureSearchService:
@@ -179,10 +187,18 @@ class LiteratureSearchService:
 
         if not provider_configs:
             raise ProviderNotFoundError(f"profile {profile.profile_id!r} has no enabled providers")
-        return [
-            SelectedSource(config.provider_id, self.registry.build(config))
-            for config in provider_configs
-        ]
+        selected: list[SelectedSource] = []
+        missing_credential: ProviderCredentialError | None = None
+        for config in provider_configs:
+            try:
+                source = self.registry.build(config)
+            except ProviderCredentialError as error:
+                missing_credential = error
+                source = None
+            selected.append(SelectedSource(config.provider_id, source))
+        if all(item.source is None for item in selected):
+            raise missing_credential or ProviderNotFoundError("no configured providers selected")
+        return selected
 
     def search(
         self,
@@ -214,6 +230,14 @@ class LiteratureSearchService:
         provider_results: list[tuple[str, list[Paper]]] = []
         provider_status: list[ProviderSearchStatus] = []
         for provider_id, source in self._selected_sources(providers):
+            if source is None:
+                provider_status.append(
+                    ProviderSearchStatus(
+                        provider=provider_id,
+                        status=ProviderExecutionStatus.SKIPPED_UNCONFIGURED,
+                    )
+                )
+                continue
             started_at = self.clock()
             try:
                 fetched = source.search(

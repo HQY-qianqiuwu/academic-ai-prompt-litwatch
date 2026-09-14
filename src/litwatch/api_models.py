@@ -28,11 +28,11 @@ from litwatch.provider_config import (
 from litwatch.radars import RadarSpec
 from litwatch.services import (
     LiteratureSearchDiagnostics,
-    LiteratureSearchResult,
     ProviderErrorCode,
     ProviderExecutionStatus,
     ProviderSearchStatus,
 )
+from litwatch.services.scan import ScanResult, ScanStatus
 from litwatch.services.subscription_runs import SubscriptionRunResult
 from litwatch.sources.registry import InMemoryCredentialStore, ProviderCapability
 from litwatch.subscription_runs import Recommendation, SubscriptionRun
@@ -259,17 +259,19 @@ class LiteratureSearchResponse(BaseModel):
     """Response envelope for a unified literature search."""
 
     query: str
+    scan_status: ScanStatus
     paper_count: int
     papers: list[LiteraturePaperResponse]
     provider_status: list[ProviderSearchStatusResponse] = Field(default_factory=list)
     diagnostics: LiteratureSearchDiagnosticsResponse
 
     @classmethod
-    def from_result(cls, result: LiteratureSearchResult) -> LiteratureSearchResponse:
+    def from_result(cls, result: ScanResult) -> LiteratureSearchResponse:
         """Serialize the service result through the explicit API contract."""
         return cls(
             query=result.query,
-            paper_count=result.paper_count,
+            scan_status=result.status,
+            paper_count=result.selected,
             papers=[LiteraturePaperResponse.from_paper(paper) for paper in result.papers],
             provider_status=[
                 ProviderSearchStatusResponse.from_status(status)

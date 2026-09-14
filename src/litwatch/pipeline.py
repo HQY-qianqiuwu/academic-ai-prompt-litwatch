@@ -14,10 +14,10 @@ from litwatch.llm.factory import LLMRuntime, build_llm_runtime
 from litwatch.models import Paper, RunSummary
 from litwatch.ranking import score_paper
 from litwatch.services.literature_search import (
-    AllProvidersFailedError,
     LiteratureSearchService,
 )
 from litwatch.services.paper_analysis import AnalysisContext, PaperAnalysisService
+from litwatch.services.scan import ScanService, ScanStatus
 
 
 def merge_papers(existing: Paper, incoming: Paper) -> Paper:
@@ -48,6 +48,7 @@ class Pipeline:
         *,
         llm_http_client: httpx.Client | None = None,
         literature_search_service: LiteratureSearchService | None = None,
+        scan_service: ScanService | None = None,
         paper_analysis_service: PaperAnalysisService | None = None,
     ) -> None:
         self.settings = settings
@@ -56,6 +57,7 @@ class Pipeline:
         self.literature_search_service = (
             literature_search_service or LiteratureSearchService.from_settings(settings)
         )
+        self.scan_service = scan_service or ScanService(self.literature_search_service)
         self._llm_runtime: LLMRuntime | None = build_llm_runtime(
             settings,
             database=self.database,
@@ -91,23 +93,26 @@ class Pipeline:
         analyzed = 0
         errors: list[str] = []
         accepted_papers: list[Paper] = []
+        topic_statuses: list[ScanStatus] = []
+        scan_topics = topics if topics is not None else self.settings.load_topics()
 
-        for topic in topics if topics is not None else self.settings.load_topics():
+        for topic in scan_topics:
             try:
-                search_result = self.literature_search_service.search(
+                search_result = self.scan_service.scan(
                     topic=topic.query,
                     limit=self.settings.max_results_per_source,
                     start_date=start_date,
                     end_date=end_date,
                 )
-            except AllProvidersFailedError as error:
-                errors.append(
-                    f"{topic.id}/search: all_providers_failed:"
-                    f"{','.join(item.status.value for item in error.provider_status)}"
-                )
-                continue
             except Exception:  # noqa: BLE001 - runtime summary stays redacted
                 errors.append(f"{topic.id}/search: search_failed")
+                continue
+            topic_statuses.append(search_result.status)
+            if search_result.status is ScanStatus.ALL_PROVIDERS_FAILED:
+                errors.append(
+                    f"{topic.id}/search: all_providers_failed:"
+                    f"{','.join(item.status.value for item in search_result.provider_status)}"
+                )
                 continue
 
             fetched += search_result.diagnostics.raw_count
@@ -161,6 +166,16 @@ class Pipeline:
             accepted_papers.extend(ranked)
 
         finished = datetime.now(UTC)
+        if topic_statuses and len(topic_statuses) == len(scan_topics) and all(
+            status is ScanStatus.ALL_PROVIDERS_FAILED for status in topic_statuses
+        ) and not accepted_papers:
+            scan_status = ScanStatus.ALL_PROVIDERS_FAILED
+        elif errors or ScanStatus.PARTIAL_SUCCESS in topic_statuses:
+            scan_status = ScanStatus.PARTIAL_SUCCESS
+        elif not accepted_papers:
+            scan_status = ScanStatus.SUCCESS_EMPTY
+        else:
+            scan_status = ScanStatus.SUCCESS
         self.database.finish_run(
             run_id,
             fetched=fetched,
@@ -178,6 +193,7 @@ class Pipeline:
             accepted=len(accepted_papers),
             analyzed=analyzed,
             errors=errors,
+            scan_status=scan_status,
         )
         return summary, sorted(accepted_papers, key=lambda item: item.score, reverse=True)
 

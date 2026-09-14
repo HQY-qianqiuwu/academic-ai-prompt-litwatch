@@ -53,7 +53,6 @@ from litwatch.radar_repository import RadarRepository
 from litwatch.radars import ResearchRadar
 from litwatch.runtime import ApplicationRuntime, RuntimeStatus
 from litwatch.services import (
-    AllProvidersFailedError,
     LiteratureSearchService,
     SubscriptionNotFoundError,
     SubscriptionProviderError,
@@ -73,6 +72,7 @@ from litwatch.services.radars import (
     RadarYearRangeError,
     ResearchRadarService,
 )
+from litwatch.services.scan import ScanService, ScanStatus
 from litwatch.services.scheduler import SchedulerService
 from litwatch.services.subscription_runs import (
     RunAlreadyActiveError,
@@ -126,6 +126,7 @@ def create_app(
         registry=provider_registry,
         profile_store=provider_profile_store,
     )
+    scan_service = ScanService(search_service)
     subscription_repository = (
         subscription_service.repository
         if subscription_service is not None
@@ -148,7 +149,7 @@ def create_app(
         translator=LocalEnglishChineseTranslator(),
     )
     subscription_run_service = subscription_run_service or SubscriptionRunService(
-        search_service,
+        scan_service,
         subscription_repository,
         run_repository,
         historical_repository,
@@ -256,6 +257,7 @@ def create_app(
     app.state.settings = settings
     app.state.database = database
     app.state.literature_search_service = search_service
+    app.state.scan_service = scan_service
     app.state.provider_registry = provider_registry
     app.state.provider_profile_store = provider_profile_store
     app.state.credential_store = credential_store
@@ -554,25 +556,26 @@ def create_app(
             }
             if payload.providers is not None:
                 search_arguments["providers"] = payload.providers
-            result = search_service.search(**search_arguments)
+            result = scan_service.scan(**search_arguments)
         except ProviderRegistryError:
             raise HTTPException(
                 status_code=422, detail="Invalid provider selection or configuration"
-            ) from None
-        except AllProvidersFailedError as error:
-            if error.all_timeouts:
-                raise HTTPException(
-                    status_code=504,
-                    detail="All selected literature providers timed out",
-                ) from None
-            raise HTTPException(
-                status_code=502,
-                detail="All selected literature providers failed",
             ) from None
         except httpx.TimeoutException:
             raise HTTPException(status_code=504, detail="Literature request timed out") from None
         except (httpx.HTTPError, AttributeError, KeyError, TypeError, ValueError):
             raise HTTPException(status_code=502, detail="Literature request failed") from None
+
+        if result.status is ScanStatus.ALL_PROVIDERS_FAILED:
+            if result.all_timeouts:
+                raise HTTPException(
+                    status_code=504,
+                    detail="All selected literature providers timed out",
+                )
+            raise HTTPException(
+                status_code=502,
+                detail="All selected literature providers failed",
+            )
 
         return LiteratureSearchResponse.from_result(result)
 

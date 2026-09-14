@@ -29,11 +29,9 @@ def test_default_profile_enables_keyless_openalex():
         "arxiv",
         "crossref",
     ]
-    assert all(
-        not item.default_selected
-        for item in profile.providers
-        if item.provider_id != "openalex"
-    )
+    assert [item.provider_id for item in profile.providers if item.default_selected] == [
+        "openalex", "arxiv", "crossref"
+    ]
     assert str(profile.provider("semantic_scholar").base_url) == (
         "https://api.semanticscholar.org/"
     )

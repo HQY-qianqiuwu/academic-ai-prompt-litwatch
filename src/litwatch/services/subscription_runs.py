@@ -13,11 +13,10 @@ from litwatch.services.deduplication import papers_are_duplicates
 from litwatch.services.delivery import DeliveryService
 from litwatch.services.historical_papers import HistoricalPaperService
 from litwatch.services.literature_search import (
-    AllProvidersFailedError,
     LiteratureSearchService,
-    ProviderExecutionStatus,
     ProviderSearchStatus,
 )
+from litwatch.services.scan import ScanService, ScanStatus
 from litwatch.services.subscriptions import SubscriptionNotFoundError
 from litwatch.subscription_repository import SubscriptionRepository
 from litwatch.subscription_run_repository import SubscriptionRunRepository
@@ -48,7 +47,7 @@ class SubscriptionRunService:
 
     def __init__(
         self,
-        search_service: LiteratureSearchService,
+        search_service: ScanService | LiteratureSearchService,
         subscription_repository: SubscriptionRepository,
         run_repository: SubscriptionRunRepository,
         historical_repository: HistoricalPaperRepository,
@@ -57,7 +56,11 @@ class SubscriptionRunService:
         clock: Callable[[], datetime] | None = None,
         id_factory: Callable[[], str] | None = None,
     ) -> None:
-        self.search_service = search_service
+        self.scan_service = (
+            search_service
+            if isinstance(search_service, ScanService)
+            else ScanService(search_service)
+        )
         self.subscription_repository = subscription_repository
         self.run_repository = run_repository
         self.historical_repository = historical_repository
@@ -120,16 +123,16 @@ class SubscriptionRunService:
             )
 
         try:
-            result = self.search_service.search(
+            result = self.scan_service.scan(
                 topic=subscription.topic,
                 limit=subscription.search_limit,
                 providers=subscription.providers,
             )
-        except AllProvidersFailedError as error:
-            return self._finish_failed(run, error.provider_status, "all_providers_failed")
         except Exception as error:
             self._finish_failed(run, [], "run_failed")
             raise SubscriptionRunError("Subscription run failed") from error
+        if result.status is ScanStatus.ALL_PROVIDERS_FAILED:
+            return self._finish_failed(run, result.provider_status, "all_providers_failed")
 
         finished_at = self._now()
         observation = self.historical_service.observe_papers_for_subscription(
@@ -169,17 +172,9 @@ class SubscriptionRunService:
             )
             recommendations.append(recommendation)
 
-        failed_statuses = {
-            ProviderExecutionStatus.TIMEOUT,
-            ProviderExecutionStatus.RATE_LIMITED,
-            ProviderExecutionStatus.AUTH_ERROR,
-            ProviderExecutionStatus.UPSTREAM_ERROR,
-            ProviderExecutionStatus.PARSE_ERROR,
-        }
-        is_partial = any(status.status in failed_statuses for status in result.provider_status)
         run.status = (
             SubscriptionRunStatus.PARTIAL_SUCCESS
-            if is_partial
+            if result.status is ScanStatus.PARTIAL_SUCCESS
             else SubscriptionRunStatus.SUCCESS
         )
         run.finished_at = finished_at

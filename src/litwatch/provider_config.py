@@ -112,7 +112,7 @@ def default_provider_profile(
     arxiv_base_url: str = "https://export.arxiv.org/api/query",
     crossref_base_url: str = "https://api.crossref.org/v1/works",
 ) -> ProviderProfile:
-    """Build the backward-compatible profile used when callers specify no providers."""
+    """Search three keyless sources by default so one rate limit cannot stop a scan."""
     return ProviderProfile(
         providers=[
             ProviderConfig(
@@ -136,7 +136,7 @@ def default_provider_profile(
                 provider_id="arxiv",
                 provider_type=ProviderType.ARXIV,
                 enabled=True,
-                default_selected=False,
+                default_selected=True,
                 base_url=arxiv_base_url,
                 requires_api_key=False,
             ),
@@ -144,7 +144,7 @@ def default_provider_profile(
                 provider_id="crossref",
                 provider_type=ProviderType.CROSSREF,
                 enabled=True,
-                default_selected=False,
+                default_selected=True,
                 base_url=crossref_base_url,
                 requires_api_key=False,
             ),

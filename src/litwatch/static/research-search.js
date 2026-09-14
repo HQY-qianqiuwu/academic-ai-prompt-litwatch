@@ -214,7 +214,7 @@
   const renderDiagnostics = (payload) => {
     const diagnostics = payload.diagnostics || {};
     const statuses = Array.isArray(payload.provider_status) ? payload.provider_status : [];
-    const failedStatuses = statuses.filter((item) => !["success", "empty"].includes(item.status));
+    const failedStatuses = statuses.filter((item) => !["success", "empty", "skipped_unconfigured"].includes(item.status));
     const container = document.createElement("div");
     container.className = "search-diagnostics";
 
@@ -342,7 +342,7 @@
       summary.hidden = false;
       renderDiagnostics(payload);
       const partial = (payload.provider_status || []).some(
-        (item) => !["success", "empty"].includes(item.status),
+        (item) => !["success", "empty", "skipped_unconfigured"].includes(item.status),
       );
       if (!payload.paper_count) {
         setState("empty", t("search.noPapers"), t("search.noPapersBody"));

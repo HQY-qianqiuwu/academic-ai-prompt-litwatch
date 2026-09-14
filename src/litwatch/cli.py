@@ -37,6 +37,8 @@ def scan(
     finally:
         pipeline.close()
     typer.echo(summary.model_dump_json(indent=2))
+    if summary.scan_status == "all_providers_failed":
+        raise typer.Exit(code=1)
     if email:
         today = datetime.now(UTC).date().isoformat()
         send_email(settings, f"LitWatch 周报：{today}", render_digest(summary, papers))

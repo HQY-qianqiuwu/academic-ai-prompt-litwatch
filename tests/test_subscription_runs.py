@@ -19,6 +19,7 @@ from litwatch.services.literature_search import (
     ProviderExecutionStatus,
     ProviderSearchStatus,
 )
+from litwatch.services.scan import ScanService
 from litwatch.services.subscription_runs import SubscriptionRunService
 from litwatch.subscription_repository import SubscriptionRepository
 from litwatch.subscription_run_repository import SubscriptionRunRepository
@@ -166,6 +167,19 @@ def test_successful_run_persists_counts_and_recommendation_limit(tmp_path):
             "providers": ["openalex"],
         }
     ]
+    database.connection.close()
+
+
+def test_scheduler_run_accepts_shared_scan_service_without_changing_email_chain(tmp_path):
+    search = FakeSearchService([result([candidate("openalex:a", "Paper A", 0.9)])])
+    database, _, _, _, service = build_service(tmp_path, ScanService(search))
+
+    execution = service.run_now("sub-a")
+
+    assert execution.run.status is SubscriptionRunStatus.SUCCESS
+    assert execution.run.recommended_count == 1
+    assert execution.delivery is not None
+    assert search.calls[0]["providers"] == ["openalex"]
     database.connection.close()
 
 
