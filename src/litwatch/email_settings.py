@@ -31,7 +31,7 @@ class EmailSettingsStore:
         self.secret_path = secret_path
 
     def load(self) -> EmailSettings:
-        with self.database.connection:
+        with self.database.transaction_lock:
             row = self.database.connection.execute(
                 """
                 SELECT recipient_email, enabled, smtp_host, smtp_port, smtp_username
@@ -45,8 +45,8 @@ class EmailSettingsStore:
         return EmailSettings.model_validate(values)
 
     def save(self, settings: EmailSettings, auth_code: str | None = None) -> None:
-        with self.database.connection:
-            self.database.connection.execute(
+        with self.database.transaction() as connection:
+            connection.execute(
                 """
                 INSERT INTO email_settings(
                     id, recipient_email, enabled, smtp_host, smtp_port, smtp_username
