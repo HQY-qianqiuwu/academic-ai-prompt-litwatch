@@ -47,7 +47,7 @@ class JobRepository:
                 """INSERT OR IGNORE INTO jobs(
                        job_id,job_type,idempotency_key,status,created_at,attempt,
                        max_attempts,timeout_seconds,input_hash,payload_json
-                   ) VALUES (?,?,?,'queued',?,0,?,?,?,?)""",
+                    ) VALUES (?,?,?,'queued',?,0,?,?,?,?)""",
                 (
                     job_id,
                     job_type,
@@ -108,15 +108,15 @@ class JobRepository:
                        started_at=COALESCE(started_at, ?),
                        heartbeat_at=?, attempt=attempt+1,
                        lease_owner=?, lease_expires_at=?
-                   WHERE job_id=(
-                       SELECT job_id FROM jobs
-                       WHERE status='queued'
-                         AND cancellation_requested_at IS NULL
-                         AND attempt < max_attempts
-                       ORDER BY created_at ASC,job_id ASC
-                       LIMIT 1
-                   )
-                   RETURNING *""",
+                    WHERE job_id=(
+                        SELECT job_id FROM jobs
+                        WHERE status='queued'
+                          AND cancellation_requested_at IS NULL
+                          AND attempt < max_attempts
+                        ORDER BY created_at ASC,job_id ASC
+                        LIMIT 1
+                    )
+                    RETURNING *""",
                 (
                     claimed_at.isoformat(),
                     claimed_at.isoformat(),
@@ -242,10 +242,10 @@ class JobRepository:
                            THEN COALESCE(cancellation_requested_at, ?)
                            ELSE cancellation_requested_at
                        END,
-                       status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,
-                       finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END,
-                       lease_owner=CASE WHEN status='queued' THEN NULL ELSE lease_owner END,
-                       lease_expires_at=CASE WHEN status='queued' THEN NULL ELSE lease_expires_at END
+                       status=CASE WHEN status IN ('queued','running') THEN 'cancelled' ELSE status END,
+                       finished_at=CASE WHEN status IN ('queued','running') THEN ? ELSE finished_at END,
+                       lease_owner=CASE WHEN status IN ('queued','running') THEN NULL ELSE lease_owner END,
+                       lease_expires_at=CASE WHEN status IN ('queued','running') THEN NULL ELSE lease_expires_at END
                    WHERE job_id=?
                    RETURNING *""",
                 (requested_at, requested_at, job_id),
