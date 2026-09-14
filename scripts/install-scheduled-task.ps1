@@ -1,2 +1,2 @@
-Write-Warning "This script has been replaced by install-local.ps1."
+Write-Warning "This legacy installer now only registers web startup; subscription scans are scheduled by LitWatch."
 & (Join-Path $PSScriptRoot "install-local.ps1") @args

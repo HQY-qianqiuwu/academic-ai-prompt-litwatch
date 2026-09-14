@@ -46,7 +46,6 @@ def _render_page(
     bib_path: str,
     archive_path: str,
     snapshot_label: str,
-    live_search_js_path: str,
     weekly_report: dict,
 ) -> str:
     return template.render(
@@ -63,7 +62,6 @@ def _render_page(
         bib_path=bib_path,
         archive_path=archive_path,
         snapshot_label=snapshot_label,
-        live_search_js_path=live_search_js_path,
         weekly_report=weekly_report,
         scan_state={"scanning": False, "last_error": ""},
     )
@@ -74,7 +72,7 @@ def export_static(output_dir: Path, settings: Settings | None = None) -> dict:
 
     An existing ``archive`` directory is deliberately preserved. The Pages
     workflow restores it from the previous ``gh-pages`` deployment before this
-    function runs, so weekly snapshots accumulate instead of disappearing.
+    function runs, so manually published snapshots accumulate instead of disappearing.
     """
     settings = settings or Settings()
     settings.ensure_runtime_files()
@@ -90,7 +88,6 @@ def export_static(output_dir: Path, settings: Settings | None = None) -> dict:
     archive_template = env.get_template("archive.html")
 
     shutil.copyfile(PACKAGE_DIR / "static" / "styles.css", output_dir / "styles.css")
-    shutil.copyfile(PACKAGE_DIR / "static" / "live-search.js", output_dir / "live-search.js")
     (output_dir / ".nojekyll").touch()
 
     latest_run = database.latest_run()
@@ -125,7 +122,6 @@ def export_static(output_dir: Path, settings: Settings | None = None) -> dict:
             bib_path="litwatch-all.bib",
             archive_path="archive/",
             snapshot_label=snapshot_label,
-            live_search_js_path="live-search.js",
             weekly_report=weekly_report,
         ),
         encoding="utf-8",
@@ -168,7 +164,6 @@ def export_static(output_dir: Path, settings: Settings | None = None) -> dict:
                 bib_path=f"../../{bib_name}",
                 archive_path="../../archive/",
                 snapshot_label=snapshot_label,
-                live_search_js_path="../../live-search.js",
                 weekly_report=topic_weekly_report,
             ),
             encoding="utf-8",
@@ -192,7 +187,6 @@ def export_static(output_dir: Path, settings: Settings | None = None) -> dict:
             bib_path="litwatch-all.bib",
             archive_path="../",
             snapshot_label=snapshot_label,
-            live_search_js_path="../../live-search.js",
             weekly_report=weekly_report,
         ),
         encoding="utf-8",

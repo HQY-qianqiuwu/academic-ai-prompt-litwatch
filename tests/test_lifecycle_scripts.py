@@ -1441,3 +1441,36 @@ def test_weekly_script_preserves_success_when_scanner_writes_stderr_warning(tmp_
     log = log_path.read_text(encoding="utf-8-sig")
     assert "harmless provider warning" in log
     assert "Weekly scan completed" in log
+
+
+def test_local_installer_registers_only_web_startup_task(tmp_path: Path):
+    assert POWERSHELL is not None
+    probe = tmp_path / "install-local-probe.ps1"
+    probe.write_text(
+        textwrap.dedent(
+            """
+            $global:RegisteredTasks = @()
+            function New-ScheduledTaskAction { param($Execute, $Argument, $WorkingDirectory) [pscustomobject]@{} }
+            function New-ScheduledTaskTrigger { param([switch]$AtLogOn, $User, [switch]$Weekly, $WeeksInterval, $DaysOfWeek, $At) [pscustomobject]@{} }
+            function New-ScheduledTaskSettingsSet { param([switch]$StartWhenAvailable, [switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries, $RestartCount, $RestartInterval, $MultipleInstances, $ExecutionTimeLimit) [pscustomobject]@{} }
+            function Register-ScheduledTask { param($TaskName, $Action, $Trigger, $Settings, $Description, [switch]$Force) $global:RegisteredTasks += $TaskName }
+            function Start-ScheduledTask { param($TaskName) }
+            & '__INSTALL_SCRIPT__'
+            Write-Output ('TASKS_JSON=' + (ConvertTo-Json -InputObject $global:RegisteredTasks -Compress))
+            """
+        ).replace("__INSTALL_SCRIPT__", _powershell_literal(SCRIPTS / "install-local.ps1")),
+        encoding="utf-8-sig",
+    )
+    result = subprocess.run(
+        [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(probe)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    registration = next(line for line in result.stdout.splitlines() if line.startswith("TASKS_JSON="))
+    assert json.loads(registration.removeprefix("TASKS_JSON=")) == ["LitWatch Web"]

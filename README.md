@@ -38,7 +38,7 @@ tag 中，仅用于历史追溯；日常使用不需要也不提供 Dify 回滚�
 - 快速筛选、综述矩阵、经典与前沿、最接近工作等分析模式
 - 明确区分摘要分析和开放 PDF 全文节选分析
 - SQLite 历史记录、Web 仪表盘、HTML 邮件和 Zotero 导出
-- Codespaces 实时检索、GitHub Pages 每周快照与 Windows 定时任务
+- Codespaces 实时检索、GitHub Pages 手动快照与本机订阅调度
 - 每周可视化研究简报：主题分布、提炼覆盖率、开放获取率、研究类型与优先阅读线索
 - 每篇论文展示核心内容和文章主题阐述，周报也可导出为 JSON 继续分析
 
@@ -47,7 +47,7 @@ tag 中，仅用于历史追溯；日常使用不需要也不提供 Dify 回滚�
 两种入口服务于不同场景：
 
 - [打开 LitWatch Codespace](https://codespaces.new/HQY-qianqiuwu/academic-ai-prompt-litwatch?quickstart=1)：可输入研究问题并立即检索、排序和提炼。容器创建后会自动安装项目，每次唤醒都会启动 8000 端口并打开网页。
-- [查看 LitWatch 每周快照](https://HQY-qianqiuwu.github.io/academic-ai-prompt-litwatch/)：无需启动服务即可浏览最近结果和历史快照，并可直接使用 OpenAlex 即时轻量检索、导出本次 BibTeX；多源去重与深度提炼仍使用 Codespaces 或本地动态站点。
+- [查看 LitWatch 文献快照](https://HQY-qianqiuwu.github.io/academic-ai-prompt-litwatch/)：无需启动服务即可浏览最近一次手动发布的结果、历史快照及 BibTeX；实时多源检索和深度提炼请使用 Codespaces 或本地动态站点。
 
 第一次创建 Codespace 时，建议从仓库的 **Code → Codespaces → New with options** 进入。页面会推荐填写以下可选密钥；全部留空也能使用 OpenAlex、arXiv 和基础抽取式提炼：
 
@@ -55,7 +55,7 @@ tag 中，仅用于历史追溯；日常使用不需要也不提供 Dify 回滚�
 - `LITWATCH_OPENALEX_EMAIL`：进入 OpenAlex polite pool，提高请求稳定性。
 - `LITWATCH_SEMANTIC_SCHOLAR_API_KEY`：启用 Semantic Scholar 数据源。
 
-`.github/workflows/pages.yml` 在每周一北京时间 08:00 扫描并更新 `gh-pages` 分支。首次部署后，在仓库 **Settings → Pages → Build and deployment** 中选择 **Deploy from a branch**，分支选择 `gh-pages` / `(root)`。后续快照会自动累积到“历史快照”。
+`.github/workflows/pages.yml` 仅在 GitHub Actions 中手动运行时扫描并更新 `gh-pages` 分支，不会定时请求学术数据源。首次部署后，在仓库 **Settings → Pages → Build and deployment** 中选择 **Deploy from a branch**，分支选择 `gh-pages` / `(root)`。手动发布的快照会累积到“历史快照”。
 
 ## 快速启动（Windows）
 
@@ -80,7 +80,7 @@ uv run litwatch serve
 
 ## 本机长期使用（推荐）
 
-本项目提供 Windows 登录自启和每周扫描任务。安装一次后，只要电脑已经登录，就可以随时打开固定地址 <http://127.0.0.1:8000>：
+本项目提供 Windows 登录自启；网页内的 `SchedulerService` 根据订阅设置执行定期检索和邮件投递。安装一次后，只要电脑已经登录，就可以随时打开固定地址 <http://127.0.0.1:8000>：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-local.ps1
@@ -89,9 +89,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install-local.ps1
 安装内容：
 
 - `LitWatch Web`：登录 Windows 后在后台启动本地网页；异常退出时自动重试。
-- `LitWatch Weekly Scan`：每周一 08:00 检索最近 14 天论文并更新数据库。
+- 订阅计划：由运行中的 FastAPI 服务负责调度，通过同一个 ScanService 检索并投递邮件。
 
-每周任务日志保存在 `data/litwatch-weekly.log`，扫描中断或数据源异常时可直接查看原因。
+旧版安装创建的 `LitWatch Weekly Scan` Windows 计划任务不会被本次代码更新自动停用；部署并确认订阅调度正常后，可由管理员单独检查和停用该旧任务，避免重复扫描。兼容脚本 `scripts/run-weekly.ps1` 暂时保留，供现有任务使用。
 
 也可以双击项目根目录的 `打开 LitWatch.cmd` 随时启动并打开网页，双击 `停止 LitWatch.cmd` 停止服务。卸载自动任务：
 
@@ -154,7 +154,7 @@ uv run litwatch weekly-report --output reports/latest-weekly-report.json
 
 网页中的“自动周报”只汇总最近一次扫描入选的论文，并明确区分 AI 深度分析、基础摘要抽取和暂无提炼。每周历史快照会保留当期的主题可视化与文章阐述，详细口径见 [`docs/WEEKLY_REPORT.md`](docs/WEEKLY_REPORT.md)。
 
-`.github/workflows/weekly.yml` 默认每周一北京时间 08:00 运行。Windows 本机可执行 `scripts/install-scheduled-task.ps1` 创建计划任务。
+GitHub 不再定时检索；手动运行 Pages workflow 可发布新快照。`scripts/install-local.ps1` 只注册网页登录自启任务，订阅调度由网页服务管理。
 
 ## Zotero 导出
 

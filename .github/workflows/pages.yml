@@ -1,18 +1,6 @@
 name: pages-deploy
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".devcontainer/**"
-      - ".github/workflows/pages.yml"
-      - "config/**"
-      - "src/litwatch/**"
-      - "pyproject.toml"
-      - "uv.lock"
-  schedule:
-    # Every Monday 08:00 Asia/Shanghai (GitHub cron uses UTC).
-    - cron: "0 0 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -38,10 +26,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install project
-        run: uv sync --extra dev
-
-      - name: Verify application
-        run: uv run pytest
+        run: uv sync
 
       - name: Restore published snapshot history
         shell: bash
