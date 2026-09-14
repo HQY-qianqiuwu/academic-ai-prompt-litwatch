@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import httpx
+import pytest
 
 from litwatch.config import Topic
 from litwatch.models import Paper
@@ -160,3 +161,50 @@ def test_unconfigured_provider_does_not_mask_all_attempted_timeouts():
 
     assert result.status is ScanStatus.ALL_PROVIDERS_FAILED
     assert result.all_timeouts is True
+
+
+@pytest.mark.parametrize("provider_id", ["openalex", "arxiv", "crossref"])
+def test_each_keyless_provider_passes_through_normalize_deduplicate_score(
+    provider_id: str,
+):
+    candidate = Paper(
+        canonical_id="paper:one",
+        title="Underwater acoustic localization",
+        sources=[],
+    )
+    provider = Source(provider_id, [candidate, candidate.model_copy(deep=True)])
+
+    scan = service({provider_id: provider}).scan(
+        topic="underwater acoustic localization", limit=5
+    )
+
+    assert provider.calls == 1
+    assert scan.status is ScanStatus.SUCCESS
+    assert (scan.fetched, scan.deduplicated, scan.selected) == (2, 1, 1)
+    assert scan.diagnostics.duplicates_removed == 1
+    assert scan.papers[0].sources == [provider_id]
+    assert set(scan.papers[0].score_detail) >= {
+        "rank_score", "relevance_score", "quality_score"
+    }
+    assert len(scan.diagnostics.ranking) == 1
+    assert scan.diagnostics.ranking[0].canonical_id == "paper:one"
+    assert scan.provider_status[0].returned_count == 1
+
+
+def test_three_keyless_providers_merge_to_one_scored_scan_result():
+    sources = {
+        provider_id: Source(
+            provider_id,
+            [Paper(canonical_id="paper:shared", title="Underwater acoustic localization")],
+        )
+        for provider_id in ("openalex", "arxiv", "crossref")
+    }
+
+    scan = service(sources).scan(topic="underwater acoustic localization", limit=5)
+
+    assert scan.status is ScanStatus.SUCCESS
+    assert (scan.fetched, scan.deduplicated, scan.selected) == (3, 1, 1)
+    assert scan.papers[0].sources == ["arxiv", "crossref", "openalex"]
+    assert len(scan.diagnostics.ranking) == 1
+    assert all(item.returned_count == 1 for item in scan.provider_status)
+    assert [source.calls for source in sources.values()] == [1, 1, 1]

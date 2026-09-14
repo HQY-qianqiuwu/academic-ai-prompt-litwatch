@@ -20,6 +20,7 @@ from litwatch.services.literature_search import (
     ProviderSearchStatus,
 )
 from litwatch.services.scan import ScanService
+from litwatch.services.scheduler import SchedulerService
 from litwatch.services.subscription_runs import SubscriptionRunService
 from litwatch.subscription_repository import SubscriptionRepository
 from litwatch.subscription_run_repository import SubscriptionRunRepository
@@ -180,6 +181,51 @@ def test_scheduler_run_accepts_shared_scan_service_without_changing_email_chain(
     assert execution.run.recommended_count == 1
     assert execution.delivery is not None
     assert search.calls[0]["providers"] == ["openalex"]
+    database.connection.close()
+
+
+def test_due_scheduler_run_scans_once_and_delivers_one_email_digest(tmp_path):
+    due = datetime(2026, 8, 16, 0, 0, tzinfo=UTC)
+    search = FakeSearchService([result([candidate("openalex:a", "Paper A", 0.9)])])
+    scan = ScanService(search)
+
+    class RecordingEmailSender:
+        def __init__(self):
+            self.digests: list[dict[str, object]] = []
+
+        def configured(self) -> bool:
+            return True
+
+        def send_digest(self, digest: dict[str, object]) -> None:
+            self.digests.append(digest)
+
+    sender = RecordingEmailSender()
+    database = Database(tmp_path / "scheduler-email.db")
+    subscriptions = SubscriptionRepository(database)
+    subscriptions.create(saved_subscription())
+    runs = SubscriptionRunRepository(database)
+    history = HistoricalPaperRepository(database)
+    delivery = DeliveryService(
+        DeliveryRepository(database), history, email_sender=sender, clock=lambda: due
+    )
+    ids = iter(f"id-{index}" for index in range(10))
+    runner = SubscriptionRunService(
+        scan, subscriptions, runs, history, delivery,
+        clock=lambda: due, id_factory=lambda: next(ids),
+    )
+    scheduler = SchedulerService(
+        subscriptions, runs, runner, clock=lambda: due, owner="acceptance-scheduler"
+    )
+
+    first = scheduler.tick(due)
+    second = scheduler.tick(due)
+
+    assert len(first) == 1
+    assert second == []
+    assert len(search.calls) == 1
+    assert len(sender.digests) == 1
+    assert sender.digests[0]["run"]["id"] == first[0]
+    assert sender.digests[0]["papers"][0]["canonical_id"] == "openalex:a"
     database.connection.close()
 
 
