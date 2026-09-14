@@ -11,13 +11,9 @@ from litwatch.provider_config import ProviderProfileStore
 from litwatch.radar_repository import RadarRepository
 from litwatch.radars import RadarScan, RadarScanStatus, RadarSpec, ResearchRadar
 from litwatch.services.deduplication import deduplicate_papers
-from litwatch.services.literature_search import (
-    AllProvidersFailedError,
-    LiteratureSearchService,
-    ProviderExecutionStatus,
-    ProviderSearchStatus,
-)
+from litwatch.services.literature_search import ProviderSearchStatus
 from litwatch.services.radar_analysis import RadarAnalysisService
+from litwatch.services.scan import ScanService, ScanStatus
 from litwatch.sources.registry import ProviderRegistry
 
 
@@ -53,15 +49,6 @@ FILTERING_MODES = {
     "semantic_scholar": "provider_side",
     "arxiv": "provider_side_with_post_validation",
 }
-FAILED_PROVIDER_STATUSES = {
-    ProviderExecutionStatus.TIMEOUT,
-    ProviderExecutionStatus.RATE_LIMITED,
-    ProviderExecutionStatus.AUTH_ERROR,
-    ProviderExecutionStatus.UPSTREAM_ERROR,
-    ProviderExecutionStatus.PARSE_ERROR,
-}
-
-
 class ResearchRadarService:
     """Validated Radar CRUD and bounded historical backfill orchestration."""
 
@@ -71,7 +58,7 @@ class ResearchRadarService:
         provider_registry: ProviderRegistry,
         provider_profile_store: ProviderProfileStore,
         *,
-        search_service: LiteratureSearchService | None = None,
+        scan_service: ScanService | None = None,
         analysis_service: RadarAnalysisService | None = None,
         profile_id: str = "default",
         clock: Callable[[], datetime] | None = None,
@@ -80,7 +67,7 @@ class ResearchRadarService:
         self.repository = repository
         self.provider_registry = provider_registry
         self.provider_profile_store = provider_profile_store
-        self.search_service = search_service
+        self.scan_service = scan_service
         self.analysis_service = analysis_service or RadarAnalysisService(
             current_date=lambda: self._now().date()
         )
@@ -132,7 +119,7 @@ class ResearchRadarService:
         radar = self.get(radar_id)
         if not radar.enabled:
             raise RadarScanUnavailableError("Radar is disabled")
-        if self.search_service is None:
+        if self.scan_service is None:
             raise RadarScanUnavailableError("Literature search service is unavailable")
         started_at = self._now()
         scan = RadarScan(
@@ -155,7 +142,7 @@ class ResearchRadarService:
         if scan is None or scan.status is not RadarScanStatus.RUNNING:
             raise RadarScanUnavailableError("Radar scan is unavailable")
         radar = self.get(scan.radar_id)
-        if self.search_service is None:
+        if self.scan_service is None:
             raise RadarScanUnavailableError("Literature search service is unavailable")
 
         candidates = []
@@ -167,21 +154,21 @@ class ResearchRadarService:
             scan.heartbeat_at = self._now()
             self.repository.update_scan(scan)
             try:
-                result = self.search_service.search(
+                result = self.scan_service.scan(
                     topic=radar.topic,
                     limit=radar.search_limit_per_period,
                     providers=radar.providers,
                     start_date=date(period_start, 1, 1),
                     end_date=date(period_end, 12, 31),
                 )
-            except AllProvidersFailedError as error:
-                any_provider_failed = True
-                safe_statuses.extend(
-                    self._period_statuses(error.provider_status, period_start, period_end)
-                )
-                continue
             except Exception:  # noqa: BLE001 - persist a safe scan failure only
                 return self._finish_failed(scan, safe_statuses, "scan_failed")
+            if result.status is ScanStatus.ALL_PROVIDERS_FAILED:
+                any_provider_failed = True
+                safe_statuses.extend(
+                    self._period_statuses(result.provider_status, period_start, period_end)
+                )
+                continue
 
             any_period_succeeded = True
             raw_count += result.diagnostics.raw_count
@@ -189,7 +176,7 @@ class ResearchRadarService:
             safe_statuses.extend(
                 self._period_statuses(result.provider_status, period_start, period_end)
             )
-            if any(item.status in FAILED_PROVIDER_STATUSES for item in result.provider_status):
+            if result.status is ScanStatus.PARTIAL_SUCCESS:
                 any_provider_failed = True
 
         if not any_period_succeeded:

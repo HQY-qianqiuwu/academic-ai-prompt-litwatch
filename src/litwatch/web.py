@@ -171,7 +171,7 @@ def create_app(
         radar_repository,
         provider_registry,
         provider_profile_store,
-        search_service=search_service,
+        scan_service=scan_service,
     )
     scan_lock = threading.Lock()
     state_lock = threading.Lock()

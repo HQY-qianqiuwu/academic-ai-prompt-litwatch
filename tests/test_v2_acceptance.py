@@ -196,7 +196,7 @@ def test_dify_free_runtime_serves_search_settings_and_bilingual_navigation(tmp_p
     assert app.state.subscription_run_service.scan_service is app.state.scan_service
     assert app.state.scan_service.literature_search_service is search
     assert app.state.scheduler_service.run_service.scan_service is app.state.scan_service
-    assert app.state.research_radar_service.search_service is search
+    assert app.state.research_radar_service.scan_service is app.state.scan_service
 
     with TestClient(app) as client:
         runtime = client.get("/api/v2/runtime")
@@ -375,7 +375,7 @@ def test_radar_subscription_scheduler_digest_dedup_and_restart_share_sqlite(tmp_
     assert app.state.subscription_run_service.scan_service is app.state.scan_service
     assert app.state.scan_service.literature_search_service is search
     assert app.state.scheduler_service.run_service.scan_service is app.state.scan_service
-    assert app.state.research_radar_service.search_service is search
+    assert app.state.research_radar_service.scan_service is app.state.scan_service
 
     with TestClient(app) as client:
         manual = client.post(

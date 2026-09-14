@@ -20,6 +20,7 @@ from litwatch.services.literature_search import (
     ProviderSearchStatus,
 )
 from litwatch.services.radars import RadarScanAlreadyActiveError, ResearchRadarService
+from litwatch.services.scan import ScanService
 from litwatch.sources.registry import ProviderRegistry
 
 NOW = datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
@@ -88,6 +89,16 @@ class FakeHistoricalSearch:
         return response
 
 
+class CountingScanService(ScanService):
+    def __init__(self, search: FakeHistoricalSearch) -> None:
+        super().__init__(search)  # type: ignore[arg-type]
+        self.calls: list[dict[str, object]] = []
+
+    def scan(self, **kwargs: object):
+        self.calls.append(kwargs)
+        return super().scan(**kwargs)
+
+
 def radar_service(
     database: Database,
     settings: Settings,
@@ -104,7 +115,7 @@ def radar_service(
         RadarRepository(database),
         ProviderRegistry.from_settings(settings),
         ProviderProfileStore([profile]),
-        search_service=search,  # type: ignore[arg-type]
+        scan_service=CountingScanService(search),
         clock=lambda: NOW,
         id_factory=lambda: ids.pop(0),
     )
@@ -145,6 +156,44 @@ def test_historical_backfill_uses_deterministic_two_year_periods(tmp_path):
     ]
     assert all(call["providers"] == ["openalex"] for call in search.calls)
     assert all(call["limit"] == 30 for call in search.calls)
+    database.connection.close()
+
+
+def test_radar_uses_one_shared_scan_per_period(tmp_path):
+    settings = settings_for(tmp_path)
+    database = Database(settings.database_path)
+    search = FakeHistoricalSearch([result([paper("A", 2020)]), result([paper("B", 2022)])])
+    service = radar_service(database, settings, search, ["radar", "scan"])
+    radar = service.create(spec(start_year=2020, end_year=2023))
+
+    completed = service.scan(radar.id)
+
+    assert completed.scan.status is RadarScanStatus.SUCCESS
+    assert len(search.calls) == 2
+    assert len(service.scan_service.calls) == 2
+    assert [(call["start_date"], call["end_date"]) for call in search.calls] == [
+        (date(2020, 1, 1), date(2021, 12, 31)),
+        (date(2022, 1, 1), date(2023, 12, 31)),
+    ]
+    assert service.scan_service.calls == search.calls
+    database.connection.close()
+
+
+def test_radar_deduplicates_paper_seen_in_multiple_periods(tmp_path):
+    settings = settings_for(tmp_path)
+    database = Database(settings.database_path)
+    repeated = paper("A", 2020)
+    search = FakeHistoricalSearch([result([repeated]), result([repeated])])
+    service = radar_service(database, settings, search, ["radar", "scan"])
+    radar = service.create(spec(start_year=2020, end_year=2023))
+
+    completed = service.scan(radar.id)
+
+    assert len(search.calls) == 2
+    assert completed.scan.raw_count == 2
+    assert completed.scan.dedup_count == 1
+    assert completed.new_canonical_ids == ["doi:10.1000/a"]
+    assert database.connection.execute("SELECT COUNT(*) FROM radar_papers").fetchone()[0] == 1
     database.connection.close()
 
 
