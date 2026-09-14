@@ -242,10 +242,10 @@ class JobRepository:
                            THEN COALESCE(cancellation_requested_at, ?)
                            ELSE cancellation_requested_at
                        END,
-                       status=CASE WHEN status IN ('queued','running') THEN 'cancelled' ELSE status END,
-                       finished_at=CASE WHEN status IN ('queued','running') THEN ? ELSE finished_at END,
-                       lease_owner=CASE WHEN status IN ('queued','running') THEN NULL ELSE lease_owner END,
-                       lease_expires_at=CASE WHEN status IN ('queued','running') THEN NULL ELSE lease_expires_at END
+                       status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,
+                       finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END,
+                       lease_owner=CASE WHEN status='queued' THEN NULL ELSE lease_owner END,
+                       lease_expires_at=CASE WHEN status='queued' THEN NULL ELSE lease_expires_at END
                    WHERE job_id=?
                    RETURNING *""",
                 (requested_at, requested_at, job_id),
