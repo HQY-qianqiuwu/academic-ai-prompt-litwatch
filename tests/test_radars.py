@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Event
 
 import pytest
 from pydantic import ValidationError
@@ -10,7 +12,7 @@ from litwatch.config import Settings
 from litwatch.db import Database
 from litwatch.provider_config import ProviderProfileStore, default_provider_profile
 from litwatch.radar_repository import RadarRepository
-from litwatch.radars import RadarScan, RadarScanStatus, RadarSpec
+from litwatch.radars import RadarScan, RadarScanStatus, RadarSpec, ResearchRadar
 from litwatch.services.radars import (
     RadarNotFoundError,
     RadarProviderError,
@@ -82,6 +84,43 @@ def test_radar_crud_disable_and_multiple_names_may_share_topic(tmp_path):
     assert disabled.enabled is False
     assert service.get(first.id) == disabled
     assert {item.id for item in service.list()} == {first.id, second.id}
+    database.connection.close()
+
+
+def test_radar_write_waits_for_an_active_shared_database_transaction(tmp_path):
+    settings = settings_for(tmp_path)
+    database = Database(settings.database_path)
+    repository = RadarRepository(database)
+    transaction_entered = Event()
+    release_transaction = Event()
+    radar = ResearchRadar(
+        **valid_spec().model_dump(),
+        id="concurrent-radar",
+        created_at=NOW,
+        updated_at=NOW,
+    )
+
+    def hold_transaction() -> None:
+        with database.transaction(immediate=True) as connection:
+            connection.execute(
+                "INSERT INTO runs(started_at) VALUES (?)", (NOW.isoformat(),)
+            )
+            transaction_entered.set()
+            assert release_transaction.wait(timeout=2)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        holder = executor.submit(hold_transaction)
+        assert transaction_entered.wait(timeout=1)
+        writer = executor.submit(repository.create, radar)
+        try:
+            with pytest.raises(TimeoutError):
+                writer.result(timeout=0.1)
+        finally:
+            release_transaction.set()
+        holder.result(timeout=1)
+        assert writer.result(timeout=1) == radar
+
+    assert repository.get(radar.id) == radar
     database.connection.close()
 
 

@@ -20,14 +20,24 @@ def test_only_manual_pages_workflow_can_scan_providers():
     assert all("pytest" not in command and "ruff" not in command for command in commands)
 
 
-def test_ci_runs_checks_without_scanning_providers():
+def test_ci_separates_linux_core_windows_lifecycle_and_ruff_jobs():
     ci = load_workflow("ci.yml")
     assert "pull_request" in ci["on"]
-    commands = [
-        step.get("run", "")
-        for job in ci["jobs"].values()
-        for step in job["steps"]
-    ]
-    assert any("pytest" in command for command in commands)
-    assert any("ruff check ." in command for command in commands)
+    assert set(ci["jobs"]) == {"linux-core", "windows-lifecycle", "ruff"}
+
+    linux = ci["jobs"]["linux-core"]
+    windows = ci["jobs"]["windows-lifecycle"]
+    ruff = ci["jobs"]["ruff"]
+    assert linux["runs-on"] == "ubuntu-latest"
+    assert windows["runs-on"] == "windows-latest"
+    assert ruff["runs-on"] == "ubuntu-latest"
+
+    linux_commands = [step.get("run", "") for step in linux["steps"]]
+    windows_commands = [step.get("run", "") for step in windows["steps"]]
+    ruff_commands = [step.get("run", "") for step in ruff["steps"]]
+    assert "uv run pytest -m \"not windows\"" in linux_commands
+    assert "uv run pytest -m windows" in windows_commands
+    assert "uv run ruff check ." in ruff_commands
+
+    commands = linux_commands + windows_commands + ruff_commands
     assert all("litwatch scan" not in command for command in commands)

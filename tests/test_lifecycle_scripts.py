@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 POWERSHELL = shutil.which("powershell.exe")
 BASE_EXECUTABLE = Path(getattr(sys, "_base_executable", sys.executable)).resolve()
+pytestmark = pytest.mark.windows
 
 
 def _powershell_literal(value: str | Path) -> str:

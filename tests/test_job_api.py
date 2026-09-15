@@ -181,6 +181,7 @@ def test_cancel_is_idempotent_and_returns_safe_projection(tmp_path):
     app = _app(tmp_path)
 
     with TestClient(app) as client:
+        app.state.job_worker.stop()
         created = _create_job(client).json()
         first = client.post(f"{created['status_url']}/cancel")
         repeated = client.post(f"{created['status_url']}/cancel")
@@ -189,6 +190,31 @@ def test_cancel_is_idempotent_and_returns_safe_projection(tmp_path):
     assert first.json()["status"] == "cancelled"
     assert repeated.json() == first.json()
     assert "payload" not in repeated.json()
+
+
+def test_cancel_running_job_reports_pending_request_until_worker_seals_it(tmp_path):
+    app = _app(tmp_path)
+
+    with TestClient(app) as client:
+        app.state.job_worker.stop()
+        created = _create_job(client).json()
+        running = app.state.job_repository.claim_next(
+            "controlled-worker", lease_seconds=30
+        )
+        assert running is not None
+
+        first = client.post(f"{created['status_url']}/cancel")
+        repeated = client.post(f"{created['status_url']}/cancel")
+        completed = app.state.job_repository.complete(
+            created["job_id"], "controlled-worker", result_reference="must-not-survive"
+        )
+
+    assert first.status_code == repeated.status_code == 200
+    assert first.json()["status"] == "running"
+    assert first.json()["cancellation_requested_at"] is not None
+    assert repeated.json() == first.json()
+    assert completed.status.value == "cancelled"
+    assert completed.result_reference is None
 
 
 def test_application_lifespan_starts_and_stops_job_worker(tmp_path):

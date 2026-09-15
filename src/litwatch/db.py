@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock
+from typing import Self
 
 from litwatch.migrations import (
     DatabaseProcessLock,
@@ -467,6 +468,24 @@ MIGRATIONS = tuple(
 
 class _LockedSQLiteConnection(sqlite3.Connection):
     _litwatch_access_lock: DatabaseProcessLock | None = None
+    _litwatch_transaction_lock: RLock | None = None
+
+    def __enter__(self) -> Self:
+        if self._litwatch_transaction_lock is not None:
+            self._litwatch_transaction_lock.acquire()
+        try:
+            return super().__enter__()
+        except Exception:
+            if self._litwatch_transaction_lock is not None:
+                self._litwatch_transaction_lock.release()
+            raise
+
+    def __exit__(self, *args: object) -> bool:
+        try:
+            return bool(super().__exit__(*args))
+        finally:
+            if self._litwatch_transaction_lock is not None:
+                self._litwatch_transaction_lock.release()
 
     def close(self) -> None:
         try:
@@ -500,6 +519,7 @@ class Database:
                 access_lock.release()
                 raise
         self.connection._litwatch_access_lock = access_lock
+        self.connection._litwatch_transaction_lock = self.transaction_lock
         try:
             self.connection.row_factory = sqlite3.Row
             self.connection.execute("PRAGMA foreign_keys=ON")

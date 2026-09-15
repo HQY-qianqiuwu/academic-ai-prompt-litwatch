@@ -38,6 +38,9 @@ packages = ["src/litwatch"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+  "windows: tests that execute Windows and PowerShell lifecycle behavior",
+]
 
 [tool.ruff]
 line-length = 100
