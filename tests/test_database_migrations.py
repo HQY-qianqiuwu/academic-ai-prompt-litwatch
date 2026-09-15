@@ -80,7 +80,7 @@ def test_copied_v1_7_version_six_database_migrates_to_current_registry(tmp_path)
     database.connection.close()
 
 
-def test_version_eleven_data_survives_additive_scan_identity_migration(tmp_path):
+def test_version_eleven_data_survives_additive_scan_identity_migrations(tmp_path):
     path = tmp_path / "v11.db"
     connection = sqlite3.connect(path)
     connection.executescript(SCHEMA)
@@ -99,9 +99,9 @@ def test_version_eleven_data_survives_additive_scan_identity_migration(tmp_path)
     assert database.connection.execute(
         "SELECT title FROM papers WHERE canonical_id='doi:10.1000/legacy'"
     ).fetchone()[0] == "Legacy paper"
-    assert database.connection.execute("SELECT max(version) FROM schema_migrations").fetchone()[0] == 12
+    assert database.connection.execute("SELECT max(version) FROM schema_migrations").fetchone()[0] == 13
     assert database.connection.execute("SELECT COUNT(*) FROM paper_identities").fetchone()[0] == 0
-    assert list((tmp_path / "backups").glob("v11.v11-to-v12.*.db"))
+    assert list((tmp_path / "backups").glob("v11.v11-to-v13.*.db"))
     database.verify_migrations()
     database.connection.close()
 

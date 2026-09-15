@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
@@ -215,6 +217,49 @@ def test_analyze_rejects_unknown_saved_paper_and_analysis_mode(tmp_path):
     assert service.calls == [("underwater acoustic localization", 5)]
 
 
+def test_concurrent_identical_analyze_requests_invoke_analyzer_once(tmp_path):
+    service = FakeLiteratureSearchService(sample_papers()[:1])
+    app = create_app(settings_for(tmp_path), service)
+    original_analyze = app.state.paper_analysis_service.analyzer.analyze
+    entered = threading.Event()
+    duplicate_entered = threading.Event()
+    release = threading.Event()
+    call_count = 0
+
+    def delayed_analyze(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count > 1:
+            duplicate_entered.set()
+        entered.set()
+        release.wait(timeout=2)
+        return original_analyze(*args, **kwargs)
+
+    app.state.paper_analysis_service.analyzer.analyze = delayed_analyze
+    with TestClient(app) as client:
+        searched = client.post(
+            "/api/v1/literature/search",
+            json={"topic": "underwater acoustic localization", "limit": 5},
+        ).json()
+        request = {
+            "scan_id": searched["scan_id"],
+            "paper_id": searched["papers"][0]["paper_id"],
+        }
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(client.post, "/api/v1/literature/analyze", json=request)
+            assert entered.wait(timeout=1)
+            second = executor.submit(client.post, "/api/v1/literature/analyze", json=request)
+            duplicate_started_before_first_finished = duplicate_entered.wait(timeout=0.2)
+            release.set()
+            responses = [first.result(timeout=2), second.result(timeout=2)]
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert duplicate_started_before_first_finished is False
+    assert call_count == 1
+    assert responses[0].json() == responses[1].json()
+    assert service.calls == [("underwater acoustic localization", 5)]
+
+
 def test_search_returns_additive_dedup_and_ranking_diagnostics(tmp_path):
     diagnostics = LiteratureSearchDiagnostics(
         raw_count=4,
@@ -415,6 +460,30 @@ def test_provider_profile_accepts_api_key_without_returning_it(tmp_path):
     for payload in (response.text, profiles.text):
         assert marker not in payload
         assert '"api_key":' not in payload
+
+
+def test_provider_capabilities_follow_current_profile_selection(tmp_path):
+    with TestClient(create_app(settings_for(tmp_path))) as client:
+        updated = client.post(
+            "/api/v1/provider-profiles",
+            json={
+                "profile_id": "default",
+                "providers": [
+                    {
+                        "provider_id": "openalex",
+                        "enabled": False,
+                        "default_selected": False,
+                    }
+                ],
+            },
+        )
+        capabilities = client.get("/api/v1/providers")
+
+    assert updated.status_code == 200
+    openalex = next(item for item in capabilities.json() if item["name"] == "openalex")
+    assert openalex["enabled"] is False
+    assert openalex["configured"] is True
+    assert openalex["default_selected"] is False
 
 
 def test_provider_profile_reports_missing_credential_without_faking_readiness(tmp_path):

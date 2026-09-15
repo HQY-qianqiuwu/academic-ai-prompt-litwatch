@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from litwatch.db import Database
 from litwatch.models import Paper
+from litwatch.services.deduplication import normalize_doi
 from litwatch.services.scan import ScanResult
 
 
@@ -65,18 +66,26 @@ class SearchScanRepository:
                         now,
                     ),
                 )
-                connection.execute(
-                    """INSERT INTO paper_identities(paper_id,canonical_id)
-                       VALUES (?,?) ON CONFLICT(canonical_id) DO NOTHING""",
-                    (uuid4().hex, paper.canonical_id),
-                )
+                aliases = self._aliases(paper)
+                placeholders = ",".join("?" for _ in aliases)
                 row = connection.execute(
-                    "SELECT paper_id FROM paper_identities WHERE canonical_id=?",
-                    (paper.canonical_id,),
+                    f"""SELECT paper_id FROM paper_identity_aliases
+                        WHERE alias IN ({placeholders}) ORDER BY alias LIMIT 1""",
+                    tuple(aliases),
                 ).fetchone()
-                if row is None:  # pragma: no cover - insert and read share a transaction
-                    raise RuntimeError("paper identity was not persisted")
-                paper_id = str(row[0])
+                if row is None:
+                    paper_id = uuid4().hex
+                    connection.execute(
+                        "INSERT INTO paper_identities(paper_id,canonical_id) VALUES (?,?)",
+                        (paper_id, paper.canonical_id),
+                    )
+                else:
+                    paper_id = str(row[0])
+                connection.executemany(
+                    """INSERT INTO paper_identity_aliases(alias,paper_id)
+                       VALUES (?,?) ON CONFLICT(alias) DO NOTHING""",
+                    [(alias, paper_id) for alias in aliases],
+                )
                 connection.execute(
                     """INSERT INTO search_scan_papers(scan_id,paper_id,position,paper_json)
                        VALUES (?,?,?,?)""",
@@ -108,3 +117,16 @@ class SearchScanRepository:
             query=str(row[0]),
             paper=Paper.model_validate_json(str(row[1])),
         )
+
+    @staticmethod
+    def _aliases(paper: Paper) -> list[str]:
+        aliases = {f"canonical:{paper.canonical_id.strip().casefold()}"}
+        doi = normalize_doi(paper.doi)
+        if doi:
+            aliases.add(f"doi:{doi}")
+        aliases.update(
+            f"source:{provider.strip().casefold()}:{identifier.strip().casefold()}"
+            for provider, identifier in paper.source_ids.items()
+            if provider.strip() and identifier.strip()
+        )
+        return sorted(aliases)

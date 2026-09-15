@@ -166,9 +166,10 @@ class Pipeline:
             accepted_papers.extend(ranked)
 
         finished = datetime.now(UTC)
-        if topic_statuses and len(topic_statuses) == len(scan_topics) and all(
-            status is ScanStatus.ALL_PROVIDERS_FAILED for status in topic_statuses
-        ) and not accepted_papers:
+        working_scan_exists = any(
+            status is not ScanStatus.ALL_PROVIDERS_FAILED for status in topic_statuses
+        )
+        if errors and not working_scan_exists and not accepted_papers:
             scan_status = ScanStatus.ALL_PROVIDERS_FAILED
         elif errors or ScanStatus.PARTIAL_SUCCESS in topic_statuses:
             scan_status = ScanStatus.PARTIAL_SUCCESS

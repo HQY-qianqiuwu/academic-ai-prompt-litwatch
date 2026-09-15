@@ -202,6 +202,7 @@ def create_app(
         ),
         repository=AnalysisRepository(database),
     )
+    analysis_request_lock = threading.Lock()
     job_worker.register(
         "paper_analysis",
         PaperAnalysisJobHandler(
@@ -610,14 +611,15 @@ def create_app(
             analysis_mode=payload.analysis_mode,
         )
         scope = EvidenceScope.ABSTRACT if saved.paper.abstract else EvidenceScope.METADATA_ONLY
-        analysis = analysis_service.analyze(
-            AnalysisContext(
-                paper=saved.paper,
-                topic=topic,
-                evidence=saved.paper.abstract,
-                evidence_scope=scope,
+        with analysis_request_lock:
+            analysis = analysis_service.analyze(
+                AnalysisContext(
+                    paper=saved.paper,
+                    topic=topic,
+                    evidence=saved.paper.abstract,
+                    evidence_scope=scope,
+                )
             )
-        )
         if analysis is None:  # pragma: no cover - synchronous calls do not abort
             raise HTTPException(status_code=500, detail="analysis did not complete")
         return LiteratureAnalyzeResponse(
@@ -872,12 +874,12 @@ def create_app(
     def providers() -> list[ProviderCapabilityResponse]:
         """List declared capabilities and clearly identify runnable adapters."""
         configs = {
-            item.provider_id: item
+            item.provider_type: item
             for item in provider_profile_store.get("default").providers
         }
         return [
             ProviderCapabilityResponse.from_capability(
-                capability, configs.get(capability.provider_type.value), credential_store
+                capability, configs.get(capability.provider_type), credential_store
             )
             for capability in provider_registry.capabilities()
         ]

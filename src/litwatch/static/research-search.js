@@ -31,14 +31,15 @@
   const providerLabel = (provider) => {
     const label = document.createElement("label");
     label.className = "provider-choice";
-    if (!provider.runnable) label.classList.add("unavailable");
+    const ready = provider.runnable && provider.enabled && provider.configured;
+    if (!ready) label.classList.add("unavailable");
 
     const input = document.createElement("input");
     input.type = "checkbox";
     input.name = "providers";
     input.value = provider.name;
-    input.checked = Boolean(provider.runnable && provider.default_selected);
-    input.disabled = !provider.runnable;
+    input.checked = Boolean(ready && provider.default_selected);
+    input.disabled = !ready;
 
     const text = document.createElement("span");
     const name = document.createElement("strong");

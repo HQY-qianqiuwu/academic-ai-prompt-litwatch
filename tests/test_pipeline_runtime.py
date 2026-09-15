@@ -473,7 +473,7 @@ def test_pipeline_reports_all_providers_failed_instead_of_empty_success(tmp_path
     database.connection.close()
 
 
-def test_pipeline_does_not_mislabel_non_provider_exception_as_all_providers_failed(tmp_path):
+def test_pipeline_treats_total_exceptional_retrieval_failure_as_terminal(tmp_path):
     class MixedSearch:
         def search(self, **kwargs):
             if kwargs["topic"] == "provider failure":
@@ -497,7 +497,7 @@ def test_pipeline_does_not_mislabel_non_provider_exception_as_all_providers_fail
 
     summary, _papers = pipeline.run(days=7, topics=topics)
 
-    assert summary.scan_status != "all_providers_failed"
+    assert summary.scan_status == "all_providers_failed"
     pipeline.close()
     database.connection.close()
 

@@ -463,11 +463,11 @@ class ProviderCapabilityResponse(BaseModel):
         credential_store: InMemoryCredentialStore,
     ) -> ProviderCapabilityResponse:
         return cls(
-            name=capability.provider_type.value,
+            name=(config.provider_id if config is not None else capability.provider_type.value),
             provider_type=capability.provider_type,
             display_name=capability.display_name,
             runnable=capability.runnable,
-            default_selected=capability.default_selected,
+            default_selected=(config.default_selected if config is not None else False),
             requires_api_key=capability.requires_api_key,
             supports_anonymous=capability.supports_anonymous,
             capabilities=list(capability.capabilities),

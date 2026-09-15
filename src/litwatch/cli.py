@@ -47,7 +47,7 @@ def scan(
 
 @app.command()
 def serve(
-    host: str = typer.Option("0.0.0.0"), port: int = typer.Option(8000, min=1, max=65535)
+    host: str = typer.Option("127.0.0.1"), port: int = typer.Option(8000, min=1, max=65535)
 ) -> None:
     """启动本地 Web 仪表盘。"""
     import uvicorn

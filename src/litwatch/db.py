@@ -438,6 +438,21 @@ _MIGRATION_SQL = (
             ON search_scans(created_at DESC);
         """,
     ),
+    (
+        13,
+        "paper_identity_aliases",
+        """
+        CREATE TABLE IF NOT EXISTS paper_identity_aliases (
+            alias TEXT PRIMARY KEY,
+            paper_id TEXT NOT NULL REFERENCES paper_identities(paper_id) ON DELETE RESTRICT
+        );
+        INSERT OR IGNORE INTO paper_identity_aliases(alias,paper_id)
+            SELECT 'canonical:' || lower(trim(canonical_id)),paper_id
+            FROM paper_identities;
+        CREATE INDEX IF NOT EXISTS idx_paper_identity_aliases_paper
+            ON paper_identity_aliases(paper_id);
+        """,
+    ),
 )
 
 MIGRATION_REGISTRY = tuple(

@@ -55,6 +55,7 @@ def test_research_search_javascript_uses_only_litwatch_apis(tmp_path):
         "api.crossref.org",
     ):
         assert direct_provider not in response.text
+    assert "provider.enabled && provider.configured" in response.text
 
 
 def test_search_page_contains_accessible_labels_and_navigation(tmp_path):

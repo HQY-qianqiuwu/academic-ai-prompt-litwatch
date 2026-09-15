@@ -10,6 +10,8 @@ import textwrap
 from pathlib import Path
 from uuid import UUID
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 POWERSHELL = shutil.which("powershell.exe")
@@ -1443,7 +1445,18 @@ def test_weekly_script_preserves_success_when_scanner_writes_stderr_warning(tmp_
     assert "Weekly scan completed" in log
 
 
-def test_local_installer_registers_only_web_startup_task(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("installer", "arguments"),
+    [
+        ("install-local.ps1", ""),
+        ("install-scheduled-task.ps1", "-WeeklyDay Friday -WeeklyAt 10:30"),
+    ],
+)
+def test_local_installer_registers_only_web_startup_task(
+    tmp_path: Path,
+    installer: str,
+    arguments: str,
+):
     assert POWERSHELL is not None
     probe = tmp_path / "install-local-probe.ps1"
     probe.write_text(
@@ -1455,10 +1468,12 @@ def test_local_installer_registers_only_web_startup_task(tmp_path: Path):
             function New-ScheduledTaskSettingsSet { param([switch]$StartWhenAvailable, [switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries, $RestartCount, $RestartInterval, $MultipleInstances, $ExecutionTimeLimit) [pscustomobject]@{} }
             function Register-ScheduledTask { param($TaskName, $Action, $Trigger, $Settings, $Description, [switch]$Force) $global:RegisteredTasks += $TaskName }
             function Start-ScheduledTask { param($TaskName) }
-            & '__INSTALL_SCRIPT__'
+            & '__INSTALL_SCRIPT__' __INSTALL_ARGUMENTS__
             Write-Output ('TASKS_JSON=' + (ConvertTo-Json -InputObject $global:RegisteredTasks -Compress))
             """
-        ).replace("__INSTALL_SCRIPT__", _powershell_literal(SCRIPTS / "install-local.ps1")),
+        )
+        .replace("__INSTALL_SCRIPT__", _powershell_literal(SCRIPTS / installer))
+        .replace("__INSTALL_ARGUMENTS__", arguments),
         encoding="utf-8-sig",
     )
     result = subprocess.run(

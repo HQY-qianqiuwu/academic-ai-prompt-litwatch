@@ -70,3 +70,31 @@ def test_empty_scan_is_persisted_without_fake_papers(tmp_path):
     assert repository.get_scan(saved.scan_id).status is ScanStatus.SUCCESS_EMPTY
     assert database.connection.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 0
     database.connection.close()
+
+
+def test_paper_id_survives_canonical_id_upgrade_when_source_alias_matches(tmp_path):
+    database = Database(tmp_path / "identity-upgrade.db")
+    repository = SearchScanRepository(database)
+    first = sample_result()
+    first.papers[0] = first.papers[0].model_copy(
+        update={
+            "canonical_id": "arxiv:2601.12345",
+            "doi": "",
+            "source_ids": {"arxiv": "2601.12345"},
+        }
+    )
+    enriched = sample_result()
+    enriched.papers[0] = enriched.papers[0].model_copy(
+        update={
+            "canonical_id": "doi:10.1000/a",
+            "doi": "10.1000/a",
+            "sources": ["arxiv", "crossref"],
+            "source_ids": {"arxiv": "2601.12345", "crossref": "10.1000/a"},
+        }
+    )
+
+    first_saved = repository.save(first)
+    enriched_saved = repository.save(enriched)
+
+    assert first_saved.paper_ids["arxiv:2601.12345"] == enriched_saved.paper_ids["doi:10.1000/a"]
+    database.connection.close()

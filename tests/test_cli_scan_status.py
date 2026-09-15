@@ -42,3 +42,15 @@ def test_cli_scan_exits_nonzero_when_every_provider_failed(monkeypatch, email_ar
 
     assert result.exit_code == 1
     assert json.loads(result.stdout)["scan_status"] == "all_providers_failed"
+
+
+def test_cli_serve_defaults_to_loopback(monkeypatch):
+    calls = []
+    monkeypatch.setattr("litwatch.cli._settings", lambda: object())
+    monkeypatch.setattr("litwatch.cli.create_app", lambda settings: "test-app")
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: calls.append((app, kwargs)))
+
+    result = CliRunner().invoke(app, ["serve"])
+
+    assert result.exit_code == 0
+    assert calls[0][1] == {"host": "127.0.0.1", "port": 8000}
