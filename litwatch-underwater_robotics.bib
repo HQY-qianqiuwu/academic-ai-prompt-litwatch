@@ -1,110 +1,90 @@
-@article{Nam2026,
-  title = {Real-Time Control-Constrained DDP for Underactuated Balancing of Legged Robots},
-  author = {SeongWon Nam and Hyunyong Lee and Hansol Kang and Jiman Park and Yeongwoo Son and Bumsu Yi and Jaeyoung Oh and Hyouk Ryeol Choi},
+@article{Tan2026,
+  title = {Lightweight edge AI approach for real-time audio-based machine health analytics on ARM cortex-M microcontroller},
+  author = {Xiao Xuan Tan and Hermawan Nugroho},
   year = {2026},
-  journal = {arXiv},
-  doi = {10.1109/LRA.2026.3723262},
-  url = {http://arxiv.org/abs/2608.18552v1},
-  abstract = {This paper presents a real-time control-constrained Differential Dynamic Programming (DDP) framework for underactuated legged robots. To address the limitation of classical DDP in handling control constraints, we propose an Accelerated Projected Gradient (APG)-based control-constrained DDP (ABC-DDP), which efficiently computes constrained solutions and identifies active sets without repeated Karush-Kuhn-Tucker (KKT) inversions. A virtual constraint is introduced to integrate control constraints within a feasibility-driven multiple-shooting framework, enabling stable optimization even from dynamically infeasible initializations. The proposed method supports real-time model predictive control (MPC) with short horizons under strong underactuation. Simulation results demonstrate static two-leg standing under external disturbances, along with diverse dynamic motions including slow catwalk, upright walking, and high-speed running within a unified MPC framework. To the best of our knowledge, this is the first demonstration of static two-leg standing of a quadruped robot achieved using real-time finite-horizon MPC.}
+  journal = {Discover Electronics},
+  doi = {10.1007/s44291-026-00271-2},
+  url = {https://doi.org/10.1007/s44291-026-00271-2}
 }
 
-@article{Buchholz2026,
-  title = {World-Model-Grounded LLM Planning for AUV and ASV Navigation Near Offshore Wind Farms},
-  author = {Markus Buchholz and Ignacio Carlucho and Yvan R. Petillot},
+@article{Wang2026,
+  title = {An environment-adaptive multi-modal perception edge-AI for real-time robotic fruit harvesting},
+  author = {Jhing-Fa Wang and Din-Yuen Chan and Chia-Jung Chang},
   year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.19661v1},
-  abstract = {Large language models can turn a natural-language mission into a sequence of robot actions, but they do not have a sense of physics: they cannot judge how long a command should run, or whether it will make the robot drift into an obstacle. We proposed the use of a world model to expand the capabilities of Large Language model-based planners. Our method has three components: a physics-grounded neural world model, a three-phase gradient-based trajectory optimizer, and a Model Predictive Controller (MPC)-style closed-loop replanner with a trust-region guard. The language model decides what to do, and the world model decides how long, whether that means driving eight thrusters through 6 DOF or two differential thrusters through 3 DOF. We evaluate two marine vehicle classes operating near offshore wind infrastructure: a 6-DOF Autonomous Underwater Vehicle (AUV) and a 3-DOF differential-drive Autonomous Surface Vehicle (ASV). In five benchmark missions per platform, both vehicles reach every goal with zero predicted collisions, and both transfer to GazeboSim under ocean current, waves, and thruster dynamics, remaining collision-free and cutting GazeboSim goal-distance error versus the ungrounded baseline by 70-82% (ASV) and roughly 93% (AUV), after a residual fine-tuning pass that separately reduces surrogate rollout Root Mean Square Error (RMSE) by 60% (AUV) and 69% (ASV). For the ASV we further demonstrate a Vision language model (VLM)-assisted semantic-mapping pipeline that extracts obstacles and environmental context from satellite imagery, nautical charts, and forecast Application Programming Interface (API) instead of onboard sensors, reaching 96% navigability accuracy as a drop-in replacement for hand-specified obstacle geometry.}
+  journal = {The Journal of Supercomputing},
+  doi = {10.1007/s11227-026-08829-3},
+  url = {https://doi.org/10.1007/s11227-026-08829-3}
 }
 
-@article{Liu2026,
-  title = {Real-Time Control of Sustainable Data Centers: A Two-Layer Model Predictive Control Framework with Workload Flexibility and Heat Recovery},
-  author = {Wenyu Liu and Enea Figini and Mario Paolone},
+@article{Kwadwo2026,
+  title = {Edge-AI Predictive Monitoring for Vaccine Refrigeration in Rural Ghanaian Health Clinics},
+  author = {Adu-Gyamfi Kwadwo},
   year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.16432v1},
-  abstract = {This paper proposes a two-layer model predictive control (MPC) framework for the real-time operation of data centers integrated with on-site photovoltaic generation, battery energy storage, waste heat recovery, and district heating. The upper layer employs scenario-based stochastic optimization to jointly optimize intraday market participation, workload scheduling, and energy management under uncertainty. The lower layer adopts an adaptive tube-based MPC strategy that compensates short-term disturbances while tracking the dispatch references given by the upper layer. The framework further integrates multi-horizon forecasting to support real-time decision making. Microservice-based simulation studies under representative clear-sky and overcast operating conditions demonstrate that the proposed framework accurately tracks dispatch plans despite fast photovoltaic and workload fluctuations. Compared with single-layer control strategies, the adaptive lower-layer controller substantially reduces real-time dispatch deviations and the associated imbalance costs. In addition, the proposed framework naturally adapts to seasonal operating conditions and responds to carbon-aware operating signals, offering a practical approach for economically efficient, sustainable, and grid-supportive operation of future data centers.}
+  doi = {10.31224/8149},
+  url = {https://doi.org/10.31224/8149},
+  abstract = {Vaccine cold-chain failures remain a major and preventable cause of vaccine wastage worldwide, and the problem is especially acute in rural, resource-constrained health facilities where unreliable electricity, limited technical support, and unreliable internet connectivity compound the risk. This work presents the design, validation, and prototype implementation of an edge-AI-informed monitoring system for vaccine refrigeration units, motivated specifically by the documented cold-chain challenges faced by rural health clinics in Ghana. Unlike existing systems, which are largely reactive (alerting only after a temperature threshold has already been breached) and cloud-dependent, the proposed system combines three complementary detection layers running locally on a low-cost ESP32-S3 microcontroller: (1) predictive compressor-fault detection derived from a machine-learning analysis of cycling behaviour, (2) gas-based detection of likely non-vaccine items placed in the unit, and (3) cumulative vaccine-exposure-risk tracking using a real-time clock. The predictive detection approach was first validated against a genuine, publicly available industrial dataset of a failing air compressor, achieving 95.3% recall in identifying documented failure periods, before being applied to a purpose-built simulation of vaccine-fridge degradation. The resulting detection logic was distilled into lightweight, real-time embedded logic and implemented and verified in a simulated hardware environment (Wokwi), including a live IoT reporting layer built on MQTT and a web-based dashboard. This document describes the related work that motivated the system, the validation methodology, the complete system design, results, and an honest discussion of the system's current limitations and next steps.}
 }
 
-@article{Zhou2026,
-  title = {EcoVLA: Energy-Efficient Device-Edge Co-Inference for Vision-Language-Action Models under Real-Time Constraints},
-  author = {Ao Zhou and Bo Dai and Le Yu and Xingyu Liu and Zeyu Hao and Lingkun Long and Chunming Hu and Jianlei Yang},
+@article{ztrk2026,
+  title = {Edge-AI Ready Lightweight Digital Twin for Anomaly Prediction: A Case Study on Hydrogen Refueling Station Data},
+  author = {Esin Öztürk and Francis Fomi Wamba},
   year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.15502v1},
-  abstract = {Vision-Language-Action (VLA) models have emerged as a promising foundation for Embodied AI, but their high inference cost poses significant challenges for deployment in robotic systems. In practice, on-device inference is constrained by limited compute capacity and energy budgets, struggling to simultaneously satisfy real-time control and energy efficiency requirements. Alternatively, offloading the inference workload to an edge server is susceptible to fluctuations in system conditions, introducing unpredictable latency risks. Device-edge co-inference offers a promising solution, but systematic research tailored to VLA models remains scarce, particularly a unified co-inference framework that jointly addresses real-time constraints and system-level energy efficiency. Thus, we propose EcoVLA, an adaptive device-edge co-inference framework for VLA models that maximizes system energy efficiency under real-time constraints. EcoVLA first introduces a unified stage-level abstraction over different VLA paradigms, establishing an architecture-agnostic co-inference design space. It then formulates a joint device-edge-network latency and energy prediction model to enable rapid runtime evaluation of candidate co-inference schemes. Building on this, EcoVLA continuously selects the energy-optimal scheme satisfying real-time constraints with millisecond-level overhead, adapting to runtime variations in network and system states. Furthermore, EcoVLA incorporates a lightweight transmission mechanism for inter-stage intermediate tensors to reduce the communication overhead incurred by cross-device collaboration. Experimental results across VLA models show that EcoVLA improves system energy efficiency by up to 236% over existing co-inference approaches under a 20 Hz action output frequency constraint, while consistently maintaining SLO satisfaction under dynamic network and edge workload conditions.}
+  journal = {The Autonomous Edge – Intelligence Embedded in Industrial Applications},
+  doi = {10.1201/9788743815273-14},
+  url = {https://doi.org/10.1201/9788743815273-14}
 }
 
-@article{Sha2026,
-  title = {AMR-Pose: An Active LED Marker-Based Relative Pose Estimation Framework With Probabilistic Switching PnP for Cooperative AUVs},
-  author = {Zeyu Sha and Xiaorui Wang and Mingyang Yang and Feitian Zhang},
+@article{Bernhart2026,
+  title = {BPqu: Edge-AI Breath Phase Quantifier for Real-Time Guidance in Running},
+  author = {Severin Bernhart and Christina Halmich and Christoph Schranz and Rade Kutil},
   year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.12866v1},
-  abstract = {Reliable relative pose estimation between autonomous underwater vehicles (AUVs) is critical for cooperative ocean exploration, sampling, and multi-robot coordination. However, achieving robust vision-based relative localization in underwater environments remains challenging due to severe optical degradation, including turbidity, illumination variations, reflections, and intermittent feature occlusions. This paper presents AMR-Pose, an active LED marker-based relative pose estimation framework for cooperative AUVs. A compact marker module consisting of one red central LED and three blue peripheral LEDs is developed and integrated onto the leader AUV to provide distinctive visual features under complex underwater conditions. Building upon the detected marker observations, a probabilistic switching Perspective-n-Point estimator (PSwPnP) is developed by combining Lie-group pose propagation on $SE(3)$, probabilistic marker association, and visibility-adaptive measurement fusion for robust six-degree-of-freedom relative pose estimation. The proposed framework dynamically adapts the estimation process according to marker visibility, maintaining geometric consistency and temporal stability during partial observations and visibility transitions. Extensive water-tank experiments with motion-capture ground truth validate that AMR-Pose achieves accurate, smooth, and robust relative pose estimation under challenging underwater conditions. Closed-loop leader-follower experiments further demonstrate its feasibility for real-time relative pose feedback in cooperative underwater robotics.}
+  doi = {10.21203/rs.3.rs-9996115/v1},
+  url = {https://doi.org/10.21203/rs.3.rs-9996115/v1},
+  abstract = {Abstract Endurance running is a popular activity due to its accessibility. However, participation is sometimes prevented by individuals experiencing respiratory problems. Monitoring breathing with body area networks can tackle these issues by tracking respiration during exercise and providing immediate, guiding feedback. Common breathing guidance systems rely on observational data from past breath cycles and consequently inherit disruptively lagging guidance interventions if breathing pattern suddenly change. Therefore, this work introduces BPqu, a deep learning algorithm for real-time breath phase estimation on edge devices that enhances new breathing guidance opportunities in running by predicting the continuous breath phase with zero latency. BPqu predicts breathing within the next running step and detects hale change events, determines inhalation and exhalation phases, and quantifies the concurrent continuous breath phase with performance metrics of 93.1%, 85.6%, and 81.5%, respectively, with zero delay. BPqu is designed to be deployed in a textile wearable breathing and stride sensor and will be applied to enhance intuitive, non-distracting breathing guidance in running, reducing respiratory distress and increasing running enjoyment, thereby promoting human well-being.}
 }
 
-@article{Castillo2026,
-  title = {Adjacency-Based Spectral Proxy Control of Mobile Communication Agents},
-  author = {Mariana del Castillo and Federico Larroca},
+@article{Molleda2026,
+  title = {Edge deployment of YOLOv12 and YOLOv26 instance segmentation for real-time steel surface defect inspection},
+  author = {Julio Molleda and Darío G. Lema and Rubén Usamentiaga},
   year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.13616v1},
-  abstract = {We consider a heterogeneous mobile-agent network composed of uncontrolled task agents and controllable communication agents. The objective is to reposition communication agents online as task agents move. Since throughput-based objectives are generally unsuitable for real-time control, spectral graph metrics such as algebraic connectivity are commonly adopted as surrogate objectives. However, controlling algebraic connectivity relies on the eigenvector corresponding to the second-smallest eigenvalue of a graph's Laplacian matrix (i.e., the Fiedler vector), whose distributed estimation requires an unbounded number of communication rounds to converge. In this work, we identify a structural decomposition of this Fiedler-gradient controller into a local interaction rule and a graph embedding component, suggesting the use of alternative embeddings that are easier to estimate distributively than the Fiedler vector. As a particular instance, we propose A-Fiedler, which replaces the Fiedler embedding with the dominant eigenvector of the adjacency matrix, commonly used as a graph embedding of nodes into a latent geometry. This representation is more naturally suited for distributed implementation under local communication constraints. We evaluate A-Fiedler against the classical Fiedler-gradient controller. Results show comparable network performance in the absence of communication constraints and improved robustness under distributed estimation. For instance, under the same number of communication rounds, the Fielder-gradient may even converge to disconnected configurations whereas our proposition maintains performance. We believe our contribution provides a simpler path toward distributed network control.}
+  journal = {Journal of Real-Time Image Processing},
+  doi = {10.1007/s11554-026-01974-1},
+  url = {https://doi.org/10.1007/s11554-026-01974-1},
+  abstract = {Abstract Real-time automated steel surface inspection on the production line is challenging. Defect masks must be produced at the camera’s acquisition rate and within the power envelope of an embedded GPU. This paper evaluates two contrasting YOLO architectures, the attention-centric YOLOv12 and the convolution-centric YOLOv26, for instance segmentation of steel surface defects on three platforms: an RTX 5090 workstation, a Jetson AGX Orin, and a Jetson Orin Nano. Twenty-four models were trained in a $$2\{\times \}2$$ 2 × 2 ablation over weight initialization (scratch, pretrained) and class sampling (standard, balanced) on a real industrial dataset of 3,097 images and 13,318 instances across 8 classes (11-fold imbalance). The models were then evaluated under PyTorch and under TensorRT in 16-bit floating-point (FP16) and 8-bit integer (INT8) precision. Accuracy is reported on a leak-free test subset after a split-integrity audit. The best configuration, YOLOv26 pretrained with FP16, achieves 0.43 mean average precision (mAP50-95) at large scale. All YOLOv26 pretrained models surpass the 30 frames-per-second (FPS) real-time budget on both Jetson devices under FP16: 89.9 FPS at nano on the Orin Nano and 146.7 FPS on the AGX Orin. YOLOv12 also deploys under TensorRT FP16 on all three platforms and, trained from scratch, matches YOLOv26 pretrained accuracy at the medium scale. The training-time choices (architecture, initialization, and sampling) are statistically indistinguishable; therefore, deployment is the deciding factor. FP16 preserves accuracy within 0.02 mAP50-95. However, INT8 segmentation engines fail to build on both Jetson devices under TensorRT 10.3 and their accuracy is unreliable on the workstation.}
 }
 
-@article{Lin2026,
-  title = {Control of hybrid wind-wave energy systems using reinforcement learning},
-  author = {Zechuan Lin and Kemeng Chen and Maosen Fan and Xiaofan Li and Xi Xiao and John V. Ringwood},
+@article{Ren2026,
+  title = {Real-time safety-critical obstacle avoidance and tracking control for UUV via NMPC-RCBF and ECBF-QP backstepping},
+  author = {Jingfei Ren and Yuanbao Chen and Hongjian Wang and Wen Yan and Xinyang Li and Shaozheng Song},
   year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.10754v1},
-  abstract = {Integrating wave energy converters (WECs) with floating offshore wind turbines (FOWTs), to form hybrid wind-wave energy (HWWE) systems, is a promising approach to achieve further cost reduction for offshore renewable energy. In such systems, the control of the integrated WECs plays an important role, with the potential to generate additional wave energy while simultaneously suppressing floating platform motion. However, HWWE systems are characterized by complex dynamics, making accurate modelling only viable through numerical simulation, and posing significant challenges for control design. This paper proposes a reinforcement learning (RL) control framework for HWWE systems, in which the real-time control policy is learned directly through interactions with high-fidelity simulation. A numerical model is established for a HWWE system consisting of an IEA 15 MW wind turbine, a VolturnUS semi-submersible platform, and three torus-type WECs, which is then employed as the RL training environment. Control performance is evaluated in terms of both wave energy generation and platform motion reduction, two competing objectives, from a Pareto perspective. It is shown that the proposed RL controller achieves substantial Pareto improvements over conventional control strategies, e.g., over 75\% higher wave energy capture at the same platform motion level, or nearly 50\% lower motion at the same energy capture level, thereby significantly extending the attainable performance boundary of HWWE systems.}
-}
-
-@article{Wu2026,
-  title = {Neural Introspection Gating for Adaptive KV-Cache Reuse in Vision-Language-Action Models},
-  author = {Zhijie Wu and Kento Kawaharazuka and Kei Okada},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.10824v1},
-  abstract = {Vision-Language-Action(VLA) models map camera images and language instructions directly to motor commands through a single autoregressive transformer. In real-time control, they still spend substantial compute recomputing key-value(KV) representations for visual tokens that barely change across neighboring frames. Recent work such as VLA-Cache reduces that cost by reusing KV states for visually static patches, but its policy relies only on observation-space heuristics and does not account for the model's own uncertainty. We propose Gated VLA-Cache, a lightweight, training-free extension that augments visual-similarity caching with neural introspection. The method monitors the logit margin between the top two predicted action tokens, a zero-cost confidence signal available during decoding. When the margin drops below a threshold, the cache is invalidated and a full recompute is triggered. Evaluated on four LIBERO benchmark suites with both OpenVLA and OpenVLA-OFT, Gated VLA-Cache improves reliability when blind caching hurts. On LIBERO-Goal and LIBERO-Long, it recovers over 100% of the lost accuracy while retaining 80% of the compute savings.}
-}
-
-@article{Hu2026,
-  title = {Dynamic SpectraFormer for Ultra-High-Definition Underwater Image Enhancement},
-  author = {Zhiqiang Hu and Tao Yu and Shouren Huang and Masatoshi Ishikawa},
-  year = {2026},
-  journal = {arXiv},
-  doi = {10.1109/IROS58592.2024.10802529},
-  url = {http://arxiv.org/abs/2608.18662v1},
-  abstract = {Underwater images suffer from color distortion, haze, and poor visibility due to light refraction and absorption in water. These challenges significantly impact the utilization of Autonomous Underwater Vehicles (AUVs) or marine robots. Typically, color and brightness distortions manifest at lower frequencies, while edge and texture distortions are prevalent at higher frequencies. Traditional methods struggle to concurrently rectify these mixed distortions as they primarily concentrate on the spatial domain. To address these issues, we introduce the Dynamic SpectraFormer, which enhances underwater images through a frequency domain transformer. The Dynamic SpectraFormer introduces an ultra-high-resolution sparse spectrum attention module, which could capture the long-term dependency without losing the universal approximating power. Additionally, we have developed a dynamic spectrum weight generation layer that serves as an adaptive spectrum band selector, accentuating critical frequency bands and suppressing less relevant ones. Consequently, this method significantly improves underwater image quality by addressing both high- and low-frequency distortions. Our extensive ablation studies and comparative evaluations consolidate the Dynamic SpectraFormer's efficacy across multiple underwater image enhancement benchmarks. The source code is available at https://github.com/arifence2024/DynamicSpectraFormer.git.}
-}
-
-@article{Qiang2026,
-  title = {Magnetically Self-Sealed MR Haptic Actuator With PWM-Based Excitation and High-Fidelity Torque Control},
-  author = {Dong Qiang and Tian Yuan and Song Yang and Kequan Xia and Thomas Reddyhoff and Yikun Zhang and Cheng Cheng and Min Yu},
-  year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.19635v1},
-  abstract = {Accurate and stable torque rendering is essential for safe and perceptive human--machine interaction. Magnetorheological fluid (MRF)-based actuators offer a compact and rapidly controllable solution for haptic feedback, but their practical implementation requires reliable fluid sealing, low-hysteresis excitation, accurate torque control, and stable long-duration operation. This article presents an integrated MRF haptic system featuring a compact magnetically self-sealed rotary actuator, low-hysteresis PWM operation, high-fidelity model-based torque rendering, and stable performance during long-time operation. Magnetostatic simulation guides the arrangement of magnetic and nonmagnetic materials to focus flux in the multidisk torque and permanent-magnet sealing regions, enabling a maximum 600 N$\cdot$mm/A output. Experiments show that higher PWM frequencies reduce hysteresis and improve repeatability. At 10 kHz, the response is represented by a nonlinear model that varies with the direction and speed of torque change. The real-time controller combines feedforward, hysteresis compensation, PI feedback, and sliding-mode correction. Compared with PID, it reduces square-wave overshoot, undershoot, and steady-state RMSE by 77.4\%, 61.9\%, and 68.3\%, respectively. It tracks sinusoidal and biomechanics-model-based references, and a 1.5-h test shows only a 2.5 $^\circ$C rise near the coil with no clear tracking loss. This high-fidelity torque rendering will fundamentally transform human--robot collaboration by making interactions safer, more efficient, and more intuitive.}
+  journal = {Ocean Engineering},
+  doi = {10.1016/j.oceaneng.2026.127304},
+  url = {https://doi.org/10.1016/j.oceaneng.2026.127304}
 }
 
 @article{Jiang2026,
-  title = {Real-time Estimator of Actuator Control and Health (REACH) on an Eel-Inspired Soft Robot},
-  author = {Zhangjingyi Jiang and Myungsun Park and Michael T. Tolley and Mark Campbell},
+  title = {Trajectory optimization for target tracking in UUV-based multistatic sonar systems with position offset correction},
+  author = {Shoude Jiang and Shefeng Yan and Linlin Mao and Chunjin Jiang and Gang Tan and Wei Wang},
   year = {2026},
-  journal = {arXiv},
-  doi = {10.1109/robosoft63089.2025.11020927},
-  url = {http://arxiv.org/abs/2608.14865v1},
-  abstract = {An actuator health estimation algorithm for a soft swimming robot that can perform anguilliform swimming is developed. Due to harsh operational environments of underwater robots, and the common degradation of soft robot materials and actuators, accurate estimation of actuator functionality is necessary for robots to perform their missions as well as return to base in the event of actuator degradation and failure. Termed REACH (Real-time Estimator of Actuator Control and Health), the architecture employs a soft robot model, sigma point filter, and a formal statistical hypothesis test to adequately capture the nonlinearities and changes over time. The performance of REACH using three sensor types (GPS, IMU, and Bend Sensor) with one sensor on each actuator is compared, demonstrating that both bend sensor and IMU are adequate choices. Sensor quantity and placement are evaluated for IMU and bend sensor, showing two sensors are sufficient for IMU, whereas three sensors are needed for bend sensor. Three swimming gaits (linear swimming, wide turning, tight turning) are compared, demonstrating that REACH can successfully predict actuator health for all three gaits, with minimal differences in performance. A filter validation method shows the fault estimation algorithm is statistically consistent in finding the correct degradation. The approach is experimentally evaluated using bend sensor data collected from a fish robot, demonstrating that REACH can successfully estimate actuator health with noisy data and variations in manufacturing.}
+  journal = {Signal Processing},
+  doi = {10.1016/j.sigpro.2026.110583},
+  url = {https://doi.org/10.1016/j.sigpro.2026.110583}
 }
 
-@article{Gallant2026,
-  title = {Comparing Controller Synthesis Methods with Deadline-Miss Awareness},
-  author = {Melanie Gallant and Marc Seidel and Paolo Pazzaglia and Claudio Mandrioli and Christoph Mark and Kevin Schmidt and Frank Allgöwer and Martina Maggio},
+@article{Shaikh2026,
+  title = {Hardware Deployable Solution for Real-Time Condition Monitoring Using TinyML on Embedded Edge AI Devices},
+  author = {Ayaan Zubair Shaikh and Mohammed Zubair M. Shamim},
   year = {2026},
-  journal = {arXiv},
-  url = {http://arxiv.org/abs/2608.18850v1},
-  abstract = {This paper presents a comparative study of real-time controller design methods for dynamical control systems subject to deadline overruns. Numerous techniques have been proposed to handle missed deadlines, i.e., including models or information of possible deadline misses directly in the control design. These approaches substantially differ in their assumptions, supported execution semantics, required runtime information, and provided guarantees, making direct comparison challenging. We address this gap with a qualitative assessment of representative deadline-miss-aware control methods. We analyze the design space of such controllers and identify the critical assumptions on the real-time constraints, the control design criteria and implementation aspects. We expose how these different assumptions lead to the different trade-offs in applicability, and control performance and guarantees. We contribute a comparison tool enabling researchers to systematically benchmark new techniques against the state of the art. The study is supported by simulations on two case studies: a Furuta pendulum and an electric motor to illustrate the practical behavior of the different approaches under missed-deadline conditions.}
+  journal = {Technology for a Resilient Future},
+  doi = {10.1201/9781042017546-47},
+  url = {https://doi.org/10.1201/9781042017546-47}
+}
+
+@article{Li2026,
+  title = {LE-RTDETR: multi-scale edge enhancement and structural compression for underwater debris detection},
+  author = {Rui Li and Yaoyi Ding},
+  year = {2026},
+  journal = {Journal of Real-Time Image Processing},
+  doi = {10.1007/s11554-026-01980-3},
+  url = {https://doi.org/10.1007/s11554-026-01980-3}
 }
