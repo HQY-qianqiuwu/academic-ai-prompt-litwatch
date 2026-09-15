@@ -193,6 +193,7 @@ class RadarUpdateRequest(BaseModel):
 class LiteraturePaperResponse(BaseModel):
     """Stable public projection of provider-backed paper metadata."""
 
+    paper_id: str
     canonical_id: str
     title: str
     authors: list[str]
@@ -204,9 +205,10 @@ class LiteraturePaperResponse(BaseModel):
     sources: list[str]
 
     @classmethod
-    def from_paper(cls, paper: Paper) -> LiteraturePaperResponse:
+    def from_paper(cls, paper: Paper, paper_id: str) -> LiteraturePaperResponse:
         """Project a validated Paper without inventing missing metadata."""
         return cls(
+            paper_id=paper_id,
             canonical_id=paper.canonical_id,
             title=paper.title,
             authors=[author.name for author in paper.authors],
@@ -258,6 +260,7 @@ class LiteratureSearchDiagnosticsResponse(BaseModel):
 class LiteratureSearchResponse(BaseModel):
     """Response envelope for a unified literature search."""
 
+    scan_id: str
     query: str
     scan_status: ScanStatus
     paper_count: int
@@ -266,13 +269,19 @@ class LiteratureSearchResponse(BaseModel):
     diagnostics: LiteratureSearchDiagnosticsResponse
 
     @classmethod
-    def from_result(cls, result: ScanResult) -> LiteratureSearchResponse:
+    def from_result(
+        cls, result: ScanResult, *, scan_id: str, paper_ids: dict[str, str]
+    ) -> LiteratureSearchResponse:
         """Serialize the service result through the explicit API contract."""
         return cls(
+            scan_id=scan_id,
             query=result.query,
             scan_status=result.status,
             paper_count=result.selected,
-            papers=[LiteraturePaperResponse.from_paper(paper) for paper in result.papers],
+            papers=[
+                LiteraturePaperResponse.from_paper(paper, paper_ids[paper.canonical_id])
+                for paper in result.papers
+            ],
             provider_status=[
                 ProviderSearchStatusResponse.from_status(status)
                 for status in result.provider_status

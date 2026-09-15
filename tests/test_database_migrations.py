@@ -80,6 +80,32 @@ def test_copied_v1_7_version_six_database_migrates_to_current_registry(tmp_path)
     database.connection.close()
 
 
+def test_version_eleven_data_survives_additive_scan_identity_migration(tmp_path):
+    path = tmp_path / "v11.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(SCHEMA)
+    for version, name, sql in MIGRATIONS[:11]:
+        connection.executescript(sql)
+        connection.execute("INSERT INTO schema_migrations(version,name) VALUES (?,?)", (version, name))
+    connection.execute(
+        """INSERT INTO papers(canonical_id,title,first_seen_at,last_seen_at)
+           VALUES ('doi:10.1000/legacy','Legacy paper','2026-01-01','2026-01-01')"""
+    )
+    connection.commit()
+    connection.close()
+
+    database = Database(path)
+
+    assert database.connection.execute(
+        "SELECT title FROM papers WHERE canonical_id='doi:10.1000/legacy'"
+    ).fetchone()[0] == "Legacy paper"
+    assert database.connection.execute("SELECT max(version) FROM schema_migrations").fetchone()[0] == 12
+    assert database.connection.execute("SELECT COUNT(*) FROM paper_identities").fetchone()[0] == 0
+    assert list((tmp_path / "backups").glob("v11.v11-to-v12.*.db"))
+    database.verify_migrations()
+    database.connection.close()
+
+
 def test_database_connection_releases_shared_access_lock_on_close(tmp_path):
     path = tmp_path / "lifetime-lock.db"
     database = Database(path)

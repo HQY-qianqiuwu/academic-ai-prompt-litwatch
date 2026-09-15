@@ -409,6 +409,35 @@ _MIGRATION_SQL = (
             CHECK (email_enabled IN (0, 1));
         """,
     ),
+    (
+        12,
+        "search_scan_paper_identities",
+        """
+        CREATE TABLE IF NOT EXISTS search_scans (
+            scan_id TEXT PRIMARY KEY,
+            query TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN (
+                'success','success_empty','partial_success','all_providers_failed'
+            )),
+            result_json TEXT NOT NULL CHECK(json_valid(result_json)),
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS paper_identities (
+            paper_id TEXT PRIMARY KEY,
+            canonical_id TEXT NOT NULL UNIQUE REFERENCES papers(canonical_id) ON DELETE RESTRICT
+        );
+        CREATE TABLE IF NOT EXISTS search_scan_papers (
+            scan_id TEXT NOT NULL REFERENCES search_scans(scan_id) ON DELETE RESTRICT,
+            paper_id TEXT NOT NULL REFERENCES paper_identities(paper_id) ON DELETE RESTRICT,
+            position INTEGER NOT NULL,
+            paper_json TEXT NOT NULL CHECK(json_valid(paper_json)),
+            PRIMARY KEY (scan_id,paper_id),
+            UNIQUE (scan_id,position)
+        );
+        CREATE INDEX IF NOT EXISTS idx_search_scans_created
+            ON search_scans(created_at DESC);
+        """,
+    ),
 )
 
 MIGRATION_REGISTRY = tuple(

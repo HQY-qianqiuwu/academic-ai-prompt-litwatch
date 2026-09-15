@@ -52,6 +52,7 @@ from litwatch.provider_security import ProviderBaseUrlError, validate_provider_b
 from litwatch.radar_repository import RadarRepository
 from litwatch.radars import ResearchRadar
 from litwatch.runtime import ApplicationRuntime, RuntimeStatus
+from litwatch.search_scan_repository import SearchScanRepository
 from litwatch.services import (
     LiteratureSearchService,
     SubscriptionNotFoundError,
@@ -107,6 +108,7 @@ def create_app(
     settings = settings or Settings()
     settings.ensure_runtime_files()
     database = Database(settings.database_path)
+    search_scan_repository = SearchScanRepository(database)
     credential_store = credential_store or InMemoryCredentialStore.from_settings(settings)
     provider_registry = provider_registry or ProviderRegistry.from_settings(
         settings, credential_store=credential_store
@@ -270,6 +272,7 @@ def create_app(
     app.state.job_repository = job_repository
     app.state.job_worker = job_worker
     app.state.paper_analysis_service = analysis_service
+    app.state.search_scan_repository = search_scan_repository
     app.state.research_radar_service = research_radar_service
     app.state.scan_state = scan_state
     templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
@@ -566,6 +569,7 @@ def create_app(
         except (httpx.HTTPError, AttributeError, KeyError, TypeError, ValueError):
             raise HTTPException(status_code=502, detail="Literature request failed") from None
 
+        saved_scan = search_scan_repository.save(result)
         if result.status is ScanStatus.ALL_PROVIDERS_FAILED:
             if result.all_timeouts:
                 raise HTTPException(
@@ -577,7 +581,9 @@ def create_app(
                 detail="All selected literature providers failed",
             )
 
-        return LiteratureSearchResponse.from_result(result)
+        return LiteratureSearchResponse.from_result(
+            result, scan_id=saved_scan.scan_id, paper_ids=saved_scan.paper_ids
+        )
 
     @app.get("/api/v1/email-settings", response_model=EmailSettingsResponse)
     def get_email_settings() -> EmailSettingsResponse:

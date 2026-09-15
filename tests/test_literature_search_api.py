@@ -112,17 +112,26 @@ def test_search_returns_normalized_contract_without_network(tmp_path, monkeypatc
     monkeypatch.setattr("litwatch.sources.openalex.OpenAlexSource.search", fail_if_openalex_is_called)
     service = FakeLiteratureSearchService(sample_papers())
 
-    with TestClient(create_app(settings_for(tmp_path), service)) as client:
+    app = create_app(settings_for(tmp_path), service)
+    with TestClient(app) as client:
         response = client.post(
             "/api/v1/literature/search",
             json={"topic": "  underwater acoustic TDOA localization  ", "limit": 10},
         )
+        response_payload = response.json()
+        saved = app.state.search_scan_repository.get_paper(
+            response_payload["scan_id"], response_payload["papers"][0]["paper_id"]
+        )
 
     assert response.status_code == 200
-    payload = response.json()
+    payload = response_payload
     assert service.calls == [("underwater acoustic TDOA localization", 10)]
     assert payload["query"] == "underwater acoustic TDOA localization"
+    assert payload["scan_id"]
     assert payload["paper_count"] == len(payload["papers"]) == 2
+    assert all(item["paper_id"] for item in payload["papers"])
+    assert saved is not None
+    assert saved.paper.title == "Underwater acoustic localization"
     assert payload["provider_status"] == []
     assert payload["diagnostics"] == {
         "raw_count": 0,
@@ -131,7 +140,9 @@ def test_search_returns_normalized_contract_without_network(tmp_path, monkeypatc
         "candidate_limit_per_provider": 0,
         "ranking": [],
     }
-    assert payload["papers"][0] == {
+    first_paper = payload["papers"][0].copy()
+    first_paper.pop("paper_id")
+    assert first_paper == {
         "canonical_id": "doi:10.1234/acoustics",
         "title": "Underwater acoustic localization",
         "authors": ["Ada Lovelace", "Grace Hopper"],
