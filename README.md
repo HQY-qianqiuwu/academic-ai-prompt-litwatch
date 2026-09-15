@@ -109,10 +109,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\uninstall-local.ps1
 
 ## 配置 AI 分析
 
-编辑 `.env`：
+从 `.env.example` 复制本机配置，再填写你自己的 Key：
 
 ```dotenv
-LITWATCH_LLM_API_KEY=sk-...
+LITWATCH_LLM_API_KEY=your-own-api-key
 LITWATCH_LLM_BASE_URL=https://api.openai.com/v1
 LITWATCH_LLM_MODEL=gpt-5-mini
 ```
@@ -120,6 +120,27 @@ LITWATCH_LLM_MODEL=gpt-5-mini
 系统只对每个主题的高分论文调用模型。开放 PDF 成功提取时标记为 `fulltext_excerpt`，否则标记为 `abstract`，不会把摘要分析包装成全文精读。
 
 没有配置模型密钥时，系统仍会基于真实摘要生成基础抽取式提炼，包括动机、方法句、结果句、局限提示和阅读优先级；配置模型后才会生成更深入的中文综述矩阵和研究空白分析。
+
+## BYOK FastAPI
+
+仓库只提供 `.env.example`，`.env` 已被 Git 忽略。OpenAlex、arXiv 和 Crossref 可在无 Key 模式运行；Semantic Scholar、LLM、SMTP 与 Zotero 凭证均由每位用户在自己的 `.env` 中提供，不应写入源码、请求正文或提交历史。
+
+稳定 API 包括：
+
+- `GET /health`：本机服务、Scheduler 与最近扫描状态。
+- `GET /api/v1/providers`：Provider 能力及当前 `enabled/configured` 状态。
+- `POST /api/v1/literature/search`：通过统一 `ScanService` 检索，并返回持久化的 `scan_id/paper_id`。
+- `POST /api/v1/literature/analyze`：用 `scan_id/paper_id` 分析已保存论文，不会重新检索 Provider。
+
+Analyze 请求示例：
+
+```json
+{
+  "scan_id": "search-response-scan-id",
+  "paper_id": "search-response-paper-id",
+  "analysis_mode": "quick_scan"
+}
+```
 
 ## 长期监测
 

@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from litwatch.analysis_models import EvidenceScope
+from litwatch.analysis_models import EvidenceScope, PaperAnalysis
 from litwatch.deliveries import Delivery
 from litwatch.jobs import JobPayload, JobRecord, JobStatus
 from litwatch.models import Paper
@@ -292,6 +292,28 @@ class LiteratureSearchResponse(BaseModel):
         )
 
 
+class LiteratureAnalyzeRequest(BaseModel):
+    """Analyze one paper from a persisted search scan without retrieving again."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scan_id: str = Field(min_length=1, max_length=64)
+    paper_id: str = Field(min_length=1, max_length=64)
+    analysis_mode: str = Field(default="quick_scan", min_length=1, max_length=100)
+
+    @field_validator("scan_id", "paper_id", "analysis_mode", mode="before")
+    @classmethod
+    def strip_analysis_identifiers(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class LiteratureAnalyzeResponse(BaseModel):
+    scan_id: str
+    paper_id: str
+    canonical_id: str
+    analysis: PaperAnalysis
+
+
 class SubscriptionCreateRequest(SubscriptionSpec):
     """Create a persisted weekly research subscription."""
 
@@ -430,9 +452,16 @@ class ProviderCapabilityResponse(BaseModel):
     requires_api_key: bool
     supports_anonymous: bool
     capabilities: list[str]
+    enabled: bool
+    configured: bool
 
     @classmethod
-    def from_capability(cls, capability: ProviderCapability) -> ProviderCapabilityResponse:
+    def from_capability(
+        cls,
+        capability: ProviderCapability,
+        config: ProviderConfig | None,
+        credential_store: InMemoryCredentialStore,
+    ) -> ProviderCapabilityResponse:
         return cls(
             name=capability.provider_type.value,
             provider_type=capability.provider_type,
@@ -442,6 +471,14 @@ class ProviderCapabilityResponse(BaseModel):
             requires_api_key=capability.requires_api_key,
             supports_anonymous=capability.supports_anonymous,
             capabilities=list(capability.capabilities),
+            enabled=config.enabled if config is not None else False,
+            configured=(
+                config is not None
+                and (
+                    not config.requires_api_key
+                    or credential_store.configured(config.credential_reference)
+                )
+            ),
         )
 
 

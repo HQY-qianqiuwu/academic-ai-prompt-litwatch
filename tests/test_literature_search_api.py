@@ -159,6 +159,62 @@ def test_search_returns_normalized_contract_without_network(tmp_path, monkeypatc
         assert payload["papers"][1][field] is None
 
 
+def test_analyze_uses_saved_search_paper_without_retrieval(tmp_path):
+    service = FakeLiteratureSearchService(sample_papers()[:1])
+    app = create_app(settings_for(tmp_path), service)
+
+    with TestClient(app) as client:
+        searched = client.post(
+            "/api/v1/literature/search",
+            json={"topic": "underwater acoustic localization", "limit": 5},
+        )
+        search_payload = searched.json()
+        request = {
+            "scan_id": search_payload["scan_id"],
+            "paper_id": search_payload["papers"][0]["paper_id"],
+            "analysis_mode": "quick_scan",
+        }
+        analyzed = client.post("/api/v1/literature/analyze", json=request)
+        repeated = client.post("/api/v1/literature/analyze", json=request)
+
+    assert searched.status_code == 200
+    assert analyzed.status_code == repeated.status_code == 200
+    assert service.calls == [("underwater acoustic localization", 5)]
+    assert analyzed.json() == repeated.json()
+    assert analyzed.json()["scan_id"] == search_payload["scan_id"]
+    assert analyzed.json()["paper_id"] == search_payload["papers"][0]["paper_id"]
+    assert analyzed.json()["canonical_id"] == "doi:10.1234/acoustics"
+    assert analyzed.json()["analysis"]["status"] == "extractive"
+    assert analyzed.json()["analysis"]["evidence_scope"] == "abstract"
+
+
+def test_analyze_rejects_unknown_saved_paper_and_analysis_mode(tmp_path):
+    service = FakeLiteratureSearchService(sample_papers()[:1])
+    app = create_app(settings_for(tmp_path), service)
+
+    with TestClient(app) as client:
+        searched = client.post(
+            "/api/v1/literature/search",
+            json={"topic": "underwater acoustic localization", "limit": 5},
+        ).json()
+        unknown = client.post(
+            "/api/v1/literature/analyze",
+            json={"scan_id": "missing", "paper_id": "missing"},
+        )
+        bad_mode = client.post(
+            "/api/v1/literature/analyze",
+            json={
+                "scan_id": searched["scan_id"],
+                "paper_id": searched["papers"][0]["paper_id"],
+                "analysis_mode": "invented",
+            },
+        )
+
+    assert unknown.status_code == 404
+    assert bad_mode.status_code == 422
+    assert service.calls == [("underwater acoustic localization", 5)]
+
+
 def test_search_returns_additive_dedup_and_ranking_diagnostics(tmp_path):
     diagnostics = LiteratureSearchDiagnostics(
         raw_count=4,
@@ -296,6 +352,8 @@ def test_provider_apis_are_exposed_and_default_profile_is_safe(tmp_path):
     assert next(item for item in capabilities.json() if item["name"] == "crossref")["default_selected"] is True
     assert openalex_capability["requires_api_key"] is False
     assert openalex_capability["supports_anonymous"] is True
+    assert openalex_capability["enabled"] is True
+    assert openalex_capability["configured"] is True
     assert "search" in openalex_capability["capabilities"]
 
     assert profiles.status_code == 200
@@ -316,6 +374,7 @@ def test_provider_apis_are_exposed_and_default_profile_is_safe(tmp_path):
     assert all("api_key" not in item for item in profile["providers"])
     paths = openapi.json()["paths"]
     assert "post" in paths["/api/v1/literature/search"]
+    assert "post" in paths["/api/v1/literature/analyze"]
     assert "get" in paths["/api/v1/providers"]
     assert set(paths["/api/v1/provider-profiles"]) == {"get", "post"}
     provider_write_schema = openapi.json()["components"]["schemas"][

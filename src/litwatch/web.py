@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from litwatch.analysis import PaperAnalyzer
+from litwatch.analysis_models import EvidenceScope
 from litwatch.analysis_repository import AnalysisRepository
 from litwatch.api_models import (
     EmailSettingsResponse,
@@ -24,6 +25,8 @@ from litwatch.api_models import (
     JobCreateRequest,
     JobListResponse,
     JobResponse,
+    LiteratureAnalyzeRequest,
+    LiteratureAnalyzeResponse,
     LiteratureSearchRequest,
     LiteratureSearchResponse,
     PaperAnalysisJobRequest,
@@ -62,6 +65,7 @@ from litwatch.services import (
 from litwatch.services.delivery import DeliveryService
 from litwatch.services.jobs import JobHandler, JobWorker
 from litwatch.services.paper_analysis import (
+    AnalysisContext,
     PaperAnalysisJobHandler,
     PaperAnalysisService,
 )
@@ -585,6 +589,44 @@ def create_app(
             result, scan_id=saved_scan.scan_id, paper_ids=saved_scan.paper_ids
         )
 
+    @app.post(
+        "/api/v1/literature/analyze",
+        response_model=LiteratureAnalyzeResponse,
+        responses={404: {"description": "Saved scan paper not found"}},
+    )
+    def literature_analyze(
+        payload: LiteratureAnalyzeRequest,
+    ) -> LiteratureAnalyzeResponse:
+        saved = search_scan_repository.get_paper(payload.scan_id, payload.paper_id)
+        if saved is None:
+            raise HTTPException(status_code=404, detail="saved scan paper not found")
+        valid_modes = {mode.id for mode in settings.load_analysis_modes()}
+        if payload.analysis_mode not in valid_modes:
+            raise HTTPException(status_code=422, detail="unsupported analysis mode")
+        topic = Topic(
+            id=f"api_{hashlib.sha256(saved.query.encode()).hexdigest()[:12]}",
+            name=saved.query,
+            query=saved.query,
+            analysis_mode=payload.analysis_mode,
+        )
+        scope = EvidenceScope.ABSTRACT if saved.paper.abstract else EvidenceScope.METADATA_ONLY
+        analysis = analysis_service.analyze(
+            AnalysisContext(
+                paper=saved.paper,
+                topic=topic,
+                evidence=saved.paper.abstract,
+                evidence_scope=scope,
+            )
+        )
+        if analysis is None:  # pragma: no cover - synchronous calls do not abort
+            raise HTTPException(status_code=500, detail="analysis did not complete")
+        return LiteratureAnalyzeResponse(
+            scan_id=saved.scan_id,
+            paper_id=saved.paper_id,
+            canonical_id=saved.paper.canonical_id,
+            analysis=analysis,
+        )
+
     @app.get("/api/v1/email-settings", response_model=EmailSettingsResponse)
     def get_email_settings() -> EmailSettingsResponse:
         return EmailSettingsResponse.from_settings(email_settings_store.load())
@@ -829,8 +871,14 @@ def create_app(
     @app.get("/api/v1/providers", response_model=list[ProviderCapabilityResponse])
     def providers() -> list[ProviderCapabilityResponse]:
         """List declared capabilities and clearly identify runnable adapters."""
+        configs = {
+            item.provider_id: item
+            for item in provider_profile_store.get("default").providers
+        }
         return [
-            ProviderCapabilityResponse.from_capability(capability)
+            ProviderCapabilityResponse.from_capability(
+                capability, configs.get(capability.provider_type.value), credential_store
+            )
             for capability in provider_registry.capabilities()
         ]
 
